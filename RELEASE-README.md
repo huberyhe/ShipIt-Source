@@ -61,7 +61,17 @@
 
 ## 截图
 
-（待添加）
+### 文件树视图
+![文件树视图](screenshots/file-tree.png)
+浏览项目文件结构，选择文件进行上传。
+
+### Git 变更视图
+![Git 变更视图](screenshots/git-changes.png)
+查看未提交的 Git 变更，快速上传修改的文件。
+
+### Git 提交历史
+![Git 提交历史](screenshots/git-log.png)
+浏览提交历史，一键上传提交的文件。
 
 ## 反馈
 
