@@ -1,0 +1,63 @@
+{
+  "name": "shipit",
+  "version": "1.0.0",
+  "description": "ShipIt - 开发者文件发布工具，支持 FTP/SFTP/FTPS 一键上传到多台服务器",
+  "main": "dist-electron/index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "type-check": "vue-tsc --noEmit",
+    "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",
+    "electron:build": "node scripts/build.js",
+    "gen:icon": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/gen-icon.ps1 && node scripts/build-ico.cjs"
+  },
+  "dependencies": {
+    "basic-ftp": "^5.0.0",
+    "lucide-vue-next": "^0.344.0",
+    "pinia": "^2.1.7",
+    "simple-git": "^3.20.0",
+    "ssh2-sftp-client": "^9.1.0",
+    "vue": "^3.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@vitejs/plugin-vue": "^5.0.0",
+    "concurrently": "^8.2.0",
+    "cross-env": "^7.0.3",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.0",
+    "typescript": "^5.3.0",
+    "vite": "^5.0.0",
+    "vite-plugin-electron": "^0.28.0",
+    "vite-plugin-electron-renderer": "^0.14.0",
+    "vue-tsc": "^2.0.0",
+    "wait-on": "^7.2.0"
+  },
+  "build": {
+    "appId": "com.shipit.app",
+    "productName": "ShipIt",
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.ico",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "ShipIt-v${version}-build${env.BUILD_NUMBER}-${arch}.${ext}"
+    },
+    "afterPack": "./scripts/after-pack.js",
+    "extraResources": [
+      {
+        "from": "build/icon.png",
+        "to": "icon.png"
+      }
+    ]
+  }
+}
