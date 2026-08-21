@@ -2,6 +2,10 @@
   "name": "shipit",
   "version": "1.0.0",
   "description": "ShipIt - 开发者文件发布工具，支持 FTP/SFTP/FTPS 一键上传到多台服务器",
+  "author": {
+    "name": "huberyhe",
+    "email": "huberyhe@example.com"
+  },
   "main": "dist-electron/index.js",
   "scripts": {
     "dev": "vite",
