@@ -48,21 +48,21 @@ jobs:
         env:
           ELECTRON_BUILDER_BINARIES_MIRROR: https://npmmirror.com/mirrors/electron-builder-binaries/
           BUILD_NUMBER: ${{ env.BUILD_NUMBER }}
-        run: npx electron-builder --win --x64
+        run: npx electron-builder --win --x64 --publish never
 
       - name: Build Linux packages
         if: matrix.platform == 'linux'
         env:
           BUILD_NUMBER: ${{ env.BUILD_NUMBER }}
         run: |
-          npx electron-builder --linux AppImage deb --x64
+          npx electron-builder --linux AppImage deb --x64 --publish never
 
       - name: Build macOS package
         if: matrix.platform == 'mac'
         env:
           BUILD_NUMBER: ${{ env.BUILD_NUMBER }}
         run: |
-          npx electron-builder --mac dmg --x64 --arm64
+          npx electron-builder --mac dmg --x64 --arm64 --publish never
 
       - name: Upload artifacts to release
         uses: softprops/action-gh-release@v2
