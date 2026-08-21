@@ -52,6 +52,32 @@
       "allowToChangeInstallationDirectory": true,
       "artifactName": "ShipIt-v${version}-build${env.BUILD_NUMBER}-${arch}.${ext}"
     },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": ["x64"]
+        },
+        {
+          "target": "deb",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "build/icon.png",
+      "category": "Development",
+      "artifactName": "ShipIt-v${version}-build${env.BUILD_NUMBER}-${arch}.${ext}"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["x64", "arm64"]
+        }
+      ],
+      "icon": "build/icon.png",
+      "category": "public.app-category.developer-tools",
+      "artifactName": "ShipIt-v${version}-build${env.BUILD_NUMBER}-${arch}.${ext}"
+    },
     "afterPack": "./scripts/after-pack.js",
     "extraResources": [
       {

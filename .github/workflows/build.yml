@@ -1,0 +1,77 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win
+          - os: ubuntu-latest
+            platform: linux
+          - os: macos-latest
+            platform: mac
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate build number
+        id: build-number
+        shell: bash
+        run: |
+          BUILD_NUMBER=$(date +%Y%m%d%H%M)
+          echo "BUILD_NUMBER=$BUILD_NUMBER" >> $GITHUB_ENV
+          echo "Build number: $BUILD_NUMBER"
+
+      - name: Build Vite
+        run: npm run build
+
+      - name: Build Windows installer
+        if: matrix.platform == 'win'
+        env:
+          ELECTRON_BUILDER_BINARIES_MIRROR: https://npmmirror.com/mirrors/electron-builder-binaries/
+          BUILD_NUMBER: ${{ env.BUILD_NUMBER }}
+        run: npx electron-builder --win --x64
+
+      - name: Build Linux packages
+        if: matrix.platform == 'linux'
+        env:
+          BUILD_NUMBER: ${{ env.BUILD_NUMBER }}
+        run: |
+          npx electron-builder --linux AppImage deb --x64
+
+      - name: Build macOS package
+        if: matrix.platform == 'mac'
+        env:
+          BUILD_NUMBER: ${{ env.BUILD_NUMBER }}
+        run: |
+          npx electron-builder --mac dmg --x64 --arm64
+
+      - name: Upload artifacts to release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            release/*.exe
+            release/*.AppImage
+            release/*.deb
+            release/*.dmg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
