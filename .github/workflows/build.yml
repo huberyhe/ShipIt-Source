@@ -70,23 +70,21 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
+          token: ${{ secrets.GITHUB_TOKEN }}
           files: |
             release/*.exe
             release/*.AppImage
             release/*.deb
             release/*.dmg
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artifacts to ShipIt (distribution)
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
           repository: huberyhe/ShipIt
+          token: ${{ secrets.SHIPIT_RELEASE_TOKEN }}
           files: |
             release/*.exe
             release/*.AppImage
             release/*.deb
             release/*.dmg
-        env:
-          GITHUB_TOKEN: ${{ secrets.SHIPIT_RELEASE_TOKEN }}
