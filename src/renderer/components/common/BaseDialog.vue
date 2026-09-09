@@ -69,7 +69,7 @@ const titleId = `dlg-title-${getCurrentInstance()?.uid ?? 'x'}`
 .base-dialog-title { font-size: 14px; font-weight: 500; white-space: nowrap; }
 .base-dialog-badge {
   font-size: 11px; padding: 1px 8px;
-  background: var(--accent); color: var(--fg3);
+  background: var(--accent); color: var(--on-accent);
   border-radius: 4px;
 }
 .base-dialog-close {

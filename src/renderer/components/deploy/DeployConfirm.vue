@@ -66,9 +66,9 @@ function handleCancel() { deployStore.cancelDeploy() }
 .file-item { display: flex; align-items: center; gap: 8px; padding: 5px 16px; font-size: 12px; color: var(--fg); border-bottom: 1px solid var(--bg3); }
 .file-icon { color: var(--fg2); flex-shrink: 0; }
 .file-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cancel-btn { padding: 6px 16px; background: var(--bg5); color: var(--fg); border-radius: 4px; font-size: 12px; }
-.cancel-btn:hover { background: var(--scrollbar-hover); }
-.deploy-btn { padding: 6px 16px; background: var(--accent); color: var(--fg3); border-radius: 4px; font-size: 12px; }
+.cancel-btn { padding: 6px 16px; background: var(--bg4); color: var(--fg); border: 1px solid var(--border2); border-radius: 4px; font-size: 12px; }
+.cancel-btn:hover { background: var(--bg5); color: var(--fg3); }
+.deploy-btn { padding: 6px 16px; background: var(--accent); color: var(--on-accent); border-radius: 4px; font-size: 12px; }
 .deploy-btn:hover { background: var(--accent2); }
 .deploy-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 </style>

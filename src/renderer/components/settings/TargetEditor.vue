@@ -289,7 +289,7 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
           <div class="inline-form">
             <input v-model="tempMap.localPrefix" aria-label="本地路径前缀" placeholder="本地前缀，如 manage/" class="inline-input" @keyup.enter="addTempMapping({ id:Date.now().toString(36), localPrefix:tempMap.localPrefix, remotePath:tempMap.remotePath, description:tempMap.description })" />
             <span class="map-arrow">→</span>
-            <input v-model="tempMap.remotePath" aria-label="远程目标路径" placeholder="远程路径，如 /opt/ssmp/" class="inline-input" @keyup.enter="addTempMapping({ id:Date.now().toString(36), localPrefix:tempMap.localPrefix, remotePath:tempMap.remotePath, description:tempMap.description })" />
+            <input v-model="tempMap.remotePath" aria-label="远程目标路径" placeholder="远程路径，如 /opt/ssmp/" class="inline-input flex-remote" @keyup.enter="addTempMapping({ id:Date.now().toString(36), localPrefix:tempMap.localPrefix, remotePath:tempMap.remotePath, description:tempMap.description })" />
             <button class="mini-add-btn" @click="addTempMapping({ id:Date.now().toString(36), localPrefix:tempMap.localPrefix, remotePath:tempMap.remotePath, description:tempMap.description })">添加</button>
           </div>
         </div>
@@ -335,18 +335,18 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
 .target-editor { color: var(--fg); }
 .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .section-header h3 { font-size: 13px; font-weight: normal; }
-.add-btn { display: flex; align-items: center; gap: 4px; padding: 6px 14px; background: var(--accent); color: var(--fg3); border-radius: 4px; font-size: 12px; }
+.add-btn { display: flex; align-items: center; gap: 4px; padding: 6px 14px; background: var(--accent); color: var(--on-accent); border-radius: 4px; font-size: 12px; }
 .add-btn:hover { background: var(--accent2); }
 .empty-state { padding: 24px; text-align: center; color: var(--fg2); border: 1px dashed var(--border); border-radius: 6px; }
 .target-card { background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin-bottom: 12px; }
 .target-info { display: flex; align-items: center; justify-content: space-between; }
 .target-primary { display: flex; align-items: center; gap: 8px; }
 .target-name { font-weight: 500; color: var(--fg3); }
-.target-protocol { font-size: 11px; padding: 1px 6px; background: var(--accent); color: var(--fg3); border-radius: 4px; }
+.target-protocol { font-size: 11px; padding: 1px 6px; background: var(--accent); color: var(--on-accent); border-radius: 4px; }
 .target-host { font-size: 12px; color: var(--fg2); }
 .target-actions { display: flex; gap: 6px; }
-.icon-btn { display: flex; align-items: center; gap: 4px; padding: 6px 12px; background: transparent; color: var(--fg2); border: 1px solid var(--border); border-radius: 4px; font-size: 11px; min-height: 30px; }
-.icon-btn:hover:not(:disabled) { background: var(--border); color: var(--fg); }
+.icon-btn { display: flex; align-items: center; gap: 4px; padding: 6px 12px; background: var(--bg4); color: var(--fg); border: 1px solid var(--border2); border-radius: 4px; font-size: 11px; min-height: 30px; }
+.icon-btn:hover:not(:disabled) { background: var(--bg5); color: var(--fg3); }
 .icon-btn:disabled { opacity: 0.4; }
 .icon-btn.danger:hover { background: var(--red-bg2); color: var(--red); border-color: var(--red); }
 .test-result { display: flex; align-items: center; gap: 4px; margin-top: 8px; padding: 4px 8px; font-size: 12px; border-radius: 4px; }
@@ -377,12 +377,12 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
 .form-field.flex-1 { flex: 1; }
 .form-field label { font-size: 11px; color: var(--fg2); }
 .field-hint { font-size: 10px; color: var(--fg2); opacity: 0.8; }
-.form-field input, .form-field select { padding: 7px 9px; background: var(--bg5); color: var(--fg); border: 1px solid var(--border); border-radius: 4px; font-size: 12px; outline: none; transition: border-color 0.15s ease, box-shadow 0.15s ease; }
+.form-field input, .form-field select { padding: 7px 9px; background: var(--input-bg); color: var(--fg); border: 1px solid var(--border); border-radius: 4px; font-size: 12px; outline: none; transition: border-color 0.15s ease, box-shadow 0.15s ease; }
 .form-field input:focus, .form-field select:focus { border-color: var(--status-bar); box-shadow: 0 0 0 2px var(--accent3); }
 .file-picker { display: flex; gap: 4px; }
 .file-picker input { flex: 1; }
-.browse-btn { padding: 7px 12px; background: var(--bg5); color: var(--fg); border: 1px solid var(--border); border-radius: 4px; font-size: 12px; white-space: nowrap; }
-.browse-btn:hover { background: var(--scrollbar-hover); }
+.browse-btn { padding: 7px 12px; background: var(--bg4); color: var(--fg); border: 1px solid var(--border2); border-radius: 4px; font-size: 12px; white-space: nowrap; }
+.browse-btn:hover { background: var(--bg5); color: var(--fg3); }
 
 .edit-mapping-row { display: flex; align-items: center; gap: 6px; padding: 4px 0; font-size: 11px; }
 .edit-mapping-row code { padding: 2px 6px; border-radius: 4px; font-size: 10px; }
@@ -392,9 +392,10 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
 .map-desc { color: var(--fg2); font-size: 10px; margin-left: auto; }
 .edit-mapping-add { margin-top: 6px; padding-top: 8px; border-top: 1px dashed var(--border); }
 .inline-form { display: flex; align-items: center; gap: 6px; }
-.inline-input { padding: 5px 8px; background: var(--bg5); color: var(--fg); border: 1px solid var(--border); border-radius: 4px; font-size: 11px; outline: none; width: 160px; }
+.inline-input { padding: 5px 8px; background: var(--input-bg); color: var(--fg); border: 1px solid var(--border); border-radius: 4px; font-size: 11px; outline: none; flex: 1; min-width: 0; }
+.inline-input.flex-remote { flex: 2; }
 .inline-input:focus { border-color: var(--status-bar); box-shadow: 0 0 0 2px var(--accent3); }
-.mini-add-btn { padding: 5px 12px; background: var(--accent); color: var(--fg3); border-radius: 4px; font-size: 11px; }
+.mini-add-btn { padding: 5px 12px; background: var(--accent); color: var(--on-accent); border-radius: 4px; font-size: 11px; }
 .mini-add-btn:hover { background: var(--accent2); }
 .mini-btn.danger { padding: 5px; background: transparent; color: var(--fg2); border-radius: 4px; font-size: 11px; display: flex; align-items: center; }
 .mini-btn.danger:hover { background: var(--red-bg2); color: var(--red); }
@@ -402,19 +403,19 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
 /* 底部操作区 */
 .form-footer { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
 .form-test-bar { display: flex; align-items: center; gap: 10px; }
-.test-btn { display: flex; align-items: center; gap: 4px; padding: 6px 14px; background: var(--bg5); color: var(--fg); border: 1px solid var(--border); border-radius: 4px; font-size: 12px; }
-.test-btn:hover:not(:disabled) { background: var(--scrollbar-hover); }
+.test-btn { display: flex; align-items: center; gap: 4px; padding: 6px 14px; background: var(--bg4); color: var(--fg); border: 1px solid var(--border2); border-radius: 4px; font-size: 12px; }
+.test-btn:hover:not(:disabled) { background: var(--bg5); color: var(--fg3); }
 .test-btn:disabled { opacity: 0.4; }
 .test-result-inline { display: flex; align-items: center; gap: 4px; font-size: 12px; }
 .test-result-inline.success { color: var(--green); }
 .test-result-inline.error { color: var(--red); }
 
 .form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
-.cancel-btn { padding: 7px 18px; background: var(--bg5); color: var(--fg); border-radius: 4px; }
-.cancel-btn:hover { background: var(--scrollbar-hover); }
-.save-btn { padding: 7px 18px; background: var(--accent); color: var(--fg3); border-radius: 4px; }
+.cancel-btn { padding: 7px 18px; background: var(--bg4); color: var(--fg); border: 1px solid var(--border2); border-radius: 4px; }
+.cancel-btn:hover { background: var(--bg5); color: var(--fg3); }
+.save-btn { padding: 7px 18px; background: var(--accent); color: var(--on-accent); border-radius: 4px; }
 .save-btn:hover { background: var(--accent2); }
 .confirm-text { font-size: 13px; color: var(--fg); line-height: 1.6; padding: 8px 16px; }
-.danger-btn { padding: 7px 18px; background: var(--red); color: var(--fg3); border-radius: 4px; }
+.danger-btn { padding: 7px 18px; background: var(--red); color: var(--on-danger); border-radius: 4px; }
 .danger-btn:hover { background: var(--red-bg2); }
 </style>

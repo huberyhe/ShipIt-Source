@@ -18,6 +18,6 @@ onMounted(async () => { await deployStore.loadTargets() })
 <style scoped>
 .target-selector { display: flex; align-items: center; gap: 6px; }
 .server-icon { color: var(--fg2); }
-.target-select { padding: 3px 8px; background: var(--bg5); color: var(--fg); border: 1px solid var(--border); border-radius: 4px; font-size: 12px; outline: none; min-width: 180px; }
+.target-select { padding: 3px 8px; background: var(--input-bg); color: var(--fg); border: 1px solid var(--border); border-radius: 4px; font-size: 12px; outline: none; min-width: 180px; }
 .target-select:focus { border-color: var(--accent); }
 </style>

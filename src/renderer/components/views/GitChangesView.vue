@@ -239,10 +239,10 @@ function statusClass(status: string): string {
 
 .header-actions { display: flex; align-items: center; gap: 6px; }
 .header-btn {
-  padding: 2px 8px; background: transparent; color: var(--fg2);
-  border: 1px solid var(--border); border-radius: 4px; font-size: 10px;
+  padding: 3px 10px; background: var(--bg4); color: var(--fg);
+  border: 1px solid var(--border2); border-radius: 4px; font-size: 11px;
 }
-.header-btn:hover { background: var(--border); color: var(--fg); }
+.header-btn:hover { background: var(--bg5); color: var(--fg3); }
 .refresh-btn { display: flex; align-items: center; gap: 3px; }
 
 .changes-list {

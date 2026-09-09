@@ -36,7 +36,7 @@ const views = computed(() => [
 .view-btn:hover:not(.disabled) { background: var(--border); color: var(--fg); }
 .view-btn.active { background: var(--bg2); color: var(--fg3); border-left: 2px solid var(--accent); }
 .view-btn.disabled { opacity: 0.3; cursor: not-allowed; }
-.btn-label { font-size: 9px; line-height: 1; }
-.badge { position: absolute; top: 2px; right: 6px; background: var(--red); color: #fff; font-size: 10px; min-width: 16px; height: 16px; line-height: 16px; border-radius: 8px; text-align: center; padding: 0 4px; }
+.btn-label { font-size: 10px; line-height: 1.1; }
+.badge { position: absolute; top: 2px; right: 6px; background: var(--red); color: var(--on-danger); font-size: 10px; min-width: 16px; height: 16px; line-height: 16px; border-radius: 8px; text-align: center; padding: 0 4px; }
 .view-content { flex: 1; overflow: hidden; }
 </style>

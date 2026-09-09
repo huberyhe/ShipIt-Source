@@ -202,7 +202,7 @@ function getDirStats(n: ChangeTreeNode): string {
 .file-icon { color: var(--fg2); flex-shrink: 0; }
 
 .quick-deploy-btn {
-  padding: 2px 8px; background: var(--accent); color: var(--fg3);
+  padding: 2px 8px; background: var(--accent); color: var(--on-accent);
   border-radius: 4px; font-size: 11px; white-space: nowrap;
   margin-left: auto; opacity: 0; transition: opacity 0.15s;
 }

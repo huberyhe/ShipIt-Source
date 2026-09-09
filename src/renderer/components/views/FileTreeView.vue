@@ -51,8 +51,8 @@ function countFiles(entries: any[]): number {
 .view-header { display: flex; align-items: center; justify-content: space-between; padding: 6px 12px; background: var(--bg2); border-bottom: 1px solid var(--border); font-size: 12px; color: var(--fg); }
 .header-right { display: flex; align-items: center; gap: 6px; }
 .file-count { color: var(--fg2); font-size: 11px; }
-.header-btn { padding: 2px 8px; background: transparent; color: var(--fg2); border: 1px solid var(--border); border-radius: 4px; font-size: 10px; }
-.header-btn:hover { background: var(--border); color: var(--fg); }
+.header-btn { padding: 3px 10px; background: var(--bg4); color: var(--fg); border: 1px solid var(--border2); border-radius: 4px; font-size: 11px; }
+.header-btn:hover { background: var(--bg5); color: var(--fg3); }
 .file-list { flex: 1; overflow-y: auto; padding: 4px 0; }
 .empty-state { padding: 24px; text-align: center; color: var(--fg2); }
 </style>

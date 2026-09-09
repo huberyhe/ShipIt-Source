@@ -123,7 +123,8 @@ function statusClass(s: string): string {
       <div class="filter-item">
         <label for="log-branch">分支</label>
         <select id="log-branch" v-model="localBranchFilter" @change="applyFilter">
-          <option value="">全部</option>
+          <option value="">当前</option>
+          <option value="__all__">全部</option>
           <option v-for="b in gitStore.branches" :key="b" :value="b">{{ b }}</option>
         </select>
       </div>
@@ -148,8 +149,7 @@ function statusClass(s: string): string {
             </div>
             <div class="commit-meta">
               <span class="commit-hash">{{ commit.hash }}</span>
-              <span class="commit-author">{{ commit.author }}</span>
-              <span v-if="commit.email" class="commit-email">&lt;{{ commit.email }}&gt;</span>
+              <span class="commit-author" :title="commit.email">{{ commit.author }}</span>
               <span v-if="commit.date" class="commit-date" :title="commit.date">{{ formatDate(commit.date) }}</span>
             </div>
           </div>
@@ -192,7 +192,7 @@ function statusClass(s: string): string {
 .filter-bar { display: flex; gap: 16px; padding: 8px 12px; background: var(--bg3); border-bottom: 1px solid var(--border); }
 .filter-item { display: flex; align-items: center; gap: 6px; }
 .filter-item label { font-size: 11px; color: var(--fg2); }
-.filter-item select { padding: 2px 8px; background: var(--bg5); color: var(--fg); border: 1px solid var(--border); border-radius: 4px; font-size: 12px; outline: none; min-width: 100px; }
+.filter-item select { padding: 2px 8px; background: var(--input-bg); color: var(--fg); border: 1px solid var(--border); border-radius: 4px; font-size: 12px; outline: none; min-width: 100px; }
 .filter-item select:focus { border-color: var(--status-bar); }
 .log-list { flex: 1; overflow-y: auto; }
 .commit-item { display: flex; align-items: flex-start; gap: 8px; padding: 8px 12px; cursor: pointer; border-bottom: 1px solid var(--bg3); }
@@ -206,11 +206,10 @@ function statusClass(s: string): string {
 .commit-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .commit-hash { font-family: 'Cascadia Code','Fira Code',Consolas,monospace; font-size: 11px; color: var(--yellow); }
 .commit-author { font-size: 11px; color: var(--blue); }
-.commit-email { font-size: 10px; color: var(--fg2); }
 .commit-date { font-size: 11px; color: var(--fg2); }
 .commit-detail { padding: 4px 0 8px 48px; border-bottom: 1px solid var(--bg3); background: var(--bg); }
 .detail-actions { padding: 4px 0 6px; }
-.deploy-commit-btn { display: flex; align-items: center; gap: 4px; padding: 3px 12px; background: var(--accent); color: var(--fg3); border-radius: 4px; font-size: 11px; }
+.deploy-commit-btn { display: flex; align-items: center; gap: 4px; padding: 3px 12px; background: var(--accent); color: var(--on-accent); border-radius: 4px; font-size: 11px; }
 .deploy-commit-btn:hover { background: var(--accent2); }
 .detail-loading, .detail-empty { font-size: 11px; color: var(--fg2); padding: 4px 0; }
 .detail-file { display: flex; align-items: center; gap: 6px; padding: 2px 0; font-size: 12px; color: var(--fg); }
@@ -224,6 +223,6 @@ function statusClass(s: string): string {
 .loading, .empty { padding: 24px; text-align: center; color: var(--fg2); }
 .load-more-row { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 12px; }
 .loaded-count { font-size: 11px; color: var(--fg2); }
-.load-more-btn { padding: 4px 16px; background: var(--bg5); color: var(--fg); border: 1px solid var(--border); border-radius: 4px; font-size: 12px; }
-.load-more-btn:hover { background: var(--scrollbar-hover); }
+.load-more-btn { padding: 4px 16px; background: var(--bg4); color: var(--fg); border: 1px solid var(--border2); border-radius: 4px; font-size: 12px; }
+.load-more-btn:hover { background: var(--bg5); color: var(--fg3); }
 </style>

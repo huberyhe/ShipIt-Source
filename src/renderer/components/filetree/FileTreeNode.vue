@@ -114,7 +114,7 @@ async function doDeploy(targetId?: string) {
 .ftn-file-icon { color: var(--fg2); flex-shrink: 0; }
 .ftn-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ftn-spacer { flex: 1; }
-.ftn-deploy-btn { padding: 2px 8px; background: var(--accent); color: var(--fg3); border-radius: 4px; font-size: 11px; white-space: nowrap; opacity: 0; transition: opacity 0.15s; }
+.ftn-deploy-btn { padding: 2px 8px; background: var(--accent); color: var(--on-accent); border-radius: 4px; font-size: 11px; white-space: nowrap; opacity: 0; transition: opacity 0.15s; }
 .ftn-row:hover .ftn-deploy-btn,
 .ftn-row:focus-within .ftn-deploy-btn { opacity: 1; }
 .ftn-deploy-btn:hover { background: var(--accent2); }

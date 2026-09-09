@@ -81,7 +81,7 @@ async function removeMapping(mappingId: string) { await deployStore.removeMappin
 .mapping-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
 .mapping-header h4 { font-size: 12px; color: var(--fg2); font-weight: normal; }
 .add-btn { display: flex; align-items: center; gap: 3px; padding: 2px 8px; background: transparent; color: var(--accent); border: 1px solid var(--accent); border-radius: 4px; font-size: 11px; }
-.add-btn:hover { background: var(--accent); color: var(--fg3); }
+.add-btn:hover { background: var(--accent); color: var(--on-accent); }
 .mapping-item { padding: 4px 0; }
 .mapping-row { display: flex; align-items: center; gap: 6px; font-size: 12px; }
 code.local-path { padding: 1px 6px; background: var(--green-bg); color: var(--green); border-radius: 4px; font-size: 11px; }
@@ -94,16 +94,16 @@ code.remote-path { padding: 1px 6px; background: var(--blue-bg); color: var(--bl
 .mini-btn:hover { background: var(--border); color: var(--fg); }
 .mini-btn.danger:hover { background: var(--red-bg2); color: var(--red); }
 .mapping-empty { font-size: 12px; color: var(--fg2); padding: 4px 0; }
-.mapping-empty code { padding: 1px 4px; background: #333; border-radius: 4px; color: var(--fg2); }
+.mapping-empty code { padding: 1px 4px; background: var(--bg4); border-radius: 4px; color: var(--fg); }
 .mapping-form { background: var(--bg2); border: 1px solid var(--border); border-radius: 4px; padding: 10px; margin-top: 8px; }
 .form-row { display: flex; gap: 10px; margin-bottom: 8px; }
 .form-field { flex: 1; display: flex; flex-direction: column; gap: 3px; }
 .form-field label { font-size: 10px; color: var(--fg2); }
-.form-field input { padding: 4px 8px; background: var(--bg5); color: var(--fg); border: 1px solid var(--border); border-radius: 4px; font-size: 12px; outline: none; }
+.form-field input { padding: 4px 8px; background: var(--input-bg); color: var(--fg); border: 1px solid var(--border); border-radius: 4px; font-size: 12px; outline: none; }
 .form-field input:focus { border-color: var(--status-bar); }
 .form-actions { display: flex; justify-content: flex-end; gap: 6px; }
-.cancel-btn { padding: 4px 12px; background: var(--bg5); color: var(--fg); border-radius: 4px; font-size: 11px; }
-.cancel-btn:hover { background: var(--scrollbar-hover); }
-.save-btn { padding: 4px 12px; background: var(--accent); color: var(--fg3); border-radius: 4px; font-size: 11px; }
+.cancel-btn { padding: 4px 12px; background: var(--bg4); color: var(--fg); border: 1px solid var(--border2); border-radius: 4px; font-size: 11px; }
+.cancel-btn:hover { background: var(--bg5); color: var(--fg3); }
+.save-btn { padding: 4px 12px; background: var(--accent); color: var(--on-accent); border-radius: 4px; font-size: 11px; }
 .save-btn:hover { background: var(--accent2); }
 </style>

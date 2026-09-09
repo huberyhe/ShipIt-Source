@@ -78,7 +78,7 @@ async function handleOpen() {
   gap: 8px;
   padding: 12px 32px;
   background: var(--accent);
-  color: var(--fg3);
+  color: var(--on-accent);
   border-radius: 6px;
   font-size: 15px;
   transition: background 0.15s;

@@ -29,6 +29,7 @@ export class GitService {
       const result = await git.branch(['-a'])
       return result.all
         .map(b => b.replace('remotes/origin/', '').trim())
+        .filter(b => b !== 'HEAD') // 排除 origin/HEAD 符号引用
         .filter((b, i, arr) => arr.indexOf(b) === i) // 去重
     } catch {
       return []
@@ -38,12 +39,13 @@ export class GitService {
   async getAuthors(dir: string): Promise<string[]> {
     try {
       const git = this.getGit(dir)
-      const result = await git.raw('log', '--format=%an')
+      const result = await git.raw('log', '--all', '--format=%an')
       const authors = result
         .split('\n')
         .map(a => a.trim())
         .filter(a => a.length > 0)
-      return [...new Set(authors)].sort()
+      // git log 已按提交时间倒序输出：Set 去重后保持首次出现顺序，即“最近提交的作者在前”
+      return [...new Set(authors)]
     } catch {
       return []
     }
@@ -90,7 +92,9 @@ export class GitService {
       // 使用自定义格式: hash|author|email|date|message
       let args = ['--format=%H|%an|%ae|%ai|%s', '--max-count=' + (options?.maxCount ?? 50)]
       if (options?.author) args.push('--author=' + options.author)
-      if (options?.branch) args.push(options.branch)
+      // 分支筛选三态：'__all__' = 全部分支；具体分支名 = 该分支；未指定 = 当前分支（HEAD）
+      if (options?.branch === '__all__') args.push('--all')
+      else if (options?.branch) args.push(options.branch)
 
       const result = await git.raw(['log', ...args])
       const lines = result.trim().split('\n').filter(l => l.length > 0)

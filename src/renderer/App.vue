@@ -74,11 +74,11 @@ async function loadProjectData(path: string) {
   --bg: #1e1e1e; --bg2: #252526; --bg3: #2d2d30; --bg4: #333333; --bg5: #3c3c3c;
   --border: #3e3e42; --border2: #454545;
   --fg: #cccccc; --fg2: #858585; --fg3: #ffffff;
-  --accent: #0e639c; --accent2: #1177bb; --accent3: #094771;
-  --status-bar: #007acc;
+  --accent: #0e639c; --accent2: #1177bb; --accent3: #094771; --on-accent: #ffffff;
+  --status-bar: #0067b8; --input-bg: #3c3c3c;
   --green: #4ec9b0; --green-bg: #1a3a1a;
   --yellow: #e2b714; --yellow-bg: #332b00;
-  --red: #f44747; --red-bg: #3a1a1a; --red-bg2: #5a1d1d;
+  --red: #f44747; --red-bg: #3a1a1a; --red-bg2: #5a1d1d; --on-danger: #000000;
   --blue: #569cd6; --blue-bg: #1a3a5c;
   --purple: #dcb67a;
   --scrollbar: #424242; --scrollbar-hover: #4f4f4f;
@@ -88,11 +88,11 @@ async function loadProjectData(path: string) {
   --bg: #ffffff; --bg2: #f3f3f3; --bg3: #ececec; --bg4: #e0e0e0; --bg5: #cccccc;
   --border: #d4d4d4; --border2: #c8c8c8;
   --fg: #333333; --fg2: #666666; --fg3: #000000;
-  --accent: #0078d4; --accent2: #1a8ce8; --accent3: #e5f0fc;
-  --status-bar: #0078d4;
+  --accent: #0078d4; --accent2: #1a8ce8; --accent3: #e5f0fc; --on-accent: #ffffff;
+  --status-bar: #0067b8; --input-bg: #ffffff;
   --green: #0b6e4f; --green-bg: #e6f7ee;
   --yellow: #8a6d00; --yellow-bg: #fff8e5;
-  --red: #c42b1c; --red-bg: #ffe8e6; --red-bg2: #fdd;
+  --red: #c42b1c; --red-bg: #ffe8e6; --red-bg2: #fdd; --on-danger: #ffffff;
   --blue: #1a6dad; --blue-bg: #e5f2fb;
   --purple: #a16b00;
   --scrollbar: #c1c1c1; --scrollbar-hover: #a0a0a0;
@@ -115,5 +115,6 @@ html, body, #app {
 ::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-hover); }
 button { font-family: inherit; font-size: 12px; cursor: pointer; border: none; outline: none; transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease; }
 input, select { font-family: inherit; font-size: 12px; }
+input::placeholder, textarea::placeholder { color: var(--fg2); opacity: 1; }
 .ftn-row, .tree-row, .commit-item, .file-row { transition: background 0.15s ease; }
 </style>

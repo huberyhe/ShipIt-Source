@@ -65,8 +65,8 @@ const progressPercent = computed(() => {
   margin-left: auto;
   display: flex; align-items: center; gap: 3px;
   padding: 3px 8px;
-  background: transparent; color: var(--fg2);
-  border: 1px solid var(--border); border-radius: 4px;
+  background: var(--bg4); color: var(--fg);
+  border: 1px solid var(--border2); border-radius: 4px;
   font-size: 11px;
 }
 .cancel-btn:hover { background: var(--red-bg2); color: var(--red); border-color: var(--red); }
