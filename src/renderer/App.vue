@@ -9,7 +9,6 @@ import AppLayout from './layout/AppLayout.vue'
 import ProjectSelector from './components/project/ProjectSelector.vue'
 import ShortcutsDialog from './components/common/ShortcutsDialog.vue'
 import AboutDialog from './components/common/AboutDialog.vue'
-import type { ActiveView } from './types'
 
 const projectStore = useProjectStore()
 const uiStore = useUiStore()
@@ -24,23 +23,43 @@ onMounted(async () => {
   uiStore.initTheme()
   await projectStore.loadRecentProjects()
 
+  // 仅保留主进程仍会发送的事件（其余菜单事件已随原生菜单移除，改由 AppMenuBar 直接调用 store）
   window.deployApi.onMenuEvent('menu:open-project', (projectPath: string) => { openExistingProject(projectPath) })
-  window.deployApi.onMenuEvent('menu:close-project', () => {
-    projectStore.projectPath = null
-    filesStore.clearSelection()
-    window.deployApi.syncMenuState({ hasProject: false })
-  })
-  window.deployApi.onMenuEvent('menu:switch-view', (view: string) => { uiStore.switchView(view as ActiveView) })
-  window.deployApi.onMenuEvent('menu:open-settings', () => { window.dispatchEvent(new CustomEvent('open-settings')) })
-  window.deployApi.onMenuEvent('menu:set-theme', (t: string) => { uiStore.setTheme(t as any) })
-  window.deployApi.onMenuEvent('menu:toggle-log', () => { uiStore.toggleLogPanel() })
-  window.deployApi.onMenuEvent('menu:show-shortcuts', () => { showShortcuts.value = true })
-  window.deployApi.onMenuEvent('menu:show-about', () => { showAbout.value = true })
+
+  // 自绘菜单栏（AppMenuBar）经 window 事件打开弹窗
+  window.addEventListener('show-shortcuts', () => { showShortcuts.value = true })
+  window.addEventListener('show-about', () => { showAbout.value = true })
+
+  // 全局快捷键（原生菜单已移除，统一在渲染进程处理）
+  window.addEventListener('keydown', onAppShortcut)
 })
+
+/** 关闭项目：回到项目选择器并清理相关状态 */
+function closeProject() {
+  projectStore.projectPath = null
+  filesStore.clearSelection()
+}
+
+function onAppShortcut(e: KeyboardEvent) {
+  if (!(e.ctrlKey || e.metaKey) || e.altKey) return
+  // 输入控件内不拦截（避免在设置表单里误触发关闭项目等）
+  const t = e.target as HTMLElement | null
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return
+  if (e.shiftKey) return
+  switch (e.code) {
+    case 'KeyO': e.preventDefault(); window.deployApi.appAction('open-project'); break
+    case 'Digit1': e.preventDefault(); uiStore.switchView('filetree'); break
+    case 'Digit2': e.preventDefault(); uiStore.switchView('gitchanges'); break
+    case 'Digit3': e.preventDefault(); uiStore.switchView('gitlog'); break
+    case 'Comma': e.preventDefault(); window.dispatchEvent(new CustomEvent('open-settings')); break
+    case 'KeyW': e.preventDefault(); closeProject(); break
+  }
+}
 
 async function openExistingProject(path: string) {
   projectStore.projectPath = path
   window.deployApi.syncMenuState({ hasProject: true })
+  await projectStore.loadRecentProjects()
   await loadProjectData(path)
 }
 async function onProjectOpened(path: string) {

@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { File, Folder, FolderOpen, ChevronRight, ChevronDown, FileCode, Wrench, Server } from 'lucide-vue-next'
-import { useDeployStore } from '../../stores/deploy'
-import { useProjectStore } from '../../stores/project'
 import ContextMenu, { type ContextMenuItem } from '../common/ContextMenu.vue'
+import { useServerMenu } from '../../composables/useServerMenu'
 
 export interface ChangeTreeNode {
   name: string
@@ -18,6 +17,8 @@ const props = defineProps<{
   depth: number
   expandedDirs: Set<string>
   busyPath?: string | null
+  /** 当前选中的节点 path（各节点自行比对，递归时原样透传） */
+  selectedPath?: string
 }>()
 
 const emit = defineEmits<{
@@ -25,17 +26,26 @@ const emit = defineEmits<{
   deployFile: [path: string, targetId?: string]
   deployDir: [node: ChangeTreeNode, targetId?: string]
   showDiff: [path: string]
+  select: [node: ChangeTreeNode, pos?: { x: number; y: number }]
 }>()
 
-const deployStore = useDeployStore()
-const projectStore = useProjectStore()
+function onRowClick(e: MouseEvent) {
+  emit('select', props.node, { x: e.clientX, y: e.clientY })
+}
 
 const menu = ref<{ x: number; y: number; items: ContextMenuItem[] } | null>(null)
+
+// 服务器选择菜单（与 Ctrl+Shift+Alt+X 一致）
+const { serverMenu, openServerMenu, closeServerMenu } = useServerMenu((targetId) => {
+  if (props.node.isDirectory) emit('deployDir', props.node, targetId)
+  else emit('deployFile', props.node.path, targetId)
+})
 
 function onContextMenu(e: MouseEvent) {
   e.preventDefault()
   e.stopPropagation()
 
+  const { clientX: x, clientY: y } = e
   const items: ContextMenuItem[] = []
 
   if (props.node.isDirectory) {
@@ -47,13 +57,8 @@ function onContextMenu(e: MouseEvent) {
     items.push({
       label: '上传到',
       icon: Server,
-      children: deployStore.targets.length > 0
-        ? deployStore.targets.map(t => ({
-            label: `${t.name} (${t.protocol.toUpperCase()})`,
-            icon: Server,
-            action: () => emit('deployDir', props.node, t.id)
-          }))
-        : [{ label: '无可用目标', icon: Server, action: () => {} }]
+      shortcut: 'Ctrl+Shift+Alt+X',
+      action: () => openServerMenu(x, y)
     })
   } else if (props.node.change) {
     items.push({
@@ -64,13 +69,8 @@ function onContextMenu(e: MouseEvent) {
     items.push({
       label: '上传到',
       icon: Server,
-      children: deployStore.targets.length > 0
-        ? deployStore.targets.map(t => ({
-            label: `${t.name} (${t.protocol.toUpperCase()})`,
-            icon: Server,
-            action: () => emit('deployFile', props.node.path, t.id)
-          }))
-        : [{ label: '无可用目标', icon: Server, action: () => {} }]
+      shortcut: 'Ctrl+Shift+Alt+X',
+      action: () => openServerMenu(x, y)
     })
     if (props.node.change.status !== 'deleted') {
       items.push({
@@ -82,7 +82,7 @@ function onContextMenu(e: MouseEvent) {
   }
 
   if (items.length === 0) return
-  menu.value = { x: e.clientX, y: e.clientY, items }
+  menu.value = { x, y, items }
 }
 
 function getDirStats(n: ChangeTreeNode): string {
@@ -108,7 +108,9 @@ function getDirStats(n: ChangeTreeNode): string {
   <!-- 目录节点 -->
   <div v-if="node.isDirectory"
     class="tree-row dir-row"
+    :class="{ 'tree-row-selected': selectedPath === node.path }"
     :style="{ paddingLeft: (depth * 16 + 8) + 'px' }"
+    @click="onRowClick"
     @contextmenu="onContextMenu"
   >
     <button
@@ -136,6 +138,8 @@ function getDirStats(n: ChangeTreeNode): string {
       :depth="depth + 1"
       :expanded-dirs="expandedDirs"
       :busy-path="busyPath"
+      :selected-path="selectedPath"
+      @select="(n, p) => emit('select', n, p)"
       @toggle-dir="emit('toggleDir', $event)"
       @deploy-file="(p, t) => emit('deployFile', p, t)"
       @deploy-dir="(n, t) => emit('deployDir', n, t)"
@@ -146,7 +150,9 @@ function getDirStats(n: ChangeTreeNode): string {
   <!-- 文件节点 -->
   <div v-else-if="!node.isDirectory"
     class="tree-row file-row"
+    :class="{ 'tree-row-selected': selectedPath === node.path }"
     :style="{ paddingLeft: (depth * 16 + 22) + 'px' }"
+    @click="onRowClick"
     @contextmenu="onContextMenu"
   >
     <span class="status-badge" :class="node.change?.cssClass" v-if="node.change">{{ node.change.label }}</span>
@@ -168,14 +174,27 @@ function getDirStats(n: ChangeTreeNode): string {
     :items="menu.items"
     @close="menu = null"
   />
+
+  <!-- 服务器选择菜单（右键「上传到」与 Ctrl+Shift+Alt+X 共用） -->
+  <ContextMenu
+    v-if="serverMenu"
+    :x="serverMenu.x"
+    :y="serverMenu.y"
+    :items="serverMenu.items"
+    number-select
+    title="选择要上传到的服务器"
+    @close="closeServerMenu"
+  />
 </template>
 
 <style scoped>
 .tree-row {
   display: flex; align-items: center; gap: 4px;
   padding: 3px 8px; font-size: 13px; color: var(--fg);
+  cursor: pointer;
 }
 .tree-row:hover { background: var(--bg2); }
+.tree-row-selected { background: var(--accent3) !important; }
 .dir-icon { color: var(--purple); flex-shrink: 0; }
 
 .expand-icon {
@@ -207,7 +226,7 @@ function getDirStats(n: ChangeTreeNode): string {
   margin-left: auto; opacity: 0; transition: opacity 0.15s;
 }
 .tree-row:hover .quick-deploy-btn,
-.tree-row:focus-within .quick-deploy-btn { opacity: 1; }
+.tree-row:has(:focus-visible) .quick-deploy-btn { opacity: 1; }
 .quick-deploy-btn:hover:not(:disabled) { background: var(--accent2); }
 .quick-deploy-btn:disabled { opacity: 0.5; cursor: wait; }
 </style>

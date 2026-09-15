@@ -3,6 +3,9 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import { GitCommit, File, ChevronRight, ChevronDown, Wrench, RefreshCw } from 'lucide-vue-next'
 import { useGitStore } from '../../stores/git'
 import { useProjectStore } from '../../stores/project'
+import ContextMenu from '../common/ContextMenu.vue'
+import { useServerMenuHotkey } from '../../composables/useServerMenuHotkey'
+import { useServerMenu } from '../../composables/useServerMenu'
 import { useDeployStore } from '../../stores/deploy'
 
 const gitStore = useGitStore()
@@ -60,6 +63,27 @@ async function loadMore() {
 
 let timer: ReturnType<typeof setInterval> | null = null
 
+// 服务器选择菜单（Ctrl+Shift+Alt+X 唤起，数字键或鼠标选择）
+const selectedHash = ref<string>('')
+const selectedPos = ref<{ x: number; y: number } | null>(null)
+
+function onCommitClick(hash: string, e: MouseEvent) {
+  selectedHash.value = hash
+  selectedPos.value = { x: e.clientX, y: e.clientY }
+  toggleCommit(hash)
+}
+
+const { serverMenu, openServerMenu, closeServerMenu } = useServerMenu((targetId) => deployCommitFiles(targetId))
+
+useServerMenuHotkey(
+  () => !!selectedHash.value,
+  () => !!serverMenu.value,
+  () => {
+    const pos = selectedPos.value || { x: 240, y: 160 }
+    openServerMenu(pos.x, pos.y)
+  }
+)
+
 async function toggleCommit(hash: string) {
   if (expandedCommit.value === hash) {
     expandedCommit.value = null
@@ -91,12 +115,12 @@ function formatDate(dateStr: string): string {
   } catch { return dateStr }
 }
 
-async function deployCommitFiles() {
+async function deployCommitFiles(targetId?: string) {
   if (!projectStore.projectPath || commitFiles.value.length === 0) return
   const allPaths = commitFiles.value
     .filter(f => f.status !== 'D')
     .map(f => projectStore.projectPath!.replace(/\\/g, '/') + '/' + f.path)
-  try { await deployStore.previewDeploy(allPaths, projectStore.projectPath!) } catch (e: any) {
+  try { await deployStore.previewDeploy(allPaths, projectStore.projectPath!, targetId) } catch (e: any) {
     window.dispatchEvent(new CustomEvent('toast', { detail: e?.message || '上传失败' }))
   }
 }
@@ -138,7 +162,7 @@ function statusClass(s: string): string {
     </div>
     <div class="log-list">
       <div v-for="commit in gitStore.commits" :key="commit.hash">
-        <div class="commit-item" :class="{ expanded: expandedCommit === commit.hash }" @click="toggleCommit(commit.hash)">
+        <div class="commit-item" :class="{ expanded: expandedCommit === commit.hash, selected: selectedHash === commit.hash }" @click="onCommitClick(commit.hash, $event)">
           <span class="expand-icon">
             <component :is="expandedCommit === commit.hash ? ChevronDown : ChevronRight" :size="14" />
           </span>
@@ -180,6 +204,16 @@ function statusClass(s: string): string {
         <button class="load-more-btn" @click="loadMore">加载更多</button>
       </div>
     </div>
+
+    <ContextMenu
+      v-if="serverMenu"
+      :x="serverMenu.x"
+      :y="serverMenu.y"
+      :items="serverMenu.items"
+      number-select
+      title="选择要上传到的服务器"
+      @close="closeServerMenu"
+    />
   </div>
 </template>
 
@@ -198,6 +232,7 @@ function statusClass(s: string): string {
 .commit-item { display: flex; align-items: flex-start; gap: 8px; padding: 8px 12px; cursor: pointer; border-bottom: 1px solid var(--bg3); }
 .commit-item:hover { background: var(--bg2); }
 .commit-item.expanded { background: var(--bg2); }
+.commit-item.selected { background: var(--accent3); }
 .expand-icon { width: 14px; height: 14px; display: flex; align-items: center; color: var(--fg2); flex-shrink: 0; margin-top: 2px; }
 .commit-icon { margin-top: 2px; color: var(--fg2); flex-shrink: 0; }
 .commit-main { flex: 1; min-width: 0; }

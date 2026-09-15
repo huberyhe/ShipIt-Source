@@ -100,10 +100,8 @@ export class ConfigStore {
 
   // Recent projects
   async addRecentProject(projectPath: string): Promise<void> {
-    if (!this.data.recentProjects.includes(projectPath)) {
-      this.data.recentProjects.unshift(projectPath)
-      this.data.recentProjects = this.data.recentProjects.slice(0, 10)
-      await this.save()
-    }
+    // 已存在则移到最前（保证“最近”语义），并去重、限制总数
+    this.data.recentProjects = [projectPath, ...this.data.recentProjects.filter(p => p !== projectPath)].slice(0, 10)
+    await this.save()
   }
 }

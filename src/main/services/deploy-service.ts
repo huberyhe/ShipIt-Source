@@ -1,8 +1,9 @@
 import SftpClient from 'ssh2-sftp-client'
 import { Client } from 'basic-ftp'
-import { promises as fsPromises, readFileSync, statSync, readdirSync, constants } from 'fs'
+import { promises as fsPromises, readFileSync, constants } from 'fs'
 import { join, relative, posix, dirname } from 'path'
 import type { DeployTarget, DirectoryMapping, UploadTask, DeployResult, DeployDetail } from '../../shared/types'
+import { IGNORE_DIRS } from './ignore-dirs'
 
 export type { DeployTarget, DirectoryMapping, UploadTask, DeployResult, DeployDetail }
 
@@ -67,19 +68,25 @@ export class DeployService {
     return null
   }
 
-  buildUploadTasks(
+  /** 异步计算上传任务：避免同步 I/O 阻塞主进程（文件多时 UI 会卡顿） */
+  async buildUploadTasks(
     selectedFiles: string[],
     projectRoot: string,
     target: DeployTarget
-  ): UploadTask[] {
+  ): Promise<UploadTask[]> {
     const tasks: UploadTask[] = []
 
     for (const filePath of selectedFiles) {
-      const stats = statSync(filePath)
+      let stats
+      try {
+        stats = await fsPromises.stat(filePath)
+      } catch {
+        continue // 文件不存在/不可访问：跳过
+      }
 
       if (stats.isDirectory()) {
         // 递归收集目录下所有文件
-        this.collectDirFiles(filePath, projectRoot, target.mappings, tasks)
+        await this.collectDirFiles(filePath, projectRoot, target.mappings, tasks)
       } else {
         const remotePath = this.resolveRemotePath(filePath, projectRoot, target.mappings)
         if (remotePath) {
@@ -177,34 +184,46 @@ export class DeployService {
     return result
   }
 
-  private collectDirFiles(
+  private async collectDirFiles(
     dirPath: string,
     projectRoot: string,
     mappings: DirectoryMapping[],
     tasks: UploadTask[]
-  ): void {
+  ): Promise<void> {
+    let entries
     try {
-      const entries = readdirSync(dirPath, { withFileTypes: true })
-      for (const entry of entries) {
-        const fullPath = join(dirPath, entry.name)
-        if (entry.isDirectory()) {
-          this.collectDirFiles(fullPath, projectRoot, mappings, tasks)
-        } else {
-          const stats = statSync(fullPath)
-          const remotePath = this.resolveRemotePath(fullPath, projectRoot, mappings)
-          if (remotePath) {
-            tasks.push({
-              localPath: fullPath,
-              remotePath,
-              relativePath: relative(projectRoot, fullPath),
-              size: stats.size
-            })
-          }
-        }
-      }
+      entries = await fsPromises.readdir(dirPath, { withFileTypes: true })
     } catch {
-      // 跳过无法访问的目录
+      return // 跳过无法访问的目录
     }
+
+    const subDirs: string[] = []
+    const files: string[] = []
+    for (const entry of entries) {
+      if (IGNORE_DIRS.has(entry.name)) continue
+      const fullPath = join(dirPath, entry.name)
+      if (entry.isDirectory()) subDirs.push(fullPath)
+      else files.push(fullPath)
+    }
+
+    // 文件 stat 并行
+    const stats = await Promise.all(files.map(f => fsPromises.stat(f).catch(() => null)))
+    files.forEach((fullPath, i) => {
+      const st = stats[i]
+      if (!st) return
+      const remotePath = this.resolveRemotePath(fullPath, projectRoot, mappings)
+      if (remotePath) {
+        tasks.push({
+          localPath: fullPath,
+          remotePath,
+          relativePath: relative(projectRoot, fullPath),
+          size: st.size
+        })
+      }
+    })
+
+    // 子目录并行递归
+    await Promise.all(subDirs.map(d => this.collectDirFiles(d, projectRoot, mappings, tasks)))
   }
 
   private buildSftpOptions(target: DeployTarget): any {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, onUnmounted } from 'vue'
 import { Wrench, X } from 'lucide-vue-next'
 import { useDeployStore } from '../../stores/deploy'
 
@@ -9,16 +9,26 @@ const progressPercent = computed(() => {
   if (deployStore.uploadProgress.total === 0) return 0
   return Math.round((deployStore.uploadProgress.current / deployStore.uploadProgress.total) * 100)
 })
+
+// Esc 取消上传（与取消按钮行为一致）
+function onKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape') {
+    e.preventDefault()
+    deployStore.cancelUpload()
+  }
+}
+onMounted(() => window.addEventListener('keydown', onKeydown))
+onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 </script>
 
 <template>
-  <div class="progress-overlay">
+  <div class="progress-overlay" tabindex="-1">
     <div class="progress-card">
       <div class="progress-header">
         <Wrench :size="16" />
         <span>正在上传...</span>
         <button class="cancel-btn" aria-label="取消上传" @click="deployStore.cancelUpload()">
-          <X :size="14" /> 取消
+          <X :size="14" /> 取消 (Esc)
         </button>
       </div>
 

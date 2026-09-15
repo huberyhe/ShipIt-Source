@@ -1,5 +1,6 @@
 import { promises as fs } from 'fs'
 import { join, relative, sep, basename } from 'path'
+import { IGNORE_DIRS } from './ignore-dirs'
 
 export interface FileEntry {
   name: string
@@ -18,8 +19,6 @@ export interface FileTree {
   children: FileEntry[]
   totalFiles: number
 }
-
-const IGNORE_DIRS = new Set(['node_modules', '.git', 'dist', '.next', '.nuxt', '__pycache__', '.idea', '.vscode', 'vendor', 'target', 'build', '.cache'])
 
 export class FileService {
   async buildTree(rootPath: string): Promise<FileTree> {

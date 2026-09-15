@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { ChevronRight, ChevronDown, File, Folder, FolderOpen, Wrench, Server } from 'lucide-vue-next'
 import type { FileEntry } from '../../stores/files'
+import { useFilesStore } from '../../stores/files'
 import { useDeployStore } from '../../stores/deploy'
 import { useProjectStore } from '../../stores/project'
 import ContextMenu, { type ContextMenuItem } from '../common/ContextMenu.vue'
+import { useServerMenu } from '../../composables/useServerMenu'
 
 const props = defineProps<{
   entry: FileEntry; depth: number
@@ -13,8 +15,14 @@ const props = defineProps<{
 
 const deployStore = useDeployStore()
 const projectStore = useProjectStore()
+const filesStore = useFilesStore()
 
 const expanded = ref(false)
+const isSelected = computed(() => filesStore.selectedDeployEntry?.path === props.entry.path)
+
+function selectSelf(e: MouseEvent) {
+  filesStore.selectDeployEntry(props.entry, { x: e.clientX, y: e.clientY })
+}
 const children = ref<FileEntry[]>([])
 const isDeploying = ref(false)
 const ctxMenu = ref<{ x: number; y: number; items: ContextMenuItem[] } | null>(null)
@@ -30,18 +38,20 @@ async function toggleExpand() {
   if (!expanded.value) await loadAndExpand(); else expanded.value = false
 }
 
+// 服务器选择菜单（与 Ctrl+Shift+Alt+X 一致）
+const { serverMenu, openServerMenu, closeServerMenu } = useServerMenu((targetId) => doDeploy(targetId))
+
 function onContextMenu(e: MouseEvent) {
   e.preventDefault(); e.stopPropagation()
+  const { clientX: x, clientY: y } = e
   const items: ContextMenuItem[] = [{
     label: '快速上传', icon: Wrench,
     action: () => doDeploy()
   }, {
-    label: '上传到', icon: Server,
-    children: deployStore.targets.length > 0
-      ? deployStore.targets.map(t => ({ label: `${t.name} (${(t as any).protocol?.toUpperCase()})`, icon: Server, action: () => doDeploy(t.id) }))
-      : [{ label: '无可用目标', icon: Server, action: () => {} }]
+    label: '上传到', icon: Server, shortcut: 'Ctrl+Shift+Alt+X',
+    action: () => openServerMenu(x, y)
   }]
-  ctxMenu.value = { x: e.clientX, y: e.clientY, items }
+  ctxMenu.value = { x, y, items }
 }
 
 async function doDeploy(targetId?: string) {
@@ -68,7 +78,7 @@ async function doDeploy(targetId?: string) {
 
 <template>
   <div class="ftn-wrapper">
-    <div class="ftn-row" :style="{ paddingLeft: (depth * 16 + 8) + 'px' }" @contextmenu="onContextMenu">
+    <div class="ftn-row" :class="{ 'ftn-row-selected': isSelected }" :style="{ paddingLeft: (depth * 16 + 8) + 'px' }" @click="selectSelf" @contextmenu="onContextMenu">
       <button
         v-if="entry.isDirectory"
         class="ftn-expand"
@@ -100,13 +110,24 @@ async function doDeploy(targetId?: string) {
       :items="ctxMenu.items"
       @close="ctxMenu = null"
     />
+
+    <ContextMenu
+      v-if="serverMenu"
+      :x="serverMenu.x"
+      :y="serverMenu.y"
+      :items="serverMenu.items"
+      number-select
+      title="选择要上传到的服务器"
+      @close="closeServerMenu"
+    />
   </div>
 </template>
 
 <style scoped>
 .ftn-wrapper { }
-.ftn-row { display: flex; align-items: center; gap: 4px; padding: 3px 8px; font-size: 13px; color: var(--fg); }
+.ftn-row { display: flex; align-items: center; gap: 4px; padding: 3px 8px; font-size: 13px; color: var(--fg); cursor: pointer; }
 .ftn-row:hover { background: var(--bg2); }
+.ftn-row-selected { background: var(--accent3) !important; }
 .ftn-expand { width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--fg2); flex-shrink: 0; padding: 0; background: transparent; border: none; border-radius: 4px; }
 .ftn-expand:hover { color: var(--fg); }
 .ftn-expand.ph { visibility: hidden; }
@@ -116,6 +137,6 @@ async function doDeploy(targetId?: string) {
 .ftn-spacer { flex: 1; }
 .ftn-deploy-btn { padding: 2px 8px; background: var(--accent); color: var(--on-accent); border-radius: 4px; font-size: 11px; white-space: nowrap; opacity: 0; transition: opacity 0.15s; }
 .ftn-row:hover .ftn-deploy-btn,
-.ftn-row:focus-within .ftn-deploy-btn { opacity: 1; }
+.ftn-row:has(:focus-visible) .ftn-deploy-btn { opacity: 1; }
 .ftn-deploy-btn:hover { background: var(--accent2); }
 </style>

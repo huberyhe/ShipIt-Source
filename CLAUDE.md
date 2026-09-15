@@ -6,7 +6,7 @@
 
 ```bash
 npm run electron:dev   # 开发（Vite + Electron）
-npm run type-check     # 类型检查
+npm run type-check     # 类型检查（renderer + main + shared）
 npm run build          # 构建 dist/ + dist-electron/
 npm run electron:build # 打包 release/*.exe
 npm run gen:icon       # 换图标后重新生成 build/icon.ico
@@ -14,8 +14,8 @@ npm run gen:icon       # 换图标后重新生成 build/icon.ico
 
 ## 架构速览
 
-- **主进程** `src/main/`：`index.ts`（窗口/菜单/IPC）、`preload.ts`（暴露 `window.deployApi`）、`services/`（GitService/DeployService/FileService/ConfigStore，无 UI 依赖）。
-- **渲染进程** `src/renderer/`：`layout/` 框架、`views/` 三视图、`components/common/`（BaseDialog/ContextMenu 共享组件）、`stores/`（Pinia：project/files/git/deploy/ui）。
+- **主进程** `src/main/`：`index.ts`（窗口 / IPC 注册 / 菜单动作分发）、`preload.ts`（暴露 `window.deployApi`）、`services/`（GitService/DeployService/FileService/ConfigStore，无 UI 依赖）。
+- **渲染进程** `src/renderer/`：`layout/` 框架（AppLayout / AppMenuBar）、`views/` 三视图、`components/common/`（BaseDialog/ContextMenu 共享组件）、`composables/`（服务器菜单 · 全局热键）、`stores/`（Pinia：project/files/git/deploy/ui）。
 - **共享层** `src/shared/`：`types.ts` 领域类型唯一来源；`ipc-channels.ts` IPC 通道常量唯一来源。
 
 ## 铁律（改代码前必读）
@@ -24,13 +24,15 @@ npm run gen:icon       # 换图标后重新生成 build/icon.ico
 2. **IPC**：新增/改动通道必须先在 `src/shared/ipc-channels.ts` 声明常量，主进程 `index.ts` 注册 handler、`preload.ts` 暴露 API，三处用同一个常量。
 3. **主题**：颜色一律用 `var(--*)`（定义在 `App.vue`），禁止硬编码 hex；涉及状态色用 `--green/--yellow/--red/--blue`。
 4. **无障碍**：可点击元素用 `<button>` 且带 `aria-label`/`aria-expanded`；弹窗复用 `BaseDialog`（自带 role/aria-modal/Esc 关闭）；表单 `label for` 关联。
-5. **部署流程**：预览与上传共用同一批任务列表 —— `deploy:preview`（主进程 `buildUploadTasks` 计算）→ 确认 → `deploy:upload` 原样上传 `confirmFiles`，弹窗展示数量必须等于实际上传数量。
+5. **菜单与快捷键**：Electron 原生菜单已移除，菜单栏为渲染进程自绘（`layout/AppMenuBar.vue`）；新增主进程动作走 `app:action` IPC 分发；全局快捷键统一在 `App.vue` 处理（输入控件聚焦时不拦截）。
+6. **部署流程**：预览与上传共用同一批任务列表 —— `deploy:preview`（主进程 `buildUploadTasks` 计算）→ 确认 → `deploy:upload` 原样上传 `confirmFiles`，弹窗展示数量必须等于实际上传数量。
 
 ## 常见改法
 
 - 改部署逻辑：`src/main/services/deploy-service.ts`（连接/上传/取消在 `deploy()` 内，abort 标志每文件前检查）。
 - 改配置结构：`src/main/services/config-store.ts` + `shared/types.ts` 的 `AppConfig`。
 - 改视图：`src/renderer/components/views/` 新建 → `ViewSwitcher.vue` 注册 → `stores/ui.ts` 的 `ActiveView` 加取值。
+- 改菜单：`layout/AppMenuBar.vue` 的 `menus` 定义条目；需要主进程动作则在 `APP_ACTION` handler 中加 case。
 - 换图标：替换 `build/icon.png` → `npm run gen:icon`（PowerShell System.Drawing 缩放 + Node 封装 ICO）。
 
 ## 注意
@@ -60,7 +62,7 @@ npm run gen:icon       # 换图标后重新生成 build/icon.ico
 ```bash
 npm install              # 安装依赖
 npm run electron:dev     # 启动开发（Vite 热更新 + Electron）
-npm run type-check       # 类型检查（改类型后必跑）
+npm run type-check       # 类型检查（覆盖 renderer+main+shared，改类型后必跑）
 ```
 
 首次启动需 `文件 → 打开目录` 选择项目，`设置 → 上传目标管理` 配置服务器。

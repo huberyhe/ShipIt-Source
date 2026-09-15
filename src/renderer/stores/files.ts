@@ -16,6 +16,15 @@ export const useFilesStore = defineStore('files', () => {
   const fileTree = ref<any>(null)
   const selectedFiles = ref<Set<string>>(new Set())
   const isLoading = ref(false)
+  /** 服务器菜单（Ctrl+Shift+Alt+X）作用的选中项（点击行时设置） */
+  const selectedDeployEntry = ref<FileEntry | null>(null)
+  /** 选中时的鼠标坐标，用于菜单定位 */
+  const selectedDeployPos = ref<{ x: number; y: number } | null>(null)
+
+  function selectDeployEntry(entry: FileEntry | null, pos?: { x: number; y: number }) {
+    selectedDeployEntry.value = entry
+    if (pos) selectedDeployPos.value = pos
+  }
 
   async function loadFileTree(rootPath: string) {
     isLoading.value = true
@@ -56,6 +65,9 @@ export const useFilesStore = defineStore('files', () => {
     fileTree,
     selectedFiles,
     isLoading,
+    selectedDeployEntry,
+    selectedDeployPos,
+    selectDeployEntry,
     loadFileTree,
     expandDirectory,
     toggleFileSelection,

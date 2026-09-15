@@ -41,6 +41,9 @@ contextBridge.exposeInMainWorld('deployApi', {
     ipcRenderer.send(IpcChannels.MENU_SYNC_STATE, state)
   },
 
+  // --- 自绘菜单栏动作 ---
+  appAction: (action: string, payload?: any) => ipcRenderer.invoke(IpcChannels.APP_ACTION, action, payload),
+
   // --- 配置 & 目标 ---
   loadConfig: () => ipcRenderer.invoke(IpcChannels.CONFIG_LOAD),
   saveConfig: (config: any) => ipcRenderer.invoke(IpcChannels.CONFIG_SAVE, config),

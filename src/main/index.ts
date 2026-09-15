@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, Menu, nativeTheme, type MenuItemConstructorOptions } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, Menu, nativeTheme } from 'electron'
 import { join } from 'path'
 import { GitService } from './services/git-service'
 import { DeployService } from './services/deploy-service'
@@ -40,113 +40,18 @@ function createWindow() {
   }
 }
 
-// 当前 UI 状态，用于菜单选中态同步
-let menuState = { view: 'filetree' as string, theme: 'auto' as string, hasProject: false }
-
-function switchView(view: string) {
-  menuState.view = view
-  mainWindow?.webContents.send('menu:switch-view', view)
-  buildMenu()
+/** 原生菜单已移除：菜单栏改由渲染进程自绘（VS Code 风格，见 AppMenuBar.vue） */
+function disableNativeMenu() {
+  Menu.setApplicationMenu(null)
 }
 
-/** 让 Electron 原生 UI（菜单栏/滚动条/系统对话框）跟随应用主题 */
+/** 让 Electron 原生 UI（滚动条/系统对话框）跟随应用主题 */
 function applyNativeTheme(theme: string) {
   try {
     if (theme === 'dark') nativeTheme.themeSource = 'dark'
     else if (theme === 'light') nativeTheme.themeSource = 'light'
     else nativeTheme.themeSource = 'system'
   } catch { /* ignore */ }
-}
-
-function setTheme(theme: string) {
-  menuState.theme = theme
-  applyNativeTheme(theme)
-  mainWindow?.webContents.send('menu:set-theme', theme)
-  buildMenu()
-}
-
-async function buildMenu() {
-  const config = await configStore.load()
-  const recentProjects = config.recentProjects
-
-  // 构建最近项目子菜单
-  const recentMenuItems: MenuItemConstructorOptions[] = []
-  if (recentProjects.length > 0) {
-    for (const projPath of recentProjects) {
-      recentMenuItems.push({
-        label: projPath.length > 50 ? '...' + projPath.slice(-46) : projPath,
-        click: () => openProjectPath(projPath)
-      })
-    }
-    recentMenuItems.push({ type: 'separator' })
-    recentMenuItems.push({
-      label: '清除最近项目',
-      click: async () => {
-        config.recentProjects = []
-        await configStore.save()
-        buildMenu()
-      }
-    })
-  } else {
-    recentMenuItems.push({ label: '(无最近项目)', enabled: false })
-  }
-
-  const template: MenuItemConstructorOptions[] = [
-    {
-      label: '文件',
-      submenu: [
-        { label: '打开目录...', accelerator: 'CmdOrCtrl+O', click: () => openProjectDialog() },
-        { label: '打开工作目录', accelerator: 'CmdOrCtrl+Shift+O', click: () => openProjectPath(process.cwd()) },
-        { type: 'separator' },
-        { label: '最近打开的项目', submenu: recentMenuItems.length > 1 ? recentMenuItems : [{ label: '(无)', enabled: false }] },
-        { type: 'separator' },
-        { label: '关闭项目', accelerator: 'CmdOrCtrl+W', click: () => { mainWindow?.webContents.send('menu:close-project') } },
-        { type: 'separator' },
-        { label: '退出', accelerator: 'Alt+F4', role: 'quit' }
-      ]
-    },
-    {
-      label: '视图',
-      submenu: [
-        // 仅在打开项目后显示视图切换（未打开项目时无意义）
-        ...(menuState.hasProject ? [
-          { label: '界面', enabled: false },
-          { label: '文件树', type: 'radio', checked: menuState.view === 'filetree', accelerator: 'CmdOrCtrl+1', click: () => switchView('filetree') },
-          { label: 'Git 变更', type: 'radio', checked: menuState.view === 'gitchanges', accelerator: 'CmdOrCtrl+2', click: () => switchView('gitchanges') },
-          { label: 'Git 日志', type: 'radio', checked: menuState.view === 'gitlog', accelerator: 'CmdOrCtrl+3', click: () => switchView('gitlog') },
-          { type: 'separator' }
-        ] : []),
-        { label: '外观', enabled: false },
-        { label: '主题', submenu: [
-          { label: '自动', type: 'radio', checked: menuState.theme === 'auto', click: () => setTheme('auto') },
-          { label: '深色', type: 'radio', checked: menuState.theme === 'dark', click: () => setTheme('dark') },
-          { label: '亮色', type: 'radio', checked: menuState.theme === 'light', click: () => setTheme('light') }
-        ]},
-        { type: 'separator' },
-        { label: '显示/折叠上传日志', click: () => mainWindow?.webContents.send('menu:toggle-log') },
-        { type: 'separator' },
-        { role: 'toggleDevTools', label: '开发者工具' },
-        { role: 'reload', label: '重新加载' }
-      ]
-    },
-    {
-      label: '设置',
-      submenu: [
-        { label: '上传目标管理...', accelerator: 'CmdOrCtrl+,', click: () => mainWindow?.webContents.send('menu:open-settings') }
-      ]
-    },
-    {
-      label: '帮助',
-      submenu: [
-        { label: '快捷键', click: () => mainWindow?.webContents.send('menu:show-shortcuts') },
-        { type: 'separator' },
-        { label: '关于 ShipIt', click: () => mainWindow?.webContents.send('menu:show-about') }
-      ]
-    }
-  ]
-
-  const menu = Menu.buildFromTemplate(template)
-  Menu.setApplicationMenu(menu)
 }
 
 async function openProjectDialog() {
@@ -163,19 +68,39 @@ async function openProjectDialog() {
 async function openProjectPath(projectPath: string) {
   await configStore.addRecentProject(projectPath)
   mainWindow?.webContents.send('menu:open-project', projectPath)
-  buildMenu()
 }
 
 function registerIpcHandlers() {
-  // 渲染进程同步 UI 状态（用于菜单 radio 选中态）
-  ipcMain.on(IpcChannels.MENU_SYNC_STATE, (_e, s: { view?: string; theme?: string; hasProject?: boolean }) => {
-    if (s?.view) menuState.view = s.view
-    if (s?.theme) {
-      menuState.theme = s.theme
-      applyNativeTheme(s.theme)
+  // 渲染进程同步 UI 状态：仅需同步原生主题（菜单勾选态由自绘菜单栏本地管理）
+  ipcMain.on(IpcChannels.MENU_SYNC_STATE, (_e, s: { theme?: string }) => {
+    if (s?.theme) applyNativeTheme(s.theme)
+  })
+
+  // ========== 自绘菜单栏动作分发 ==========
+  ipcMain.handle(IpcChannels.APP_ACTION, async (_e, action: string, payload?: any) => {
+    switch (action) {
+      case 'open-project':
+        await openProjectDialog()
+        break
+      case 'open-recent':
+        if (payload) await openProjectPath(payload)
+        break
+      case 'clear-recent': {
+        const cfg = await configStore.load()
+        cfg.recentProjects = []
+        await configStore.save()
+        break
+      }
+      case 'quit':
+        app.quit()
+        break
+      case 'reload':
+        mainWindow?.webContents.reload()
+        break
+      default:
+        break
     }
-    if (typeof s?.hasProject === 'boolean') menuState.hasProject = s.hasProject
-    buildMenu()
+    return null
   })
 
   // ========== 项目操作 ==========
@@ -314,12 +239,11 @@ app.whenReady().then(async () => {
   gitService = new GitService()
   deployService = new DeployService()
 
-  // 启动即应用持久化主题（原生菜单/滚动条跟随）
+  // 启动即应用持久化主题（原生滚动条/系统对话框跟随）
   const savedTheme = (await configStore.load()).theme || 'auto'
-  menuState.theme = savedTheme
   applyNativeTheme(savedTheme)
 
-  await buildMenu()
+  disableNativeMenu()
   registerIpcHandlers()
   createWindow()
 

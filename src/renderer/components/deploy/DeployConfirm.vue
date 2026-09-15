@@ -20,7 +20,7 @@ const previewLimit = 30
 const displayedFiles = computed(() => showAll.value ? validFiles.value : validFiles.value.slice(0, previewLimit))
 
 async function handleDeploy() {
-  if (!projectStore.projectPath) return
+  if (!projectStore.projectPath || deployStore.isPreviewing) return
   await deployStore.executeDeploy(projectStore.projectPath)
 }
 function handleCancel() { deployStore.cancelDeploy() }
@@ -33,9 +33,12 @@ function handleCancel() { deployStore.cancelDeploy() }
     :badge="targetName"
     width="min(66.67vw, 1200px)"
     close-on-overlay
+    confirm-on-enter
+    @confirm="handleDeploy"
     @close="handleCancel"
   >
-    <div class="summary">
+    <div v-if="deployStore.isPreviewing" class="summary computing">正在计算文件...</div>
+    <div v-else class="summary">
       共 {{ validFiles.length }} 个文件将上传
       <button v-if="validFiles.length > previewLimit && !showAll" class="show-more" @click="showAll = true">
         （仅显示前 {{ previewLimit }} 个，点击展开全部）
@@ -50,9 +53,9 @@ function handleCancel() { deployStore.cancelDeploy() }
     </div>
 
     <template #footer>
-      <button class="cancel-btn" aria-label="取消上传" @click="handleCancel">取消</button>
-      <button class="deploy-btn" aria-label="确认上传" :disabled="validFiles.length === 0" @click="handleDeploy">
-        上传 {{ validFiles.length }} 个文件
+      <button class="cancel-btn" aria-label="取消上传" @click="handleCancel">取消 (Esc)</button>
+      <button class="deploy-btn" aria-label="确认上传" :disabled="deployStore.isPreviewing || validFiles.length === 0" @click="handleDeploy">
+        {{ deployStore.isPreviewing ? '计算中...' : `上传 ${validFiles.length} 个文件 (Enter)` }}
       </button>
     </template>
   </BaseDialog>

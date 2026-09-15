@@ -21,6 +21,7 @@ export interface DeployApi {
   openFileDialog: (options?: any) => Promise<string | null>
   onMenuEvent: (channel: string, callback: (...args: any[]) => void) => void
   syncMenuState: (state: { view?: string; theme?: string; hasProject?: boolean }) => void
+  appAction: (action: string, payload?: any) => Promise<any>
   loadConfig: () => Promise<any>
   saveConfig: (config: any) => Promise<void>
   getTargetList: () => Promise<any[]>

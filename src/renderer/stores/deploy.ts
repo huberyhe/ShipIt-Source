@@ -23,8 +23,13 @@ export const useDeployStore = defineStore('deploy', () => {
 
   // Deploy confirm flow
   const showConfirm = ref(false)
+  const isPreviewing = ref(false)
   const confirmFiles = ref<UploadPreviewItem[]>([])
   const confirmTargetId = ref<string>('')
+
+  // 预览请求序号：丢弃过期请求的结果
+  // （否则先发起的计算后返回时会覆盖新数据，造成“弹窗目标为 B、文件列表却来自 A”的错配）
+  let previewSeq = 0
 
   const currentTarget = computed(() => {
     return targets.value.find(t => t.id === currentTargetId.value) || targets.value[0]
@@ -91,29 +96,46 @@ export const useDeployStore = defineStore('deploy', () => {
       return
     }
 
-    // 由主进程唯一计算：过滤无映射文件 + 递归目录 + 解析远端路径
-    const tasks = await window.deployApi.previewDeployFiles(
-      files,
-      projectRoot,
-      JSON.parse(JSON.stringify(target))
-    )
-
-    const previews: UploadPreviewItem[] = (tasks || []).map((t: any) => ({
-      localPath: t.localPath,
-      remotePath: t.remotePath,
-      relativePath: t.relativePath,
-      size: t.size || 0
-    }))
-
-    confirmFiles.value = previews
+    // 立即弹窗 + 计算中状态（文件多时避免点击后长时间无响应）
+    const seq = ++previewSeq
+    confirmFiles.value = []
     confirmTargetId.value = target.id
+    isPreviewing.value = true
     showConfirm.value = true
+
+    try {
+      // 由主进程唯一计算：过滤无映射文件 + 递归目录 + 解析远端路径
+      const tasks = await window.deployApi.previewDeployFiles(
+        files,
+        projectRoot,
+        JSON.parse(JSON.stringify(target))
+      )
+
+      if (seq !== previewSeq) return // 已有更新的请求：丢弃本次结果
+
+      confirmFiles.value = (tasks || []).map((t: any) => ({
+        localPath: t.localPath,
+        remotePath: t.remotePath,
+        relativePath: t.relativePath,
+        size: t.size || 0
+      }))
+    } catch (e) {
+      if (seq !== previewSeq) return // 过期请求的失败不干扰新请求
+      // 计算失败：关闭弹窗并向上抛出（调用方统一 toast）
+      showConfirm.value = false
+      confirmFiles.value = []
+      throw e
+    } finally {
+      // 仅最新请求结束时才清除“计算中”状态
+      if (seq === previewSeq) isPreviewing.value = false
+    }
   }
 
   /**
    * 取消确认
    */
   function cancelDeploy() {
+    previewSeq++ // 使进行中的预览失效，避免取消后旧结果写回
     showConfirm.value = false
     confirmFiles.value = []
   }
@@ -137,6 +159,7 @@ export const useDeployStore = defineStore('deploy', () => {
    * 步骤2: 确认后执行上传
    */
   async function executeDeploy(projectRoot: string) {
+    if (isPreviewing.value) return // 预览计算未完成：忽略，防止上传空/过期列表
     const target = targets.value.find(t => t.id === confirmTargetId.value)
     if (!target) throw new Error('未找到上传目标')
 
@@ -187,6 +210,7 @@ export const useDeployStore = defineStore('deploy', () => {
     isUploading,
     uploadProgress,
     showConfirm,
+    isPreviewing,
     confirmFiles,
     confirmTargetId,
     loadTargets,

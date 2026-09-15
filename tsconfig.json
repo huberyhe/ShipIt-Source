@@ -26,9 +26,8 @@
     "src/renderer/**/*.ts",
     "src/renderer/**/*.d.ts",
     "src/renderer/**/*.vue",
-    "src/shared/**/*.ts"
-  ],
-  "references": [
-    { "path": "./tsconfig.node.json" }
+    "src/shared/**/*.ts",
+    "src/main/**/*.ts",
+    "vite.config.ts"
   ]
 }

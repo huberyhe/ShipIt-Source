@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { AlertCircle, Check, X } from 'lucide-vue-next'
+import AppMenuBar from './AppMenuBar.vue'
 import Toolbar from './Toolbar.vue'
 import StatusBar from './StatusBar.vue'
 import LogPanel from './LogPanel.vue'
@@ -47,6 +48,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="app-layout">
+    <AppMenuBar />
     <Toolbar />
     <div class="main-area">
       <ViewSwitcher />

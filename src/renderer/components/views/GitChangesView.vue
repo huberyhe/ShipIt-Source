@@ -6,12 +6,39 @@ import { useDeployStore } from '../../stores/deploy'
 import { useProjectStore } from '../../stores/project'
 import DiffPreview from '../git/DiffPreview.vue'
 import GitChangeTreeNode, { type ChangeTreeNode } from '../git/GitChangeTreeNode.vue'
+import ContextMenu from '../common/ContextMenu.vue'
+import { useServerMenuHotkey } from '../../composables/useServerMenuHotkey'
+import { useServerMenu } from '../../composables/useServerMenu'
 
 const gitStore = useGitStore()
 const deployStore = useDeployStore()
 const projectStore = useProjectStore()
 
 const AUTO_REFRESH_MS = 60000
+
+// 服务器选择菜单（Ctrl+Shift+Alt+X 唤起，数字键或鼠标选择）
+const selectedNode = ref<ChangeTreeNode | null>(null)
+const selectedPos = ref<{ x: number; y: number } | null>(null)
+
+function onSelectNode(node: ChangeTreeNode, pos?: { x: number; y: number }) {
+  selectedNode.value = node
+  if (pos) selectedPos.value = pos
+}
+
+const { serverMenu, openServerMenu, closeServerMenu } = useServerMenu((targetId) => {
+  const n = selectedNode.value
+  if (!n) return
+  if (n.isDirectory) handleDeployDir(n, targetId); else handleDeployFile(n.path, targetId)
+})
+
+useServerMenuHotkey(
+  () => !!selectedNode.value,
+  () => !!serverMenu.value,
+  () => {
+    const pos = selectedPos.value || { x: 240, y: 160 }
+    openServerMenu(pos.x, pos.y)
+  }
+)
 
 const previewFile = ref<string | null>(null)
 const expandedDirs = ref<Set<string>>(new Set())
@@ -34,6 +61,9 @@ function onFocus() {
 
 let timer: ReturnType<typeof setInterval> | null = null
 onMounted(() => {
+  // 视图切换（v-if 重建）即事件：立即拉取最新 Git 状态
+  // 静默模式避免状态栏“分析中”闪烁；store 内部有并发保护，不会与轮询重叠
+  if (projectStore.projectPath) gitStore.loadGitStatus(projectStore.projectPath, true)
   timer = setInterval(autoRefresh, AUTO_REFRESH_MS)
   window.addEventListener('focus', onFocus)
 })
@@ -204,6 +234,8 @@ function statusClass(status: string): string {
         :depth="0"
         :expanded-dirs="expandedDirs"
         :busy-path="deployingPath"
+        :selected-path="selectedNode?.path"
+        @select="onSelectNode"
         @toggle-dir="toggleDir"
         @deploy-file="handleDeployFile"
         @deploy-dir="handleDeployDir"
@@ -215,6 +247,16 @@ function statusClass(status: string): string {
       v-if="previewFile"
       :file-path="previewFile"
       @close="previewFile = null"
+    />
+
+    <ContextMenu
+      v-if="serverMenu"
+      :x="serverMenu.x"
+      :y="serverMenu.y"
+      :items="serverMenu.items"
+      number-select
+      title="选择要上传到的服务器"
+      @close="closeServerMenu"
     />
   </div>
 </template>

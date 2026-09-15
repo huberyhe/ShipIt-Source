@@ -20,28 +20,11 @@ export const useProjectStore = defineStore('project', () => {
     }
   }
 
-  async function openProject() {
-    const result = await window.deployApi.openProject()
-    if (result) {
-      projectPath.value = result.path
-      await loadRecentProjects()
-    }
-  }
-
-  async function openRecentProject(path: string) {
-    projectPath.value = path
-    // 将最近项目提到最前面
-    await window.deployApi.openProject() // 不需要，直接设置路径
-    // 简化：直接设置路径
-  }
-
   return {
     projectPath,
     projectName,
     recentProjects,
     isLoading,
-    loadRecentProjects,
-    openProject,
-    openRecentProject
+    loadRecentProjects
   }
 })

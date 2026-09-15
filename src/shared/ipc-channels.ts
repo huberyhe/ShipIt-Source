@@ -46,6 +46,9 @@ export const IpcChannels = {
   // 系统对话框
   DIALOG_OPEN_FILE: 'dialog:open-file',
 
+  // 自绘菜单栏动作（渲染进程 → 主进程）
+  APP_ACTION: 'app:action',
+
   // 菜单同步（渲染进程 → 主进程，单向）
   MENU_SYNC_STATE: 'menu:sync-state',
 } as const

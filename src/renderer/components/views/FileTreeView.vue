@@ -1,11 +1,52 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useFilesStore } from '../../stores/files'
+import type { FileEntry } from '../../stores/files'
+import { useDeployStore } from '../../stores/deploy'
+import { useProjectStore } from '../../stores/project'
 import FileTreeNode from '../filetree/FileTreeNode.vue'
+import ContextMenu from '../common/ContextMenu.vue'
+import { useServerMenuHotkey } from '../../composables/useServerMenuHotkey'
+import { useServerMenu } from '../../composables/useServerMenu'
 
 const filesStore = useFilesStore()
+const deployStore = useDeployStore()
+const projectStore = useProjectStore()
 const expandAllFlag = ref(false)
 const collapseAllCounter = ref(0)
+
+// 服务器选择菜单（Ctrl+Shift+Alt+X 唤起 / 右键「上传到」，数字键或鼠标选择）
+const { serverMenu, openServerMenu, closeServerMenu } = useServerMenu((targetId) => {
+  const entry = filesStore.selectedDeployEntry
+  if (entry) deployEntry(entry, targetId)
+})
+
+async function deployEntry(entry: FileEntry, targetId?: string) {
+  if (!projectStore.projectPath) return
+  try {
+    if (entry.isDirectory) {
+      const allPaths = await window.deployApi.collectFiles(entry.path)
+      if (allPaths.length === 0) {
+        window.dispatchEvent(new CustomEvent('toast', { detail: '目录为空或无文件' }))
+        return
+      }
+      await deployStore.previewDeploy(allPaths, projectStore.projectPath, targetId)
+    } else {
+      await deployStore.previewDeploy([entry.path], projectStore.projectPath, targetId)
+    }
+  } catch (e: any) {
+    window.dispatchEvent(new CustomEvent('toast', { detail: e?.message || '上传失败' }))
+  }
+}
+
+useServerMenuHotkey(
+  () => !!filesStore.selectedDeployEntry,
+  () => !!serverMenu.value,
+  () => {
+    const pos = filesStore.selectedDeployPos || { x: 240, y: 160 }
+    openServerMenu(pos.x, pos.y)
+  }
+)
 
 function handleExpandAll() { expandAllFlag.value = true }
 function handleCollapseAll() { expandAllFlag.value = false; collapseAllCounter.value++ }
@@ -43,6 +84,15 @@ function countFiles(entries: any[]): number {
         :expand-all="expandAllFlag" :collapse-all="collapseAllCounter" />
       <div v-if="rootChildren.length === 0 && !filesStore.isLoading" class="empty-state">目录为空</div>
     </div>
+    <ContextMenu
+      v-if="serverMenu"
+      :x="serverMenu.x"
+      :y="serverMenu.y"
+      :items="serverMenu.items"
+      number-select
+      title="选择要上传到的服务器"
+      @close="closeServerMenu"
+    />
   </div>
 </template>
 

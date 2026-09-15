@@ -6,13 +6,12 @@ defineEmits<{ close: [] }>()
 
 const shortcuts = [
   { keys: ['Ctrl', 'O'], desc: '打开目录' },
-  { keys: ['Ctrl', 'Shift', 'O'], desc: '打开工作目录' },
   { keys: ['Ctrl', '1'], desc: '文件树' },
   { keys: ['Ctrl', '2'], desc: 'Git 变更' },
   { keys: ['Ctrl', '3'], desc: 'Git 日志' },
   { keys: ['Ctrl', ','], desc: '上传目标管理' },
   { keys: ['Ctrl', 'W'], desc: '关闭项目' },
-  { keys: ['Esc'], desc: '关闭弹窗 / 右键菜单' }
+  { keys: ['Ctrl', 'Shift', 'Alt', 'X'], desc: '选择服务器上传' }
 ]
 </script>
 
