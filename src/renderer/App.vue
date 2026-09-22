@@ -21,6 +21,7 @@ const showAbout = ref(false)
 
 onMounted(async () => {
   uiStore.initTheme()
+  uiStore.initAppVersion()
   await projectStore.loadRecentProjects()
 
   // 仅保留主进程仍会发送的事件（其余菜单事件已随原生菜单移除，改由 AppMenuBar 直接调用 store）
@@ -69,23 +70,49 @@ async function onProjectOpened(path: string) {
   await loadProjectData(path)
 }
 
+// 加载请求序号：仅最新请求结束时才复位 isLoading（避免连续切换项目时遮罩提前消失）
+let loadSeq = 0
+
 async function loadProjectData(path: string) {
-  await Promise.all([
-    filesStore.loadFileTree(path),
-    gitStore.loadGitStatus(path).then(() => {
-      uiStore.gitAvailable = gitStore.hasGit
-      if (!gitStore.hasGit && (uiStore.activeView === 'gitchanges' || uiStore.activeView === 'gitlog')) uiStore.switchView('filetree')
-    })
-  ])
+  const seq = ++loadSeq
+  projectStore.isLoading = true
+  try {
+    await Promise.all([
+      filesStore.loadFileTree(path),
+      gitStore.loadGitStatus(path).then(() => {
+        uiStore.gitAvailable = gitStore.hasGit
+        if (!gitStore.hasGit && (uiStore.activeView === 'gitchanges' || uiStore.activeView === 'gitlog')) uiStore.switchView('filetree')
+      })
+    ])
+  } catch (e: any) {
+    // 目录不可读（如已被删除）：剥离 IPC 包装后提示，并回退到项目选择器
+    const raw = String(e?.message || '')
+    const msg = raw.replace(/^Error invoking remote method '[^']*':\s*(Error:\s*)?/, '')
+    window.dispatchEvent(new CustomEvent('toast', { detail: msg || `无法打开项目：${path}` }))
+    projectStore.projectPath = null
+    return
+  } finally {
+    if (seq === loadSeq) projectStore.isLoading = false
+  }
   await deployStore.loadTargets()
 }
 </script>
 
 <template>
-  <ProjectSelector v-if="!projectStore.projectPath" :recent-projects="projectStore.recentProjects" @opened="onProjectOpened" @open-recent="openExistingProject" />
-  <AppLayout v-else />
+  <Transition name="view-fade" mode="out-in">
+    <ProjectSelector v-if="!projectStore.projectPath" :recent-projects="projectStore.recentProjects" @opened="onProjectOpened" @open-recent="openExistingProject" />
+    <AppLayout v-else />
+  </Transition>
   <ShortcutsDialog v-if="showShortcuts" @close="showShortcuts = false" />
   <AboutDialog v-if="showAbout" @close="showAbout = false" />
+
+  <!-- 项目数据加载遮罩（延迟出现，避免快速加载时闪烁） -->
+  <Transition name="overlay-fade">
+    <div v-if="projectStore.isLoading" class="loading-overlay" role="status" aria-live="polite">
+      <div class="loading-bar" aria-hidden="true"><span></span></div>
+      <div class="loading-hint">正在加载项目…</div>
+    </div>
+  </Transition>
 </template>
 
 <style>
@@ -136,4 +163,43 @@ button { font-family: inherit; font-size: 12px; cursor: pointer; border: none; o
 input, select { font-family: inherit; font-size: 12px; }
 input::placeholder, textarea::placeholder { color: var(--fg2); opacity: 1; }
 .ftn-row, .tree-row, .commit-item, .file-row { transition: background 0.15s ease; }
+
+/* 项目选择器 ↔ 主界面切换：淡入淡出 */
+.view-fade-enter-active, .view-fade-leave-active { transition: opacity 0.18s ease; }
+.view-fade-enter-from, .view-fade-leave-to { opacity: 0; }
+
+/* 项目数据加载：顶部细进度条 + 轻模糊遮罩（无卡片，避免“像按钮”） */
+.loading-overlay {
+  position: fixed; inset: 0; z-index: 2500;
+  display: flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--bg) 62%, transparent);
+  backdrop-filter: blur(1.5px);
+  opacity: 0;
+  animation: overlay-in 0.18s ease 0.15s forwards;
+}
+.overlay-fade-leave-active { transition: opacity 0.15s ease; }
+.overlay-fade-leave-to { opacity: 0; animation: none; }
+@keyframes overlay-in { to { opacity: 1; } }
+
+/* 顶部不确定进度条 */
+.loading-bar {
+  position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: var(--border);
+  overflow: hidden;
+}
+.loading-bar span {
+  display: block; height: 100%; width: 30%;
+  background: var(--accent);
+  border-radius: 2px;
+  animation: loading-slide 1.15s ease-in-out infinite;
+}
+@keyframes loading-slide {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(240%); }
+  100% { transform: translateX(-100%); }
+}
+
+.loading-hint {
+  color: var(--fg2); font-size: 12px; letter-spacing: 0.02em;
+}
 </style>

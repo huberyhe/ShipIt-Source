@@ -16,7 +16,7 @@ export const useFilesStore = defineStore('files', () => {
   const fileTree = ref<any>(null)
   const selectedFiles = ref<Set<string>>(new Set())
   const isLoading = ref(false)
-  /** 服务器菜单（Ctrl+Shift+Alt+X）作用的选中项（点击行时设置） */
+  /** 服务器菜单（Ctrl+Shift+X）作用的选中项（点击行时设置） */
   const selectedDeployEntry = ref<FileEntry | null>(null)
   /** 选中时的鼠标坐标，用于菜单定位 */
   const selectedDeployPos = ref<{ x: number; y: number } | null>(null)

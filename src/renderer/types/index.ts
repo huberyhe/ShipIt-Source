@@ -22,6 +22,7 @@ export interface DeployApi {
   onMenuEvent: (channel: string, callback: (...args: any[]) => void) => void
   syncMenuState: (state: { view?: string; theme?: string; hasProject?: boolean }) => void
   appAction: (action: string, payload?: any) => Promise<any>
+  getAppVersion: () => Promise<string>
   loadConfig: () => Promise<any>
   saveConfig: (config: any) => Promise<void>
   getTargetList: () => Promise<any[]>

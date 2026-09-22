@@ -1,8 +1,14 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { Rocket } from 'lucide-vue-next'
 import BaseDialog from './BaseDialog.vue'
+import { useUiStore } from '../../stores/ui'
 
 defineEmits<{ close: [] }>()
+
+// 版本号硬绑定主进程 app.getVersion()（App 启动时已预取到 store），同步可用、无首帧空态
+const uiStore = useUiStore()
+const version = computed(() => uiStore.appVersion)
 
 const features = [
   '多协议上传：SFTP / FTP / FTPS / FTPES / 本地目录',
@@ -15,7 +21,7 @@ const features = [
   <BaseDialog title="关于 ShipIt" :icon="Rocket" width="440px" close-on-overlay @close="$emit('close')">
     <div class="about">
       <div class="app-name">ShipIt</div>
-      <div class="version">版本 1.0.0</div>
+      <div class="version">版本 {{ version || '—' }}</div>
       <p class="desc">开发者文件发布工具 —— 将本地代码快速上传到多台服务器，并集成 Git 变更与提交历史查看，让发布与追溯一步到位。</p>
 
       <div class="features">

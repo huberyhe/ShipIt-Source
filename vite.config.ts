@@ -36,6 +36,21 @@ export default defineConfig({
     ]),
     renderer()
   ],
+  server: {
+    watch: {
+      // 保留 Vite 默认忽略项，并排除构建产物目录（避免 electron:build 时 dev 页面被反复重载）
+      ignored: [
+        '**/.git/**',
+        '**/node_modules/**',
+        '**/test-results/**',
+        '**/playwright-report/**',
+        '**/coverage/**',
+        '**/release/**',
+        '**/dist/**',
+        '**/dist-electron/**'
+      ]
+    }
+  },
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src/renderer'),

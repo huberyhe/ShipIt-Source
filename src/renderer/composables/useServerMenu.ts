@@ -4,7 +4,7 @@ import { useDeployStore } from '../stores/deploy'
 import type { ContextMenuItem } from '../components/common/ContextMenu.vue'
 
 /**
- * 服务器选择菜单（与 Ctrl+Shift+Alt+X 唤起的菜单完全一致）
+ * 服务器选择菜单（与 Ctrl+Shift+X 唤起的菜单一致）
  * 供视图热键与右键菜单「上传到」共用。
  *
  * @param onSelect 选中某台服务器后的上传回调

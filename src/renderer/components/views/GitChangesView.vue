@@ -7,7 +7,7 @@ import { useProjectStore } from '../../stores/project'
 import DiffPreview from '../git/DiffPreview.vue'
 import GitChangeTreeNode, { type ChangeTreeNode } from '../git/GitChangeTreeNode.vue'
 import ContextMenu from '../common/ContextMenu.vue'
-import { useServerMenuHotkey } from '../../composables/useServerMenuHotkey'
+import { useDeployHotkeys } from '../../composables/useDeployHotkeys'
 import { useServerMenu } from '../../composables/useServerMenu'
 
 const gitStore = useGitStore()
@@ -16,7 +16,7 @@ const projectStore = useProjectStore()
 
 const AUTO_REFRESH_MS = 60000
 
-// 服务器选择菜单（Ctrl+Shift+Alt+X 唤起，数字键或鼠标选择）
+// 服务器选择菜单（Ctrl+Shift+X 唤起，数字键或鼠标选择）
 const selectedNode = ref<ChangeTreeNode | null>(null)
 const selectedPos = ref<{ x: number; y: number } | null>(null)
 
@@ -31,9 +31,14 @@ const { serverMenu, openServerMenu, closeServerMenu } = useServerMenu((targetId)
   if (n.isDirectory) handleDeployDir(n, targetId); else handleDeployFile(n.path, targetId)
 })
 
-useServerMenuHotkey(
+useDeployHotkeys(
   () => !!selectedNode.value,
   () => !!serverMenu.value,
+  () => {
+    const n = selectedNode.value
+    if (!n) return
+    if (n.isDirectory) handleDeployDir(n); else handleDeployFile(n.path)
+  },
   () => {
     const pos = selectedPos.value || { x: 240, y: 160 }
     openServerMenu(pos.x, pos.y)

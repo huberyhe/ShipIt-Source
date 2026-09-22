@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, dialog, Menu, nativeTheme } from 'electron'
 import { join } from 'path'
+import { promises as fsPromises } from 'fs'
 import { GitService } from './services/git-service'
 import { DeployService } from './services/deploy-service'
 import { ConfigStore } from './services/config-store'
@@ -76,6 +77,9 @@ function registerIpcHandlers() {
     if (s?.theme) applyNativeTheme(s.theme)
   })
 
+  // 应用版本（来自打包时的 package.json，UI 与安装包版本同源）
+  ipcMain.handle(IpcChannels.APP_GET_VERSION, () => app.getVersion())
+
   // ========== 自绘菜单栏动作分发 ==========
   ipcMain.handle(IpcChannels.APP_ACTION, async (_e, action: string, payload?: any) => {
     switch (action) {
@@ -116,6 +120,12 @@ function registerIpcHandlers() {
 
   // ========== 文件树 ==========
   ipcMain.handle(IpcChannels.FILE_TREE_GET, async (_event, rootPath: string) => {
+    // 目录不存在/不可访问时显式报错（异步校验，避免阻塞主进程），供渲染进程提示并回退
+    try {
+      await fsPromises.access(rootPath)
+    } catch {
+      throw new Error(`目录不存在或无法访问：${rootPath}`)
+    }
     return fileService.buildTree(rootPath)
   })
 

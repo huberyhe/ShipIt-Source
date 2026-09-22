@@ -35,7 +35,7 @@ function onRowClick(e: MouseEvent) {
 
 const menu = ref<{ x: number; y: number; items: ContextMenuItem[] } | null>(null)
 
-// 服务器选择菜单（与 Ctrl+Shift+Alt+X 一致）
+// 服务器选择菜单（与 Ctrl+Shift+X 一致）
 const { serverMenu, openServerMenu, closeServerMenu } = useServerMenu((targetId) => {
   if (props.node.isDirectory) emit('deployDir', props.node, targetId)
   else emit('deployFile', props.node.path, targetId)
@@ -52,24 +52,26 @@ function onContextMenu(e: MouseEvent) {
     items.push({
       label: '快速上传',
       icon: Wrench,
+      shortcut: 'Ctrl+X',
       action: () => emit('deployDir', props.node)
     })
     items.push({
       label: '上传到',
       icon: Server,
-      shortcut: 'Ctrl+Shift+Alt+X',
+      shortcut: 'Ctrl+Shift+X',
       action: () => openServerMenu(x, y)
     })
   } else if (props.node.change) {
     items.push({
       label: '快速上传',
       icon: Wrench,
+      shortcut: 'Ctrl+X',
       action: () => emit('deployFile', props.node.path)
     })
     items.push({
       label: '上传到',
       icon: Server,
-      shortcut: 'Ctrl+Shift+Alt+X',
+      shortcut: 'Ctrl+Shift+X',
       action: () => openServerMenu(x, y)
     })
     if (props.node.change.status !== 'deleted') {
@@ -175,7 +177,7 @@ function getDirStats(n: ChangeTreeNode): string {
     @close="menu = null"
   />
 
-  <!-- 服务器选择菜单（右键「上传到」与 Ctrl+Shift+Alt+X 共用） -->
+  <!-- 服务器选择菜单（右键「上传到」与 Ctrl+Shift+X 共用） -->
   <ContextMenu
     v-if="serverMenu"
     :x="serverMenu.x"

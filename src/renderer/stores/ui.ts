@@ -9,6 +9,13 @@ export const useUiStore = defineStore('ui', () => {
   const gitAvailable = ref(false)
   const logPanelExpanded = ref(false)
   const theme = ref<Theme>('auto')
+  /** 应用版本（启动时预取，供关于对话框同步展示，避免首帧空态） */
+  const appVersion = ref('')
+
+  /** 预取应用版本（= 打包时 package.json 的 version，经主进程 app.getVersion()） */
+  async function initAppVersion() {
+    try { appVersion.value = await window.deployApi.getAppVersion() } catch { /* ignore */ }
+  }
 
   // 应用主题到 document
   function applyTheme(t: Theme) {
@@ -65,5 +72,5 @@ export const useUiStore = defineStore('ui', () => {
 
   function toggleLogPanel() { logPanelExpanded.value = !logPanelExpanded.value }
 
-  return { activeView, gitAvailable, logPanelExpanded, theme, setTheme, initTheme, switchView, toggleLogPanel }
+  return { activeView, gitAvailable, logPanelExpanded, theme, appVersion, initAppVersion, setTheme, initTheme, switchView, toggleLogPanel }
 })

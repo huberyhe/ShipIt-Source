@@ -49,6 +49,9 @@ export const IpcChannels = {
   // 自绘菜单栏动作（渲染进程 → 主进程）
   APP_ACTION: 'app:action',
 
+  // 应用信息（版本号等）
+  APP_GET_VERSION: 'app:get-version',
+
   // 菜单同步（渲染进程 → 主进程，单向）
   MENU_SYNC_STATE: 'menu:sync-state',
 } as const

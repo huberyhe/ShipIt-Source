@@ -179,6 +179,13 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
             <span class="target-name">{{ target.name }}</span>
             <span class="target-protocol">{{ (target.protocol as string).toUpperCase() }}</span>
             <span class="target-host">{{ target.host }}:{{ target.port || (target.protocol==='ftp'?21:22) }}</span>
+            <!-- 测试结果内联显示（不占额外行、无空白、天然无抖动） -->
+            <span v-if="testResults[target.id]" class="test-result" :class="testResults[target.id].testing ? 'testing' : testResults[target.id].success ? 'success' : 'error'">
+              <component :is="testResults[target.id].testing ? Radio : testResults[target.id].success ? Check : X" :size="12" :class="{ 'spin': testResults[target.id].testing }" />
+              <span class="test-result-text" :title="testResults[target.id].testing ? '测试中' : testResults[target.id].success ? '连接成功' : testResults[target.id].error">
+                {{ testResults[target.id].testing ? '测试中...' : testResults[target.id].success ? '连接成功' : testResults[target.id].error }}
+              </span>
+            </span>
           </div>
           <div class="target-actions">
             <button class="icon-btn" title="测试连接" :disabled="testingId === target.id" @click="testConnection(target)">
@@ -187,11 +194,6 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
             <button class="icon-btn" title="编辑" @click="startEdit(target)">✎ 编辑</button>
             <button class="icon-btn danger" title="删除" aria-label="删除目标" @click="askDelete(target)"><Trash2 :size="14" /></button>
           </div>
-        </div>
-
-        <div v-if="testResults[target.id]" class="test-result" :class="testResults[target.id].testing ? 'testing' : testResults[target.id].success ? 'success' : 'error'">
-          <component :is="testResults[target.id].testing ? Radio : testResults[target.id].success ? Check : X" :size="12" :class="{ 'spin': testResults[target.id].testing }" />
-          <span>{{ testResults[target.id].testing ? '测试中...' : testResults[target.id].success ? '连接成功' : testResults[target.id].error }}</span>
         </div>
 
         <MappingEditor :target-id="target.id" :mappings="target.mappings || []" />
@@ -340,7 +342,7 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
 .empty-state { padding: 24px; text-align: center; color: var(--fg2); border: 1px dashed var(--border); border-radius: 6px; }
 .target-card { background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin-bottom: 12px; }
 .target-info { display: flex; align-items: center; justify-content: space-between; }
-.target-primary { display: flex; align-items: center; gap: 8px; }
+.target-primary { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .target-name { font-weight: 500; color: var(--fg3); }
 .target-protocol { font-size: 11px; padding: 1px 6px; background: var(--accent); color: var(--on-accent); border-radius: 4px; }
 .target-host { font-size: 12px; color: var(--fg2); }
@@ -349,7 +351,9 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
 .icon-btn:hover:not(:disabled) { background: var(--bg5); color: var(--fg3); }
 .icon-btn:disabled { opacity: 0.4; }
 .icon-btn.danger:hover { background: var(--red-bg2); color: var(--red); border-color: var(--red); }
-.test-result { display: flex; align-items: center; gap: 4px; margin-top: 8px; padding: 4px 8px; font-size: 12px; border-radius: 4px; }
+/* 测试结果内联在信息行内：不占额外行高（无空白、天然无抖动）；长文本省略 */
+.test-result { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; font-size: 11px; border-radius: 4px; flex-shrink: 0; }
+.test-result-text { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .test-result.testing { background: var(--blue-bg); color: var(--blue); }
 .test-result.success { background: var(--green-bg); color: var(--green); }
 .test-result.error { background: var(--red-bg); color: var(--red); }

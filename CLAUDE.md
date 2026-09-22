@@ -25,7 +25,13 @@ npm run gen:icon       # 换图标后重新生成 build/icon.ico
 3. **主题**：颜色一律用 `var(--*)`（定义在 `App.vue`），禁止硬编码 hex；涉及状态色用 `--green/--yellow/--red/--blue`。
 4. **无障碍**：可点击元素用 `<button>` 且带 `aria-label`/`aria-expanded`；弹窗复用 `BaseDialog`（自带 role/aria-modal/Esc 关闭）；表单 `label for` 关联。
 5. **菜单与快捷键**：Electron 原生菜单已移除，菜单栏为渲染进程自绘（`layout/AppMenuBar.vue`）；新增主进程动作走 `app:action` IPC 分发；全局快捷键统一在 `App.vue` 处理（输入控件聚焦时不拦截）。
-6. **部署流程**：预览与上传共用同一批任务列表 —— `deploy:preview`（主进程 `buildUploadTasks` 计算）→ 确认 → `deploy:upload` 原样上传 `confirmFiles`，弹窗展示数量必须等于实际上传数量。
+6. **版本号**：唯一来源是 `package.json.version`；界面展示经主进程 `app.getVersion()` 读取（见 `AboutDialog.vue`），禁止在组件里硬编码版本号。
+7. **行尾**：文本文件统一 LF（`.gitattributes` 已声明 `* text=auto eol=lf`），二进制文件已声明 `binary` 不转换；工具/编辑器写入 CRLF 时 git 会自动归一，无需手工转换。
+8. **布局稳定性（防抖动）**：条件渲染（v-if/v-else）的行内元素出现/消失**不得改变相邻内容的位置**：
+   - 状态条/提示条 → 内联到已有行（参考 `TargetEditor` 的 `.test-result` 内联徐标：不占额外行高、天然无抖动）；确实需要独立行时用固定高度占位槽
+   - 徐标/临时标记 → 绝对定位或 `opacity` 切换（参考 `ViewSwitcher` 的 badge、行内“快速上传”按钮）
+   - 整块状态切换（空状态 ↔ 列表）可接受；按钮文案变化（“测试” ↔ “测试中”）注意宽度抖动
+9. **部署流程**：预览与上传共用同一批任务列表 —— `deploy:preview`（主进程 `buildUploadTasks` 计算）→ 确认 → `deploy:upload` 原样上传 `confirmFiles`，弹窗展示数量必须等于实际上传数量。
 
 ## 常见改法
 

@@ -11,7 +11,8 @@ const shortcuts = [
   { keys: ['Ctrl', '3'], desc: 'Git 日志' },
   { keys: ['Ctrl', ','], desc: '上传目标管理' },
   { keys: ['Ctrl', 'W'], desc: '关闭项目' },
-  { keys: ['Ctrl', 'Shift', 'Alt', 'X'], desc: '选择服务器上传' }
+  { keys: ['Ctrl', 'X'], desc: '快速上传选中项' },
+  { keys: ['Ctrl', 'Shift', 'X'], desc: '选择服务器上传' }
 ]
 </script>
 

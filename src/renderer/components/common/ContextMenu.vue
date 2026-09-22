@@ -12,7 +12,7 @@ export interface ContextMenuItem {
   disabled?: boolean
   /** 高亮该项（如服务器菜单中的“默认”目标） */
   highlight?: boolean
-  /** 快捷键提示文字（显示在项右侧，如 Ctrl+Shift+Alt+X） */
+  /** 快捷键提示文字（显示在项右侧，如 Ctrl+X） */
   shortcut?: string
   /** 勾选标记（如当前视图 / 当前主题） */
   checked?: boolean

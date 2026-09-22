@@ -4,7 +4,7 @@ import { GitCommit, File, ChevronRight, ChevronDown, Wrench, RefreshCw } from 'l
 import { useGitStore } from '../../stores/git'
 import { useProjectStore } from '../../stores/project'
 import ContextMenu from '../common/ContextMenu.vue'
-import { useServerMenuHotkey } from '../../composables/useServerMenuHotkey'
+import { useDeployHotkeys } from '../../composables/useDeployHotkeys'
 import { useServerMenu } from '../../composables/useServerMenu'
 import { useDeployStore } from '../../stores/deploy'
 
@@ -63,7 +63,7 @@ async function loadMore() {
 
 let timer: ReturnType<typeof setInterval> | null = null
 
-// 服务器选择菜单（Ctrl+Shift+Alt+X 唤起，数字键或鼠标选择）
+// 服务器选择菜单（Ctrl+Shift+X 唤起，数字键或鼠标选择）
 const selectedHash = ref<string>('')
 const selectedPos = ref<{ x: number; y: number } | null>(null)
 
@@ -75,9 +75,10 @@ function onCommitClick(hash: string, e: MouseEvent) {
 
 const { serverMenu, openServerMenu, closeServerMenu } = useServerMenu((targetId) => deployCommitFiles(targetId))
 
-useServerMenuHotkey(
+useDeployHotkeys(
   () => !!selectedHash.value,
   () => !!serverMenu.value,
+  () => deployCommitFiles(),
   () => {
     const pos = selectedPos.value || { x: 240, y: 160 }
     openServerMenu(pos.x, pos.y)

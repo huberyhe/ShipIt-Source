@@ -6,7 +6,7 @@ import { useDeployStore } from '../../stores/deploy'
 import { useProjectStore } from '../../stores/project'
 import FileTreeNode from '../filetree/FileTreeNode.vue'
 import ContextMenu from '../common/ContextMenu.vue'
-import { useServerMenuHotkey } from '../../composables/useServerMenuHotkey'
+import { useDeployHotkeys } from '../../composables/useDeployHotkeys'
 import { useServerMenu } from '../../composables/useServerMenu'
 
 const filesStore = useFilesStore()
@@ -15,7 +15,7 @@ const projectStore = useProjectStore()
 const expandAllFlag = ref(false)
 const collapseAllCounter = ref(0)
 
-// 服务器选择菜单（Ctrl+Shift+Alt+X 唤起 / 右键「上传到」，数字键或鼠标选择）
+// 服务器选择菜单（Ctrl+Shift+X 唤起 / 右键「上传到」，数字键或鼠标选择）
 const { serverMenu, openServerMenu, closeServerMenu } = useServerMenu((targetId) => {
   const entry = filesStore.selectedDeployEntry
   if (entry) deployEntry(entry, targetId)
@@ -39,9 +39,13 @@ async function deployEntry(entry: FileEntry, targetId?: string) {
   }
 }
 
-useServerMenuHotkey(
+useDeployHotkeys(
   () => !!filesStore.selectedDeployEntry,
   () => !!serverMenu.value,
+  () => {
+    const entry = filesStore.selectedDeployEntry
+    if (entry) deployEntry(entry)
+  },
   () => {
     const pos = filesStore.selectedDeployPos || { x: 240, y: 160 }
     openServerMenu(pos.x, pos.y)

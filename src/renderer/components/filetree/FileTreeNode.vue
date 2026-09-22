@@ -38,17 +38,17 @@ async function toggleExpand() {
   if (!expanded.value) await loadAndExpand(); else expanded.value = false
 }
 
-// 服务器选择菜单（与 Ctrl+Shift+Alt+X 一致）
+// 服务器选择菜单（与 Ctrl+Shift+X 一致）
 const { serverMenu, openServerMenu, closeServerMenu } = useServerMenu((targetId) => doDeploy(targetId))
 
 function onContextMenu(e: MouseEvent) {
   e.preventDefault(); e.stopPropagation()
   const { clientX: x, clientY: y } = e
   const items: ContextMenuItem[] = [{
-    label: '快速上传', icon: Wrench,
+    label: '快速上传', icon: Wrench, shortcut: 'Ctrl+X',
     action: () => doDeploy()
   }, {
-    label: '上传到', icon: Server, shortcut: 'Ctrl+Shift+Alt+X',
+    label: '上传到', icon: Server, shortcut: 'Ctrl+Shift+X',
     action: () => openServerMenu(x, y)
   }]
   ctxMenu.value = { x, y, items }
