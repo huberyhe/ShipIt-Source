@@ -59,6 +59,11 @@ function autoRefresh() {
   if (projectStore.projectPath) gitStore.loadGitStatus(projectStore.projectPath, true)
 }
 
+// F5 由 App.vue 统一处理并派发（铁律 5），只有当前挂载的视图响应
+function onRefreshView() {
+  refresh()
+}
+
 // 窗口聚焦（用户从 IDE 切回）时立即刷新
 function onFocus() {
   if (document.hasFocus()) refresh()
@@ -66,15 +71,18 @@ function onFocus() {
 
 let timer: ReturnType<typeof setInterval> | null = null
 onMounted(() => {
-  // 视图切换（v-if 重建）即事件：立即拉取最新 Git 状态
-  // 静默模式避免状态栏“分析中”闪烁；store 内部有并发保护，不会与轮询重叠
-  if (projectStore.projectPath) gitStore.loadGitStatus(projectStore.projectPath, true)
-  timer = setInterval(autoRefresh, AUTO_REFRESH_MS)
+  // 先注册监听与轮询，再做首屏加载：加载期间按 F5 / 切回窗口也能生效
   window.addEventListener('focus', onFocus)
+  window.addEventListener('refresh-view', onRefreshView)
+  timer = setInterval(autoRefresh, AUTO_REFRESH_MS)
+  // 视图切换（v-if 重建）即事件：立即拉取最新 Git 状态
+  // 静默模式避免状态栏“分析中”闪烁；store 侧 in-flight 去重不会与轮询重叠
+  if (projectStore.projectPath) gitStore.loadGitStatus(projectStore.projectPath, true)
 })
 onUnmounted(() => {
   if (timer) clearInterval(timer)
   window.removeEventListener('focus', onFocus)
+  window.removeEventListener('refresh-view', onRefreshView)
 })
 
 function buildChangeTree(changes: Array<{ relativePath: string; status: string }>): ChangeTreeNode[] {

@@ -89,6 +89,19 @@ export interface GitCommitInfo {
   message: string
 }
 
+/**
+ * Git 分支条目（本地 / 远程）
+ * - name：展示用名称，远程分支默认不带 remote 前缀（如 "2.0.2SP5"）；
+ *   仓库存在多个远程时保留前缀（如 "shipit/main"）以区分同名分支
+ * - ref：git 引用，用于 `git log <ref>`（本地 "main"，远程 "origin/main"）
+ * - isRemote：远程分支标记，渲染层用于附加 ☁️
+ */
+export interface GitBranchInfo {
+  name: string
+  ref: string
+  isRemote: boolean
+}
+
 /** Git 状态视图（未提交变更 + 分支信息） */
 export interface GitStatusView {
   hasGit: boolean

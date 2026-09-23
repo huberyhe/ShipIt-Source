@@ -6,6 +6,7 @@
 
 ```bash
 npm run electron:dev   # 开发（Vite + Electron）
+npm test               # 单元测试（vitest）
 npm run type-check     # 类型检查（renderer + main + shared）
 npm run build          # 构建 dist/ + dist-electron/
 npm run electron:build # 打包 release/*.exe
@@ -14,7 +15,7 @@ npm run gen:icon       # 换图标后重新生成 build/icon.ico
 
 ## 架构速览
 
-- **主进程** `src/main/`：`index.ts`（窗口 / IPC 注册 / 菜单动作分发）、`preload.ts`（暴露 `window.deployApi`）、`services/`（GitService/DeployService/FileService/ConfigStore，无 UI 依赖）。
+- **主进程** `src/main/`：`index.ts`（窗口 / IPC 注册 / 菜单动作分发）、`preload.ts`（暴露 `window.deployApi`）、`services/`（GitService/DeployService/FileService/ConfigStore，无 UI 依赖；纯逻辑（如 `branch-parse.ts`）拆成独立模块便于单测）。
 - **渲染进程** `src/renderer/`：`layout/` 框架（AppLayout / AppMenuBar）、`views/` 三视图、`components/common/`（BaseDialog/ContextMenu 共享组件）、`composables/`（服务器菜单 · 全局热键）、`stores/`（Pinia：project/files/git/deploy/ui）。
 - **共享层** `src/shared/`：`types.ts` 领域类型唯一来源；`ipc-channels.ts` IPC 通道常量唯一来源。
 
@@ -24,10 +25,11 @@ npm run gen:icon       # 换图标后重新生成 build/icon.ico
 2. **IPC**：新增/改动通道必须先在 `src/shared/ipc-channels.ts` 声明常量，主进程 `index.ts` 注册 handler、`preload.ts` 暴露 API，三处用同一个常量。
 3. **主题**：颜色一律用 `var(--*)`（定义在 `App.vue`），禁止硬编码 hex；涉及状态色用 `--green/--yellow/--red/--blue`。
 4. **无障碍**：可点击元素用 `<button>` 且带 `aria-label`/`aria-expanded`；弹窗复用 `BaseDialog`（自带 role/aria-modal/Esc 关闭）；表单 `label for` 关联。
-5. **菜单与快捷键**：Electron 原生菜单已移除，菜单栏为渲染进程自绘（`layout/AppMenuBar.vue`）；新增主进程动作走 `app:action` IPC 分发；全局快捷键统一在 `App.vue` 处理（输入控件聚焦时不拦截）。
+5. **菜单与快捷键**：Electron 原生菜单已移除，菜单栏为渲染进程自绘（`layout/AppMenuBar.vue`）；新增主进程动作走 `app:action` IPC 分发；全局快捷键统一在 `App.vue` 处理（输入控件聚焦时不拦截）。F5 = 刷新当前视图（键盘专用，不在按钮/快捷键弹窗展示）：`App.vue` 统一监听后派发 `refresh-view` 事件，各视图只在自己挂载期间响应；弹窗打开时不分发。
 6. **版本号**：唯一来源是 `package.json.version`；界面展示经主进程 `app.getVersion()` 读取（见 `AboutDialog.vue`），禁止在组件里硬编码版本号。
 7. **行尾**：文本文件统一 LF（`.gitattributes` 已声明 `* text=auto eol=lf`），二进制文件已声明 `binary` 不转换；工具/编辑器写入 CRLF 时 git 会自动归一，无需手工转换。
 8. **布局稳定性（防抖动）**：条件渲染（v-if/v-else）的行内元素出现/消失**不得改变相邻内容的位置**：
+   - 原生 `<select>` 宽度由最长选项决定：选项文案会变的下拉必须给固定宽（如 `GitLogView` 的 `#log-branch`），否则会把相邻筛选框顶动
    - 状态条/提示条 → 内联到已有行（参考 `TargetEditor` 的 `.test-result` 内联徐标：不占额外行高、天然无抖动）；确实需要独立行时用固定高度占位槽
    - 徐标/临时标记 → 绝对定位或 `opacity` 切换（参考 `ViewSwitcher` 的 badge、行内“快速上传”按钮）
    - 整块状态切换（空状态 ↔ 列表）可接受；按钮文案变化（“测试” ↔ “测试中”）注意宽度抖动

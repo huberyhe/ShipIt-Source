@@ -1,8 +1,9 @@
 import simpleGit, { SimpleGit, StatusResult } from 'simple-git'
 import { join } from 'path'
-import type { GitChangeInfo, GitCommitInfo, GitStatusView } from '../../shared/types'
+import type { GitChangeInfo, GitCommitInfo, GitStatusView, GitBranchInfo } from '../../shared/types'
+import { parseBranches } from './branch-parse'
 
-export type { GitChangeInfo, GitCommitInfo, GitStatusView }
+export type { GitChangeInfo, GitCommitInfo, GitStatusView, GitBranchInfo }
 
 export class GitService {
   private gitCache: Map<string, SimpleGit> = new Map()
@@ -23,19 +24,23 @@ export class GitService {
     }
   }
 
-  async getBranches(dir: string): Promise<string[]> {
+  async getBranches(dir: string): Promise<GitBranchInfo[]> {
     try {
       const git = this.getGit(dir)
-      const result = await git.branch(['-a'])
-      return result.all
-        .map(b => b.replace('remotes/origin/', '').trim())
-        .filter(b => b !== 'HEAD') // 排除 origin/HEAD 符号引用
-        .filter((b, i, arr) => arr.indexOf(b) === i) // 去重
+      // 按分支最近一次提交时间倒序（与提交者列表口径一致：最近有提交的分支在前）
+      // 解析逻辑见 branch-parse.ts（纯函数，带单测）
+      const result = await git.raw([
+        'for-each-ref',
+        '--sort=-committerdate',
+        '--format=%(refname)',
+        'refs/heads',
+        'refs/remotes'
+      ])
+      return parseBranches(result)
     } catch {
       return []
     }
   }
-
   async getAuthors(dir: string): Promise<string[]> {
     try {
       const git = this.getGit(dir)

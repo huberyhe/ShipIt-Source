@@ -27,7 +27,10 @@ try {
   execSync('vite build', { stdio: 'inherit', env })
 
   console.log('Building Electron installer...')
-  execSync('electron-builder', { stdio: 'inherit', env })
+  // --publish never：本地打包不上传 Release。
+  // 注：脚本会给子进程注入 BUILD_NUMBER，而 electron-builder 把该变量当作 CI 标识，
+  // 不显式关闭会尝试发布到 GitHub Release 并因缺少 GH_TOKEN 报错（安装包已生成但退出码为 1）。
+  execSync('electron-builder --publish never', { stdio: 'inherit', env })
 
   console.log(`\n✓ Build complete! Installer: ShipIt-v*-build${buildNumber}-x64.exe`)
 } catch (err) {

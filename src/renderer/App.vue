@@ -33,7 +33,39 @@ onMounted(async () => {
 
   // 全局快捷键（原生菜单已移除，统一在渲染进程处理）
   window.addEventListener('keydown', onAppShortcut)
+  window.addEventListener('keydown', onGlobalKeydown)
+  window.addEventListener('click', onGlobalClick)
 })
+
+/**
+ * 键盘触发的全局快捷键（无修饰键类）。
+ * 输入控件聚焦时不拦截（铁律 5）。
+ */
+function onGlobalKeydown(e: KeyboardEvent) {
+  if (e.key !== 'F5') return
+  const t = e.target as HTMLElement | null
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return
+  if (document.querySelector('[role="dialog"][aria-modal="true"]')) return // 弹窗打开时不动背后的列表
+  e.preventDefault() // 屏蔽 Electron/Chromium 默认重载
+  // 统一在 App.vue 处理，各视图按需响应（当前挂载的视图才会收到）
+  window.dispatchEvent(new CustomEvent('refresh-view'))
+}
+
+/**
+ * 鼠标点击后主动失焦可点击控件（保留表单控件焦点）。
+ * Chromium 的 :focus-visible 启发式：鼠标点中的控件本不显示焦点框，
+ * 但之后任一键盘事件（F5 刷新、Ctrl+2 切页等）会把交互模态切到键盘，
+ * 该控件随即亮起焦点框——表现为“点击切页后按 F5，导航项上出现一个方框”。
+ * 键盘触发的 click 其 detail 为 0（Enter/Space），不做处理，键盘焦点可见性不受影响。
+ */
+function onGlobalClick(e: MouseEvent) {
+  if (e.detail === 0) return
+  const active = document.activeElement as HTMLElement | null
+  if (!active || active === document.body) return
+  if (active.matches('input, textarea, select, [contenteditable="true"]')) return
+  // 只处理“点击型”控件（含未来新增的自定义可点击元素），不动弹窗根等 tabindex 容器
+  if (active.matches('button, a[href], summary, [role="menuitem"], [role="tab"], [role="button"]')) active.blur()
+}
 
 /** 关闭项目：回到项目选择器并清理相关状态 */
 function closeProject() {
@@ -76,6 +108,7 @@ let loadSeq = 0
 async function loadProjectData(path: string) {
   const seq = ++loadSeq
   projectStore.isLoading = true
+  gitStore.resetLogFilters() // 筛选不跨项目通用：切项目时清空，避免残留其他项目的分支/提交者
   try {
     await Promise.all([
       filesStore.loadFileTree(path),

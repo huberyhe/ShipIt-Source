@@ -1,3 +1,5 @@
+import type { GitBranchInfo } from '../../shared/types'
+
 export type ActiveView = 'filetree' | 'gitchanges' | 'gitlog'
 
 export interface DeployApi {
@@ -7,7 +9,7 @@ export interface DeployApi {
   expandDirectory: (dirPath: string) => Promise<any[]>
   collectFiles: (dirPath: string) => Promise<string[]>
   checkGitRepo: (dir: string) => Promise<boolean>
-  getGitBranches: (dir: string) => Promise<string[]>
+  getGitBranches: (dir: string) => Promise<GitBranchInfo[]>
   getGitAuthors: (dir: string) => Promise<string[]>
   getGitStatus: (dir: string) => Promise<any>
   getGitLog: (dir: string, options?: { branch?: string; author?: string; maxCount?: number }) => Promise<any[]>
