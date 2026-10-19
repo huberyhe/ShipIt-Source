@@ -60,11 +60,21 @@ async function bundle(root) {
   writeFileSync(join(OUT_DIR, 'package.json'), JSON.stringify(manifest, null, 2) + '\n', 'utf-8')
 }
 
+/**
+ * 随包文档。
+ *
+ * README 用**面向使用者**的 `docs/cli-mcp-readme.md`（npm 页面就是它），
+ * 不要直接复制仓库根 README —— 那是面向开发者的项目说明（目录结构/构建命令），
+ * 对 `npm install` 的人没有用，也没解释「这是桌面版的配套 MCP 工具」。
+ */
 function copyDocs() {
-  for (const file of ['README.md', 'LICENSE']) {
-    const from = join(ROOT, file)
-    if (existsSync(from)) copyFileSync(from, join(OUT_DIR, file))
-    else console.warn(`[build-cli] 缺少 ${file}，发布包将不含该文件`)
+  const sources = [
+    ['README.md', join(ROOT, 'docs', 'cli-mcp-readme.md')],
+    ['LICENSE', join(ROOT, 'LICENSE')]
+  ]
+  for (const [name, from] of sources) {
+    if (existsSync(from)) copyFileSync(from, join(OUT_DIR, name))
+    else console.warn(`[build-cli] 缺少 ${from}，发布包将不含 ${name}`)
   }
 }
 
