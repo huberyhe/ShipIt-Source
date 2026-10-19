@@ -102,7 +102,7 @@ shipit --help                           # 列出全部命令与参数
 > 默认（不加 `--json`）是**给人看的输出**：单条对象逐行 `字段: 值`、嵌套结构缩进展开、对象数组渲染成对齐表格；值过宽时自动退回块状列表（不截断信息）。**失败也一样**：`[错误类别] 说明` + 提示与明细（见「错误输出长什么样」）。需要机器解析时再加 `--json`。
 | `--target <目标名>` | 指定上传目标（`plan` / `deploy` 使用；`targets show|ping` 的目标名请用位置参数） |
 | `--project <项目根>` | 项目根；**`plan` / `deploy` / `git status` / `git log` 必填** |
-| `--profile <名称>` | 使用本机保存的远端连接配置（`<用户目录>/profiles/<名称>.json`） |
+| `--profile <名称>` | 使用本机保存的远端连接配置：手工放置 `<SHIPIT_HOME>/profiles/<名称>.json`（内容为连接串 JSON；未设 `SHIPIT_HOME` 时 Windows 为 `%APPDATA%\shipit`、macOS 为 `~/Library/Application Support/shipit`、Linux 为 `$XDG_CONFIG_HOME/shipit`）。**没有 `profile` 子命令**，profile 就是一个文件 |
 | `--connect <连接串>` | 直接给出连接信息 JSON 串（桌面版「导出连接串」复制的**单行** JSON，跨机器用） |
 
 > 全局参数写在命令之前或之后都可用：`shipit --connect '{"port":4517,"token":"abc","protocolVersion":1,"fingerprint":"…"}' status` 与 `shipit status --connect '…'` 等价。
@@ -177,7 +177,7 @@ dist/b.js    A
 | 指纹来源 | 含义 | 处理 |
 | --- | --- | --- |
 | 连接信息文件（`…\server.json`） | 桌面版写入的自动发现文件 | ① 文件可能过期（桌面版被强杀过）→ **重启桌面版**刷新；② 该端口被其他程序/其他实例占用 → 确认端口上的服务是当前桌面版 |
-| 已保存的连接配置 | 你用 `--profile` 保存的快照 | 重新保存（`shipit profile set <名称> …`），或改用本地自动发现（不传 `--profile`） |
+| 已保存的连接配置 | 你手工放置的 `profiles/<名称>.json` | 用桌面版重新「导出连接串」，覆盖该文件；或改用本地自动发现（不传 `--profile`） |
 | 连接串（`--connect`） | 你粘贴的导出连接串快照 | 在桌面版「设置 → 本地服务」**重新「导出连接串」**，更新宿主（opencode 等）的 MCP 配置 |
 
 > 提示里会同时给出**已固定**与**服务端实际**的指纹前 8 位，用于确认"确实换了/确实不是同一个实例"。
@@ -311,7 +311,8 @@ shipit git status --connect '{"host":"192.168.1.20",…}'
 shipit --connect "$(cat ~/peer-conn.json)" targets list
 ```
 
-想少敲参数就把串存成命名配置（`<用户目录>/profiles/peer.json`），之后 `shipit --profile peer targets list`。
+想少敲参数就把串存成命名配置：在 `<SHIPIT_HOME>/profiles/peer.json`（未设 `SHIPIT_HOME` 时 Windows 为 `%APPDATA%\shipit\profiles\peer.json`）写入连接串 JSON，之后 `shipit --profile peer targets list`。
+文件名即 profile 名，只允许 `字母 / 数字 / . / _ / -`（不含 `..`）。没有 `profile` 子命令——profile 就是一个 JSON 文件，用编辑器或导出脚本放置。
 
 注意事项：
 
