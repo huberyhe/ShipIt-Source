@@ -36,13 +36,13 @@ const features = [
 <style scoped>
 .about { padding: 12px 16px; }
 .app-name { font-size: 17px; font-weight: 600; color: var(--fg3); }
-.version { font-size: 12px; color: var(--fg2); margin-top: 2px; }
-.desc { font-size: 12px; color: var(--fg); line-height: 1.7; margin-top: 12px; }
-.features { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--bg3); }
+.version { font-size: 12px; color: var(--fg2); margin: 4px; }
+.desc { font-size: 12px; color: var(--fg); line-height: 1.7; margin: 12px; }
+.features { margin: 12px; padding: 8px; border-top: 1px solid var(--bg3); }
 .feature {
   display: flex; align-items: center; gap: 8px;
   font-size: 12px; color: var(--fg);
-  padding: 3px 0;
+  padding: 4px 0;
 }
 .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
 </style>

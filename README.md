@@ -35,8 +35,11 @@
 # 安装依赖
 npm install
 
-# 开发模式（Vite + Electron 热更新）
+# 开发模式（Vite + Electron 热更新；Electron 由 vite-plugin-electron 拉起，只开一个实例）
 npm run electron:dev
+
+# 需要调试面板时：按 F12 切换当前窗口的 DevTools，或用下面这条让首个窗口自动打开
+npx cross-env SHIPIT_DEVTOOLS=1 NODE_ENV=development vite
 
 # 类型检查（renderer + main + shared 全覆盖）
 npm run type-check
@@ -59,6 +62,26 @@ npm run electron:build
 3. **上传文件**：文件树 / Git 变更中右键或点击"快速上传" → 选择目标 → 确认弹窗（可展开全部）→ 上传 → 底部日志查看结果。
 4. **纯键盘上传**：点击选中目标 → `Ctrl+X` 快速上传当前目标，或 `Ctrl+Shift+X` 选服务器 → `Enter` 确认 / `Esc` 取消。
 
+## CLI 与 MCP（agent 接入）
+
+桌面版可作为本机（可选局域网）服务被 CLI 与 MCP 调用：执行全部在桌面主进程，界面配置、上传队列与日志共用同一份。
+
+```bash
+shipit status                            # 服务端状态与版本、队列快照
+shipit projects list                     # 桌面已打开的项目（--project 该填什么）
+shipit targets list                      # 目标清单（不含凭据）
+shipit plan   --project . --target my_dev  # 待上传计划（不建立远端连接）
+shipit deploy --project . --target my_dev --wait
+shipit git status --project .            # 未提交变更
+shipit mcp                               # 以 stdio 启动 MCP server（9 个工具）
+```
+
+前置：桌面版「设置 → 本地服务管理」中开启服务（与「上传目标管理」分列的独立入口）（**默认关闭**）。端口与令牌由服务端写入连接信息文件，
+CLI / MCP 自动发现，不需要手填；通道强制 TLS 自签并固定证书指纹。
+
+- 完整命令、参数、退出码、MCP 宿主配置与故障排查：[docs/cli-mcp-usage.md](docs/cli-mcp-usage.md)
+- npm 包：`@huberyhe/shipit-mcp`（只含构建产物，版本与桌面版一致）
+
 ## 架构
 
 ```
@@ -75,11 +98,16 @@ npm run electron:build
 ┌───────────────────────────▼────────────────────────────────┐
 │  Main Process (Electron)                                   │
 │  services/  GitService · DeployService · FileService ·     │
-│             ConfigStore                                     │
-│  index.ts   窗口管理 · IPC 路由 · 菜单动作分发                    │
+│             ConfigStore · server-handlers · local-server ·  │
+│             deploy-queue · server-config · tls-cert ·       │
+│             project-context · selection · tray              │
+│  index.ts   窗口管理 · IPC 路由 · 菜单动作分发 · 服务端启停/状态推送 │
 └────────────────────────────────────────────────────────────┘
+        src/cli/       index.ts（shipit 入口）· mcp.ts（MCP server）
+                       client · discover · args · commands · mcp-tools
         src/shared/    ipc-channels.ts（IPC 通道常量）
                        types.ts（主/渲染共享领域类型）
+                       cli-contract.ts（CLI/MCP 契约）· paths · fingerprint · task-verdict
 ```
 
 ### 目录结构
@@ -87,9 +115,20 @@ npm run electron:build
 ```
 src/
 ├── main/               # Electron 主进程
-│   ├── index.ts        #   窗口 / 菜单 / IPC 注册
+│   ├── index.ts        #   窗口 / 菜单 / IPC 注册 / 服务端启停与状态推送
 │   ├── preload.ts      #   contextBridge 暴露 window.deployApi
-│   └── services/       #   领域服务（含上传任务计算 · ignore-dirs.ts）
+│   ├── tray.ts         #   托盘（常驻服务）
+│   └── services/       #   领域服务：上传（deploy-service · deploy-queue · selection ·
+│                       #   ignore-dirs）· 本地服务端（local-server · server-handlers ·
+│                       #   server-config · tls-cert）· 项目上下文（project-context）· 配置（config-store）
+├── cli/                # 命令行与 MCP（与桌面共用同一服务端，INV-2）
+│   ├── index.ts        #   shipit 命令入口
+│   ├── args.ts         #   参数解析与帮助文本
+│   ├── mcp.ts          #   stdio MCP server（mcp-tools.ts 定义工具面）
+│   ├── client.ts       #   固定指纹 + 令牌鉴权的 HTTPS 客户端
+│   ├── discover.ts     #   连接发现（连接信息文件 / --connect / --profile）
+│   ├── commands/       #   targets · plan · deploy · git 等命令
+│   └── testing/        #   命令级用例的测试桩（harness / deps）
 ├── renderer/           # Vue 渲染进程
 │   ├── stores/         #   Pinia 状态（UI 与业务分离）
 │   ├── layout/         #   框架组件（AppLayout / AppMenuBar / Toolbar）

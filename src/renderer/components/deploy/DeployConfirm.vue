@@ -4,6 +4,7 @@ import { Wrench, File } from 'lucide-vue-next'
 import { useDeployStore } from '../../stores/deploy'
 import { useProjectStore } from '../../stores/project'
 import BaseDialog from '../common/BaseDialog.vue'
+import BaseButton from '../common/BaseButton.vue'
 
 const deployStore = useDeployStore()
 const projectStore = useProjectStore()
@@ -13,6 +14,14 @@ const validFiles = computed(() => confirmFiles.value.filter(f => f.remotePath !=
 const targetName = computed(() => {
   const t = deployStore.targets.find(t => t.id === deployStore.confirmTargetId)
   return t?.name || '未知目标'
+})
+
+/** 项目名：多窗口并存时，确认弹窗必须同时显示项目与目标，避免"传到了另一个项目" */
+const projectName = computed(() => {
+  const path = projectStore.projectPath
+  if (!path) return '(未打开项目)'
+  const parts = path.replace(/\\/g, '/').split('/').filter(Boolean)
+  return parts[parts.length - 1] || path
 })
 
 const showAll = ref(false)
@@ -39,6 +48,7 @@ function handleCancel() { deployStore.cancelDeploy() }
   >
     <div v-if="deployStore.isPreviewing" class="summary computing">正在计算文件...</div>
     <div v-else class="summary">
+      <span class="project-line">项目：<strong>{{ projectName }}</strong></span>
       共 {{ validFiles.length }} 个文件将上传
       <button v-if="validFiles.length > previewLimit && !showAll" class="show-more" @click="showAll = true">
         （仅显示前 {{ previewLimit }} 个，点击展开全部）
@@ -53,25 +63,22 @@ function handleCancel() { deployStore.cancelDeploy() }
     </div>
 
     <template #footer>
-      <button class="cancel-btn" aria-label="取消上传" @click="handleCancel">取消 (Esc)</button>
-      <button class="deploy-btn" aria-label="确认上传" :disabled="deployStore.isPreviewing || validFiles.length === 0" @click="handleDeploy">
+      <BaseButton variant="secondary" size="sm" class="cancel-btn" aria-label="取消上传" @click="handleCancel">取消 (Esc)</BaseButton>
+      <BaseButton variant="primary" size="sm" class="deploy-btn" aria-label="确认上传" :disabled="deployStore.isPreviewing || validFiles.length === 0" @click="handleDeploy">
         {{ deployStore.isPreviewing ? '计算中...' : `上传 ${validFiles.length} 个文件 (Enter)` }}
-      </button>
+      </BaseButton>
     </template>
   </BaseDialog>
 </template>
 
 <style scoped>
+.project-line { margin-right: 8px; color: var(--fg2); }
+.project-line strong { color: var(--fg); }
 .summary { padding: 8px 16px; font-size: 12px; color: var(--fg2); }
-.show-more { color: var(--accent); cursor: pointer; background: transparent; padding: 0; }
+.show-more { color: var(--accent-text); cursor: pointer; background: transparent; padding: 0; }
 .show-more:hover { color: var(--accent2); }
 .file-list { border-top: 1px solid var(--border); }
-.file-item { display: flex; align-items: center; gap: 8px; padding: 5px 16px; font-size: 12px; color: var(--fg); border-bottom: 1px solid var(--bg3); }
+.file-item { display: flex; align-items: center; gap: 8px; padding: 4px 16px; font-size: 12px; color: var(--fg); border-bottom: 1px solid var(--bg3); }
 .file-icon { color: var(--fg2); flex-shrink: 0; }
 .file-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cancel-btn { padding: 6px 16px; background: var(--bg4); color: var(--fg); border: 1px solid var(--border2); border-radius: 4px; font-size: 12px; }
-.cancel-btn:hover { background: var(--bg5); color: var(--fg3); }
-.deploy-btn { padding: 6px 16px; background: var(--accent); color: var(--on-accent); border-radius: 4px; font-size: 12px; }
-.deploy-btn:hover { background: var(--accent2); }
-.deploy-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 </style>

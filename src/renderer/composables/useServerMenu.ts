@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 import { Server } from 'lucide-vue-next'
 import { useDeployStore } from '../stores/deploy'
-import type { ContextMenuItem } from '../components/common/ContextMenu.vue'
+import type { ContextMenuItem } from '../types/context-menu'
 
 /**
  * 服务器选择菜单（与 Ctrl+Shift+X 唤起的菜单一致）

@@ -1,12 +1,17 @@
 <script setup lang="ts">
+import { toastError } from '../../utils/toast'
 import { computed, ref, onMounted, onUnmounted } from 'vue'
-import { RefreshCw } from 'lucide-vue-next'
+import { ChevronsUpDown, ChevronsDownUp, RefreshCw } from 'lucide-vue-next'
 import { useGitStore } from '../../stores/git'
+import { statusClassOf, statusShort } from '../../utils/change-status'
 import { useDeployStore } from '../../stores/deploy'
 import { useProjectStore } from '../../stores/project'
 import DiffPreview from '../git/DiffPreview.vue'
-import GitChangeTreeNode, { type ChangeTreeNode } from '../git/GitChangeTreeNode.vue'
+import GitChangeTreeNode from '../git/GitChangeTreeNode.vue'
+import EmptyState from '../common/EmptyState.vue'
+import type { ChangeTreeNode } from '../../types/git'
 import ContextMenu from '../common/ContextMenu.vue'
+import ServerTargetMenu from '../common/ServerTargetMenu.vue'
 import { useDeployHotkeys } from '../../composables/useDeployHotkeys'
 import { useServerMenu } from '../../composables/useServerMenu'
 
@@ -46,7 +51,11 @@ useDeployHotkeys(
 )
 
 const previewFile = ref<string | null>(null)
-const expandedDirs = ref<Set<string>>(new Set())
+/**
+ * 展开状态。空串代表「项目目录」这个顶级节点（见 projectRootNode），
+ * 默认展开：视觉上与原来一致（多一层项目目录），又便于一键整体上传。
+ */
+const expandedDirs = ref<Set<string>>(new Set(['']))
 
 // 手动刷新（有反馈）
 async function refresh() {
@@ -109,8 +118,9 @@ function buildChangeTree(changes: Array<{ relativePath: string; status: string }
           children: [],
           change: {
             status: change.status,
-            label: statusLabel(change.status),
-            cssClass: statusClass(change.status)
+            // 短标记与类名统一由 utils/change-status 提供（与 Git 日志视图同一套词汇表）
+            label: statusShort(change.status),
+            cssClass: statusClassOf(change.status)
           }
         })
       } else {
@@ -148,6 +158,20 @@ function buildChangeTree(changes: Array<{ relativePath: string; status: string }
 
 const changeTree = computed(() => buildChangeTree(gitStore.changes))
 
+/**
+ * 顶级「项目目录」节点：把变更树整体挂到项目根下，
+ * 这样可以直接对项目根点「快速上传」= 一次性上传本次全部变更（映射规则仍然生效）。
+ * path 用空串表示项目根（collect/handleDeployDir 会拼成 projectPath + '/'）。
+ */
+const projectRootNode = computed<ChangeTreeNode | null>(() => {
+  const root = projectStore.projectPath
+  if (!root || changeTree.value.length === 0) return null
+  const normalized = root.replace(/\\/g, '/').replace(/\/+$/, '')
+  const name = normalized.split('/').pop() || normalized
+  // 项目根自身不是"变更项"，change 置空（不显示状态徽标）
+  return { isDirectory: true, path: '', name, children: changeTree.value, change: null }
+})
+
 function collectAllDirPaths(nodes: ChangeTreeNode[]): string[] {
   const paths: string[] = []
   for (const n of nodes) {
@@ -160,7 +184,7 @@ function collectAllDirPaths(nodes: ChangeTreeNode[]): string[] {
 }
 
 function expandAll() {
-  expandedDirs.value = new Set(collectAllDirPaths(changeTree.value))
+  expandedDirs.value = new Set(['', ...collectAllDirPaths(changeTree.value)])
 }
 
 function toggleDir(dirPath: string) {
@@ -183,7 +207,7 @@ async function handleDeployFile(filePath: string, targetId?: string) {
     const fullPath = projectStore.projectPath.replace(/\\/g, '/') + '/' + filePath
     await deployStore.previewDeploy([fullPath], projectStore.projectPath, targetId)
   } catch (e: any) {
-    window.dispatchEvent(new CustomEvent('toast', { detail: e?.message || '上传失败' }))
+    toastError(e?.message || '上传失败')
   } finally {
     deployingPath.value = null
   }
@@ -191,6 +215,7 @@ async function handleDeployFile(filePath: string, targetId?: string) {
 
 async function handleDeployDir(node: ChangeTreeNode, targetId?: string) {
   if (!projectStore.projectPath) return
+  deployingPath.value = node.path
   deployingPath.value = node.path
   try {
     const paths: string[] = []
@@ -207,19 +232,12 @@ async function handleDeployDir(node: ChangeTreeNode, targetId?: string) {
     if (paths.length === 0) return
     await deployStore.previewDeploy(paths, projectStore.projectPath, targetId)
   } catch (e: any) {
-    window.dispatchEvent(new CustomEvent('toast', { detail: e?.message || '上传失败' }))
+    toastError(e?.message || '上传失败')
   } finally {
     deployingPath.value = null
   }
 }
 
-function statusLabel(status: string): string {
-  switch (status) { case 'modified': return 'M'; case 'added': return 'A'; case 'deleted': return 'D'; case 'untracked': return '?'; default: return status }
-}
-
-function statusClass(status: string): string {
-  return `status-${status}`
-}
 </script>
 
 <template>
@@ -227,23 +245,26 @@ function statusClass(status: string): string {
     <div class="view-header">
       <span>Git 未提交的变更 ({{ gitStore.changes.length }})</span>
       <div class="header-actions">
-        <button class="header-btn refresh-btn" title="刷新" aria-label="刷新 Git 变更" @click="refresh">
-          <RefreshCw :size="11" /> 刷新
+        <button class="icon-btn" title="刷新" aria-label="刷新 Git 变更" @click="refresh">
+          <RefreshCw :size="14" />
         </button>
-        <button class="header-btn" @click="expandAll">全部展开</button>
-        <button class="header-btn" @click="expandedDirs.clear()">全部收起</button>
+        <button class="icon-btn" title="全部展开" aria-label="全部展开" @click="expandAll">
+          <ChevronsUpDown :size="14" />
+        </button>
+        <button class="icon-btn" title="全部收起" aria-label="全部收起" @click="expandedDirs.clear()">
+          <ChevronsDownUp :size="14" />
+        </button>
       </div>
     </div>
 
     <div class="changes-list">
       <template v-if="changeTree.length === 0">
-        <div class="empty-state">工作区干净，没有未提交的变更</div>
+        <EmptyState text="工作区干净，没有未提交的变更" size="page" />
       </template>
 
       <GitChangeTreeNode
-        v-for="node in changeTree"
-        :key="node.path"
-        :node="node"
+        v-if="projectRootNode"
+        :node="projectRootNode"
         :depth="0"
         :expanded-dirs="expandedDirs"
         :busy-path="deployingPath"
@@ -262,15 +283,7 @@ function statusClass(status: string): string {
       @close="previewFile = null"
     />
 
-    <ContextMenu
-      v-if="serverMenu"
-      :x="serverMenu.x"
-      :y="serverMenu.y"
-      :items="serverMenu.items"
-      number-select
-      title="选择要上传到的服务器"
-      @close="closeServerMenu"
-    />
+    <ServerTargetMenu :menu="serverMenu" @close="closeServerMenu" />
   </div>
 </template>
 
@@ -285,20 +298,17 @@ function statusClass(status: string): string {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 12px;
+  padding: 4px 12px;
   background: var(--bg2);
   border-bottom: 1px solid var(--border);
   font-size: 12px;
   color: var(--fg);
 }
 
-.header-actions { display: flex; align-items: center; gap: 6px; }
-.header-btn {
-  padding: 3px 10px; background: var(--bg4); color: var(--fg);
-  border: 1px solid var(--border2); border-radius: 4px; font-size: 11px;
-}
-.header-btn:hover { background: var(--bg5); color: var(--fg3); }
-.refresh-btn { display: flex; align-items: center; gap: 3px; }
+.header-actions { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+.icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; background: transparent; border: 1px solid transparent; border-radius: 4px; color: var(--fg2); }
+.icon-btn:hover { background: var(--border); color: var(--fg); }
+.refresh-btn { display: flex; align-items: center; gap: 4px; }
 
 .changes-list {
   flex: 1;
@@ -306,9 +316,4 @@ function statusClass(status: string): string {
   padding: 4px 0;
 }
 
-.empty-state {
-  padding: 24px;
-  text-align: center;
-  color: var(--fg2);
-}
 </style>

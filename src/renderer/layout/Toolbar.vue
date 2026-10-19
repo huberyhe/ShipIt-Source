@@ -1,14 +1,16 @@
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { onMounted, onBeforeUnmount } from 'vue'
 import { useProjectStore } from '../stores/project'
 import { useDeployStore } from '../stores/deploy'
 import TargetSelector from '../components/deploy/TargetSelector.vue'
-import SettingsDialog from '../components/settings/SettingsDialog.vue'
 const projectStore = useProjectStore()
 const deployStore = useDeployStore()
-const showSettings = ref(false)
-function onOpenSettings() { showSettings.value = true }
+/** 「上传目标管理」入口：请求打开全局设置窗口（单实例），本窗口不再自建编辑器 */
+function onOpenSettings() {
+  void window.deployApi.openSettings('targets')
+}
 onMounted(() => { window.addEventListener('open-settings', onOpenSettings) })
+// 与其余组件一致：成对清理（Toolbar 目前常驻挂载，但一旦被包进 v-if/keep-alive 就会叠加监听器）
 onBeforeUnmount(() => { window.removeEventListener('open-settings', onOpenSettings) })
 </script>
 <template>
@@ -18,7 +20,7 @@ onBeforeUnmount(() => { window.removeEventListener('open-settings', onOpenSettin
       <span class="project-path hint" v-else>请通过 File → 打开目录 选择项目</span>
     </div>
     <div class="toolbar-right"><TargetSelector /></div>
-    <SettingsDialog v-if="showSettings" @close="showSettings = false" />
+    
   </div>
 </template>
 <style scoped>

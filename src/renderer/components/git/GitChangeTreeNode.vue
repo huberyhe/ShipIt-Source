@@ -1,16 +1,14 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { File, Folder, FolderOpen, ChevronRight, ChevronDown, FileCode, Wrench, Server } from 'lucide-vue-next'
-import ContextMenu, { type ContextMenuItem } from '../common/ContextMenu.vue'
+import ContextMenu from '../common/ContextMenu.vue'
+import ServerTargetMenu from '../common/ServerTargetMenu.vue'
+import TreeRow from '../common/TreeRow.vue'
+import type { ContextMenuItem } from '../../types/context-menu'
+import type { ChangeTreeNode } from '../../types/git'
 import { useServerMenu } from '../../composables/useServerMenu'
 
-export interface ChangeTreeNode {
-  name: string
-  path: string
-  isDirectory: boolean
-  children: ChangeTreeNode[]
-  change: { status: string; label: string; cssClass: string } | null
-}
+export type { ChangeTreeNode }
 
 const props = defineProps<{
   node: ChangeTreeNode
@@ -31,6 +29,14 @@ const emit = defineEmits<{
 
 function onRowClick(e: MouseEvent) {
   emit('select', props.node, { x: e.clientX, y: e.clientY })
+}
+
+/** 行级键盘交互：Enter 展开/选中，Space 选中（此前整棵树键盘不可达） */
+function onRowKeydown(event: KeyboardEvent): void {
+  if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Spacebar') return
+  event.preventDefault()
+  if (props.node.isDirectory && event.key === 'Enter') emit('toggleDir', props.node.path)
+  else emit('select', props.node)
 }
 
 const menu = ref<{ x: number; y: number; items: ContextMenuItem[] } | null>(null)
@@ -108,28 +114,41 @@ function getDirStats(n: ChangeTreeNode): string {
 
 <template>
   <!-- 目录节点 -->
-  <div v-if="node.isDirectory"
-    class="tree-row dir-row"
-    :class="{ 'tree-row-selected': selectedPath === node.path }"
-    :style="{ paddingLeft: (depth * 16 + 8) + 'px' }"
+  <TreeRow
+    v-if="node.isDirectory"
+    row-class="tree-row dir-row"
+    :selected="selectedPath === node.path"
+    :indent="depth * 16 + 8"
+    role="button"
+    :tabindex="0"
+    :aria-expanded="expandedDirs.has(node.path)"
     @click="onRowClick"
     @contextmenu="onContextMenu"
+    @keydown="onRowKeydown"
   >
-    <button
-      class="expand-icon"
-      :aria-expanded="expandedDirs.has(node.path)"
-      :aria-label="expandedDirs.has(node.path) ? '收起目录' : '展开目录'"
-      @click="emit('toggleDir', node.path)"
-    >
-      <component :is="expandedDirs.has(node.path) ? ChevronDown : ChevronRight" :size="14" />
-    </button>
-    <component :is="expandedDirs.has(node.path) ? FolderOpen : Folder" :size="14" class="dir-icon" />
-    <span class="node-name" @click="emit('toggleDir', node.path)">{{ node.name }}/</span>
-    <span class="dir-badge">{{ getDirStats(node) }}</span>
-    <button class="quick-deploy-btn" :disabled="busyPath === node.path" @click.stop="emit('deployDir', node)">
-      {{ busyPath === node.path ? '收集中...' : '快速上传' }}
-    </button>
-  </div>
+    <template #toggle>
+      <button
+        class="expand-icon"
+        :aria-expanded="expandedDirs.has(node.path)"
+        :aria-label="expandedDirs.has(node.path) ? '收起目录' : '展开目录'"
+        @click.stop="emit('toggleDir', node.path)"
+      >
+        <component :is="expandedDirs.has(node.path) ? ChevronDown : ChevronRight" :size="14" />
+      </button>
+    </template>
+    <template #icon>
+      <component :is="expandedDirs.has(node.path) ? FolderOpen : Folder" :size="14" class="dir-icon" />
+    </template>
+    <template #label>
+      <span class="node-name" @click.stop="emit('toggleDir', node.path)">{{ node.name }}</span>
+    </template>
+    <template #meta><span class="dir-badge">{{ getDirStats(node) }}</span></template>
+    <template #actions>
+      <button class="quick-deploy-btn row-actions" :disabled="busyPath === node.path" @click.stop="emit('deployDir', node)">
+        {{ busyPath === node.path ? '收集中...' : '快速上传' }}
+      </button>
+    </template>
+  </TreeRow>
 
   <!-- 展开子节点 -->
   <template v-if="node.isDirectory && expandedDirs.has(node.path)">
@@ -150,23 +169,33 @@ function getDirStats(n: ChangeTreeNode): string {
   </template>
 
   <!-- 文件节点 -->
-  <div v-else-if="!node.isDirectory"
-    class="tree-row file-row"
-    :class="{ 'tree-row-selected': selectedPath === node.path }"
-    :style="{ paddingLeft: (depth * 16 + 22) + 'px' }"
+  <TreeRow
+    v-else-if="!node.isDirectory"
+    row-class="tree-row file-row"
+    :selected="selectedPath === node.path"
+    :indent="depth * 16 + 22"
+    role="button"
+    :tabindex="0"
     @click="onRowClick"
     @contextmenu="onContextMenu"
+    @keydown="onRowKeydown"
   >
-    <span class="status-badge" :class="node.change?.cssClass" v-if="node.change">{{ node.change.label }}</span>
-    <File :size="14" class="file-icon" />
-    <span class="node-name" :class="node.change?.cssClass">{{ node.name }}</span>
-    <button
-      v-if="node.change?.status !== 'deleted'"
-      class="quick-deploy-btn"
-      :disabled="busyPath === node.path"
-      @click.stop="emit('deployFile', node.path)"
-    >{{ busyPath === node.path ? '收集中...' : '快速上传' }}</button>
-  </div>
+    <template #before>
+      <span class="status-badge" :class="node.change?.cssClass" v-if="node.change">{{ node.change.label }}</span>
+    </template>
+    <template #icon><File :size="14" class="file-icon" /></template>
+    <template #label>
+      <span class="node-name" :class="node.change?.cssClass">{{ node.name }}</span>
+    </template>
+    <template #actions>
+      <button
+        v-if="node.change?.status !== 'deleted'"
+        class="quick-deploy-btn row-actions"
+        :disabled="busyPath === node.path"
+        @click.stop="emit('deployFile', node.path)"
+      >{{ busyPath === node.path ? '收集中...' : '快速上传' }}</button>
+    </template>
+  </TreeRow>
 
   <!-- 右键菜单 -->
   <ContextMenu
@@ -178,29 +207,19 @@ function getDirStats(n: ChangeTreeNode): string {
   />
 
   <!-- 服务器选择菜单（右键「上传到」与 Ctrl+Shift+X 共用） -->
-  <ContextMenu
-    v-if="serverMenu"
-    :x="serverMenu.x"
-    :y="serverMenu.y"
-    :items="serverMenu.items"
-    number-select
-    title="选择要上传到的服务器"
-    @close="closeServerMenu"
-  />
+    <ServerTargetMenu :menu="serverMenu" @close="closeServerMenu" />
 </template>
 
 <style scoped>
 .tree-row {
   display: flex; align-items: center; gap: 4px;
-  padding: 3px 8px; font-size: 13px; color: var(--fg);
+  padding: 4px 8px; font-size: 13px; color: var(--fg);
   cursor: pointer;
 }
-.tree-row:hover { background: var(--bg2); }
-.tree-row-selected { background: var(--accent3) !important; }
 .dir-icon { color: var(--purple); flex-shrink: 0; }
 
 .expand-icon {
-  width: 16px; height: 16px; display: flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; display: flex; align-items: center; justify-content: center;
   cursor: pointer; color: var(--fg2); flex-shrink: 0;
   padding: 0; background: transparent; border: none; border-radius: 4px;
 }
@@ -212,9 +231,10 @@ function getDirStats(n: ChangeTreeNode): string {
 .node-name.status-untracked { color: var(--green); }
 .node-name.status-deleted { color: var(--red); text-decoration: line-through; }
 
-.dir-badge { font-size: 9px; color: var(--fg2); white-space: nowrap; }
+/* 目录统计贴行尾（长目录名下不再紧贴名称），左侧留最小间距便于扫读 */
+.dir-badge { font-size: 11px; color: var(--fg2); white-space: nowrap; margin-left: auto; padding-left: 16px; }
 
-.status-badge { width: 16px; text-align: center; font-size: 10px; font-weight: bold; flex-shrink: 0; }
+.status-badge { width: 16px; text-align: center; font-size: 11px; font-weight: bold; flex-shrink: 0; }
 .status-modified { color: var(--yellow); }
 .status-added { color: var(--green); }
 .status-deleted { color: var(--red); }
@@ -223,12 +243,10 @@ function getDirStats(n: ChangeTreeNode): string {
 .file-icon { color: var(--fg2); flex-shrink: 0; }
 
 .quick-deploy-btn {
-  padding: 2px 8px; background: var(--accent); color: var(--on-accent);
+  padding: 4px 8px; background: var(--accent); color: var(--on-accent);
   border-radius: 4px; font-size: 11px; white-space: nowrap;
-  margin-left: auto; opacity: 0; transition: opacity 0.15s;
+  margin: auto;
 }
-.tree-row:hover .quick-deploy-btn,
-.tree-row:has(:focus-visible) .quick-deploy-btn { opacity: 1; }
 .quick-deploy-btn:hover:not(:disabled) { background: var(--accent2); }
 .quick-deploy-btn:disabled { opacity: 0.5; cursor: wait; }
 </style>

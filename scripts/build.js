@@ -23,6 +23,14 @@ const env = {
 }
 
 try {
+  // 与 CI 口径一致：CI 会跑 vue-tsc，本地跳过会产出「CI 直接拒收」的包
+  console.log('Type checking...')
+  execSync('npm run type-check', { stdio: 'inherit', env })
+
+  console.log('Building CLI / MCP bundle...')
+  // CLI 入口随安装包提供（spec：三平台产物含 CLI 入口），放在 resources/cli/
+  execSync('node scripts/build-cli.js', { stdio: 'inherit', env })
+
   console.log('Building Vite...')
   execSync('vite build', { stdio: 'inherit', env })
 

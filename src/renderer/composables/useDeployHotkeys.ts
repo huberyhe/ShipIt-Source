@@ -1,4 +1,5 @@
 import { onMounted, onUnmounted } from 'vue'
+import { isTextInputTarget } from '../utils/dom'
 
 /**
  * 上传相关全局热键（作用于当前选中项）：
@@ -14,8 +15,7 @@ export function useDeployHotkeys(
   onOpenServerMenu: () => void
 ) {
   function onKeydown(e: KeyboardEvent) {
-    const t = e.target as HTMLElement | null
-    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return
+    if (isTextInputTarget(e.target)) return
     if (!e.ctrlKey || e.altKey || e.metaKey) return
     if (e.code !== 'KeyX') return
     // 统一守卫：无选中项（如切换视图后）或服务器菜单已打开时不响应

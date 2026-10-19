@@ -1,9 +1,15 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { Plus, Trash2, Radio, Check, X, ArrowLeft } from 'lucide-vue-next'
+import { toastError, toastSuccess } from '../../utils/toast'
+import { computed, ref, watch, onMounted } from 'vue'
+import { reportError } from '../../utils/report-error'
+import { Plus, Trash2, Radio, Check, X } from 'lucide-vue-next'
 import { useDeployStore } from '../../stores/deploy'
 import MappingEditor from './MappingEditor.vue'
 import BaseDialog from '../common/BaseDialog.vue'
+import BaseButton from '../common/BaseButton.vue'
+import ConfirmDialog from '../common/ConfirmDialog.vue'
+import FormField from '../common/FormField.vue'
+import EmptyState from '../common/EmptyState.vue'
 
 const deployStore = useDeployStore()
 
@@ -27,6 +33,22 @@ const editingForm = ref({
 })
 const editingMappings = ref<any[]>([]) // 编辑中的映射列表
 
+/**
+ * 目标的**草稿列表**：所有增/改/删先落到这里，由设置窗口底部的全局「确定」统一落盘。
+ *
+ * 为什么不让弹窗直接写配置：设置页的语义是"改完统一保存/取消"。
+ * 弹窗直接写盘会让「取消」无法整体回滚（改了一半再取消，前面几次已经写进去了）。
+ */
+const draftTargets = ref<any[]>([])
+/** 草稿与已落盘列表是否不一致（由它驱动未保存提示与关窗守门） */
+const draftDirty = ref(false)
+
+/** 用已落盘的目标列表重置草稿 */
+function syncDraftFromStore(): void {
+  draftTargets.value = JSON.parse(JSON.stringify(deployStore.targets))
+  draftDirty.value = false
+}
+
 // 每个目标的测试结果独立存储，避免串台
 const testResults = ref<Record<string, { success: boolean; error?: string; testing?: boolean }>>({})
 const formTestResult = ref<{ success: boolean; error?: string } | null>(null)
@@ -34,7 +56,45 @@ const testingId = ref<string | null>(null)
 const isFormTesting = ref(false)
 const tempMap = ref({ localPrefix: '', remotePath: '', description: '' })
 
-onMounted(async () => { await deployStore.loadTargets() })
+onMounted(async () => {
+  await deployStore.loadTargets()
+  syncDraftFromStore()
+})
+
+/**
+ * 脏状态（未保存改动）：
+ * 编辑/新增时把"当前表单 + 映射"序列化为快照，与进入编辑时的基线比较。
+ * 与服务管理保持一致：有改动时提示「未保存」，并在退出编辑前确认，避免白填。
+ */
+const emit = defineEmits<{ 'dirty-change': [value: boolean] }>()
+const baseline = ref('')
+
+function currentSnapshot(): string {
+  return JSON.stringify({
+    ...editingForm.value,
+    mappings: editingMappings.value.map((m: any) => ({
+      localPrefix: m.localPrefix,
+      remotePath: m.remotePath,
+      description: m.description || ''
+    }))
+  })
+}
+
+const isDirty = computed(
+  () => draftDirty.value || (editingId.value !== undefined && currentSnapshot() !== baseline.value)
+)
+watch(isDirty, (value) => emit('dirty-change', value), { immediate: true })
+
+
+/**
+ * Esc / ✕：直接关闭（不二次确认）。
+ *
+ * 未保存提示统一由**设置窗口右上角**显示（弹窗自身不再重复提示），Esc/✕ 是明确的放弃动作。
+ */
+function requestExit() {
+  cancelEdit()
+}
+
 
 function startAdd() {
   editingId.value = null
@@ -43,6 +103,7 @@ function startAdd() {
     username: '', password: '', privateKeyPath: '', passphrase: ''
   }
   editingMappings.value = []
+  baseline.value = currentSnapshot()
 }
 
 function startEdit(target: any) {
@@ -54,14 +115,24 @@ function startEdit(target: any) {
     privateKeyPath: target.privateKeyPath || '', passphrase: target.passphrase || ''
   }
   editingMappings.value = JSON.parse(JSON.stringify(target.mappings || []))
+  baseline.value = currentSnapshot()
 }
 
 function cancelEdit() { editingId.value = undefined }
 
-async function saveTarget() {
-  if (!editingForm.value.name.trim() || !editingForm.value.host.trim()) {
-    window.dispatchEvent(new CustomEvent('toast', { detail: '请填写目标名称和主机地址' }))
-    return
+/**
+ * 保存目标（新增或修改）。
+ * @returns 是否保存成功——由设置页的全局「确定」据此决定能否关闭页面。
+ */
+async function saveTarget(): Promise<boolean> {
+  // 校验与表单里的必填标识（*）保持一致，避免"标了必填却提示别的字段"
+  const missing: string[] = []
+  if (!editingForm.value.name.trim()) missing.push('名称')
+  if (!editingForm.value.host.trim()) missing.push(editingForm.value.protocol === 'local' ? '本地根目录' : '主机')
+  if (editingForm.value.protocol !== 'local' && !editingForm.value.username.trim()) missing.push('用户名')
+  if (missing.length > 0) {
+    toastError(`请填写必填项：${missing.join('、')}`)
+    return false
   }
 
   // 转为纯 JSON 对象，避免 Vue reactive proxy 导致 IPC 克隆失败
@@ -82,28 +153,76 @@ async function saveTarget() {
   }))
 
   try {
+    // 暂存到草稿（等待设置窗口统一保存），不落盘
     if (editingId.value) {
-      await deployStore.updateTarget(editingId.value, data)
+      const idx = draftTargets.value.findIndex((t) => t.id === editingId.value)
+      if (idx >= 0) draftTargets.value[idx] = { ...data, id: editingId.value }
+      else draftTargets.value.push({ ...data, id: editingId.value })
     } else {
-      await deployStore.addTarget(data)
+      draftTargets.value.push({ ...data, id: `draft-${Date.now().toString(36)}` })
     }
+    draftDirty.value = true
     editingId.value = undefined
-    window.dispatchEvent(new CustomEvent('toast-success', { detail: '目标已保存' }))
+    toastSuccess('已加入待保存的修改（点「确定」后生效）')
+    return true
   } catch (err: any) {
-    window.dispatchEvent(new CustomEvent('toast', { detail: '保存失败: ' + (err?.message || String(err)) }))
+    toastError('保存失败: ' + (err?.message || String(err)))
+    return false
   }
 }
+
+/** 暴露给设置页：全局底部「取消 / 确定」需要驱动本分区 */
+/**
+ * 设置窗口底部「确定」调用：把草稿差异统一落盘。
+ * 只提交真正发生变化的项（新增 / 修改 / 删除），避免无谓写盘。
+ * @returns 是否全部成功（失败则保持页面打开，便于用户修正）
+ */
+async function persistDraft(): Promise<boolean> {
+  try {
+    const persisted = deployStore.targets as any[]
+    const draftIds = new Set(draftTargets.value.map((t) => t.id))
+    for (const old of persisted) {
+      if (!draftIds.has(old.id)) await deployStore.removeTarget(old.id)
+    }
+    for (const t of draftTargets.value) {
+      const before = persisted.find((p) => p.id === t.id)
+      if (!before) {
+        const { id, ...rest } = t
+        void id
+        await deployStore.addTarget(JSON.parse(JSON.stringify(rest)))
+      } else if (JSON.stringify(before) !== JSON.stringify(t)) {
+        await deployStore.updateTarget(t.id, JSON.parse(JSON.stringify(t)))
+      }
+    }
+    await deployStore.loadTargets()
+    syncDraftFromStore()
+    return true
+  } catch (err: any) {
+    toastError('保存失败: ' + (err?.message || String(err)))
+    return false
+  }
+}
+
+/** 设置窗口底部「取消」调用：回滚草稿（含未确认的弹窗编辑） */
+function discardDraft(): void {
+  editingId.value = undefined
+  syncDraftFromStore()
+}
+
+defineExpose({ save: persistDraft, discard: discardDraft, cancelEdit, isDirty })
 
 const confirmDelete = ref<any>(null)
 
 function askDelete(target: any) { confirmDelete.value = target }
 
-async function doDelete() {
+function doDelete() {
   if (!confirmDelete.value) return
-  const name = confirmDelete.value.name
-  await deployStore.removeTarget(confirmDelete.value.id)
+  const target = confirmDelete.value
+  // 只从草稿里删（统一保存时才落盘），保证"取消"能把删除一起回滚
+  draftTargets.value = draftTargets.value.filter((t) => t.id !== target.id)
+  draftDirty.value = true
   confirmDelete.value = null
-  window.dispatchEvent(new CustomEvent('toast-success', { detail: `已删除目标 ${name}` }))
+  toastSuccess(`已移出待保存列表：${target.name}`)
 }
 
 async function pickKeyFile() {
@@ -113,7 +232,9 @@ async function pickKeyFile() {
       filters: [{ name: 'All Files', extensions: ['*'] }]
     })
     if (filePath) editingForm.value.privateKeyPath = filePath
-  } catch {}
+  } catch (error) {
+    reportError('选择密钥文件失败', error)
+  }
 }
 
 async function testConnection(target: any) {
@@ -162,18 +283,18 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
 
 <template>
   <div class="target-editor">
-    <!-- ===== 列表视图 ===== -->
+    <!-- ===== 列表视图（编辑时隐藏，由页面内表单接管）=====
+         注意：包裹用的 template **必须带指令**（v-if）：Vue 只在带 v-if/v-for/v-slot 时才展开它，
+         否则会作为真实 HTML 元素渲染，内部内容进入 content 片段而不显示（曾导致列表整块消失）。 -->
     <template v-if="editingId === undefined">
-      <div class="section-header">
+    <div class="section-header">
         <h3>上传目标</h3>
-        <button class="add-btn" @click="startAdd"><Plus :size="14" /> 添加目标</button>
+        <BaseButton variant="primary" size="sm" class="add-btn" @click="startAdd"><Plus :size="14" /> 添加目标</BaseButton>
       </div>
 
-      <div v-if="deployStore.targets.length === 0" class="empty-state">
-        暂无上传目标，请添加一个
-      </div>
+      <EmptyState v-if="draftTargets.length === 0" text="暂无上传目标，请添加一个" size="page" bordered />
 
-      <div v-for="target in deployStore.targets" :key="target.id" class="target-card">
+      <div v-for="target in draftTargets" :key="target.id" class="target-card">
         <div class="target-info">
           <div class="target-primary">
             <span class="target-name">{{ target.name }}</span>
@@ -196,27 +317,31 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
           </div>
         </div>
 
-        <MappingEditor :target-id="target.id" :mappings="target.mappings || []" />
-      </div>
+      <MappingEditor :target-id="target.id" :mappings="target.mappings || []" />
+    </div>
+
     </template>
 
-    <!-- ===== 编辑/新增表单视图 ===== -->
-    <div v-else class="edit-form">
-      <div class="form-header">
-        <h4>{{ editingId ? '编辑目标' : '新增目标' }}</h4>
-        <button class="back-btn" @click="cancelEdit"><ArrowLeft :size="14" /> 返回列表</button>
-      </div>
+    <!-- 编辑/新增目标：**虚拟弹窗**。
+         弹窗里点「确定」只把修改**暂存**到草稿并关闭弹窗（不写配置）；
+         真正落盘由设置窗口底部的全局「确定」统一完成（这样「取消」能整体回滚）。 -->
+    <BaseDialog
+      v-else
+      :title="editingId ? '编辑目标' : '新增目标'"
+      width="680px"
+      :close-on-overlay="false"
+      @close="cancelEdit"
+    >
+      <div class="edit-form">
 
       <!-- 连接 -->
       <div class="form-section">
         <h5 class="form-section-title">连接</h5>
         <div class="form-row">
-          <div class="form-field">
-            <label for="tgt-name">名称</label>
+          <FormField label="名称" for="tgt-name" required>
             <input id="tgt-name" v-model="editingForm.name" placeholder="例如：生产环境" />
-          </div>
-          <div class="form-field">
-            <label for="tgt-protocol">协议</label>
+          </FormField>
+          <FormField label="协议" for="tgt-protocol" class="form-field--narrow">
             <select id="tgt-protocol" v-model="editingForm.protocol" @change="editingForm.port = defaultPort(editingForm.protocol)">
               <option value="sftp">SFTP</option>
               <option value="ftp">FTP</option>
@@ -224,56 +349,55 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
               <option value="ftpes">FTPES (显式 TLS)</option>
               <option value="local">本地目录</option>
             </select>
-          </div>
+          </FormField>
         </div>
 
         <!-- local 协议：主机 = 本地根目录 -->
         <div class="form-row" v-if="editingForm.protocol === 'local'">
-          <div class="form-field flex-2">
-            <label for="tgt-host">本地根目录</label>
+          <FormField
+            label="本地根目录"
+            for="tgt-host"
+            required
+            hint="上传目标为本地/挂载目录"
+            class="form-field--narrow"
+          >
             <input id="tgt-host" v-model="editingForm.host" placeholder="D:\deploy 或 \\server\share" />
-            <span class="field-hint">上传目标为本地/挂载目录</span>
-          </div>
+          </FormField>
         </div>
 
-        <div class="form-row" v-else>
-          <div class="form-field flex-2">
-            <label for="tgt-host">主机</label>
+        <div class="form-row row-host" v-else>
+          <FormField label="主机" for="tgt-host" required>
             <input id="tgt-host" v-model="editingForm.host" placeholder="ftp.example.com" />
-          </div>
-          <div class="form-field flex-1">
-            <label for="tgt-port">端口</label>
+          </FormField>
+          <FormField label="端口" for="tgt-port" class="form-field--port">
             <input id="tgt-port" v-model.number="editingForm.port" type="number" />
-          </div>
+          </FormField>
         </div>
+
       </div>
 
       <!-- 认证（本地目录无需） -->
       <div v-if="editingForm.protocol !== 'local'" class="form-section">
         <h5 class="form-section-title">认证</h5>
         <div class="form-row">
-          <div class="form-field">
-            <label for="tgt-user">用户名</label>
+          <FormField label="用户名" for="tgt-user" required>
             <input id="tgt-user" v-model="editingForm.username" placeholder="root" />
-          </div>
-          <div class="form-field">
-            <label for="tgt-pass">密码</label>
+          </FormField>
+          <FormField label="密码" for="tgt-pass">
             <input id="tgt-pass" v-model="editingForm.password" type="password" placeholder="（可选，留空使用密钥）" />
-          </div>
+          </FormField>
         </div>
 
         <div class="form-row" v-if="editingForm.protocol === 'sftp'">
-          <div class="form-field">
-            <label for="tgt-key">SSH 密钥路径</label>
+          <FormField label="SSH 密钥路径" for="tgt-key">
             <div class="file-picker">
               <input id="tgt-key" v-model="editingForm.privateKeyPath" placeholder="C:\Users\xxx\.ssh\id_rsa" />
-              <button class="browse-btn" aria-label="选择密钥文件" @click="pickKeyFile">浏览...</button>
+              <button class="browse-btn" aria-label="选择密钥文件" title="选择密钥文件" @click="pickKeyFile">浏览</button>
             </div>
-          </div>
-          <div class="form-field">
-            <label for="tgt-passphrase">密钥密码</label>
+          </FormField>
+          <FormField label="密钥密码" for="tgt-passphrase">
             <input id="tgt-passphrase" v-model="editingForm.passphrase" type="password" placeholder="（可选）" />
-          </div>
+          </FormField>
         </div>
       </div>
 
@@ -295,59 +419,60 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
             <button class="mini-add-btn" @click="addTempMapping({ id:Date.now().toString(36), localPrefix:tempMap.localPrefix, remotePath:tempMap.remotePath, description:tempMap.description })">添加</button>
           </div>
         </div>
-      </div>
-
-      <!-- 底部操作区 -->
-      <div class="form-footer">
-        <div class="form-test-bar">
-          <button class="test-btn" :disabled="isFormTesting || !editingForm.host" @click="testFormConnection">
-            <Radio :size="13" /> {{ isFormTesting ? '测试中...' : '测试连接' }}
-          </button>
-          <span v-if="formTestResult" class="test-result-inline" :class="formTestResult.success ? 'success' : 'error'">
-            <component :is="formTestResult.success ? Check : X" :size="12" />
-            {{ formTestResult.success ? '连接成功' : formTestResult.error }}
-          </span>
-        </div>
-        <div class="form-actions">
-          <button class="cancel-btn" @click="cancelEdit">取消</button>
-          <button class="save-btn" @click="saveTarget">{{ editingId ? '保存修改' : '保存目标' }}</button>
-        </div>
-      </div>
     </div>
 
-    <!-- 删除确认 -->
-    <BaseDialog
-      v-if="confirmDelete"
-      title="删除上传目标"
-      width="400px"
-      close-on-overlay
-      @close="confirmDelete = null"
-    >
-      <p class="confirm-text">确定删除上传目标 <strong>{{ confirmDelete.name }}</strong>？<br />此操作不可撤销。</p>
+      </div>
+
       <template #footer>
-        <button class="cancel-btn" @click="confirmDelete = null">取消</button>
-        <button class="danger-btn" @click="doDelete">删除</button>
+        <!-- 顺序：测试结果 → 测试连接 → 取消 → 确定（终点动作在最右）；结果紧贴按钮左侧 -->
+        <span
+          v-if="formTestResult"
+          class="test-result-inline"
+          :class="formTestResult.success ? 'success' : 'error'"
+          :title="formTestResult.success ? '连接成功' : formTestResult.error"
+        >
+          <component :is="formTestResult.success ? Check : X" :size="12" />
+          {{ formTestResult.success ? '连接成功' : formTestResult.error }}
+        </span>
+        <button class="test-btn" :disabled="isFormTesting || !editingForm.host" @click="testFormConnection">
+          <Radio :size="13" /> {{ isFormTesting ? '测试中...' : '测试连接' }}
+        </button>
+        <BaseButton variant="secondary" size="md" class="cancel-btn" @click="cancelEdit">取消</BaseButton>
+        <BaseButton variant="primary" size="md" class="save-btn" @click="saveTarget">确定</BaseButton>
       </template>
     </BaseDialog>
+
+    <!-- 删除确认 -->
+    <ConfirmDialog
+      v-if="confirmDelete"
+      title="删除上传目标"
+      confirm-text="删除"
+      danger
+      width="400px"
+      @confirm="doDelete"
+      @cancel="confirmDelete = null"
+    >
+      确定删除上传目标 <strong>{{ confirmDelete.name }}</strong>？<br />此操作不可撤销。
+    </ConfirmDialog>
   </div>
 </template>
 
 
 <style scoped>
+/* 表单较高：放宽弹窗上限，避免默认就出现纵向滚动条 */
+:deep(.base-dialog) { max-height: 94vh; }
+
 .target-editor { color: var(--fg); }
-.section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.section-header { display: flex; align-items: center; justify-content: space-between; margin: 12px; }
 .section-header h3 { font-size: 13px; font-weight: normal; }
-.add-btn { display: flex; align-items: center; gap: 4px; padding: 6px 14px; background: var(--accent); color: var(--on-accent); border-radius: 4px; font-size: 12px; }
-.add-btn:hover { background: var(--accent2); }
-.empty-state { padding: 24px; text-align: center; color: var(--fg2); border: 1px dashed var(--border); border-radius: 6px; }
-.target-card { background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin-bottom: 12px; }
+.target-card { background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin: 12px; }
 .target-info { display: flex; align-items: center; justify-content: space-between; }
 .target-primary { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .target-name { font-weight: 500; color: var(--fg3); }
-.target-protocol { font-size: 11px; padding: 1px 6px; background: var(--accent); color: var(--on-accent); border-radius: 4px; }
+.target-protocol { font-size: 11px; padding: 1px 4px; background: var(--accent); color: var(--on-accent); border-radius: 4px; }
 .target-host { font-size: 12px; color: var(--fg2); }
-.target-actions { display: flex; gap: 6px; }
-.icon-btn { display: flex; align-items: center; gap: 4px; padding: 6px 12px; background: var(--bg4); color: var(--fg); border: 1px solid var(--border2); border-radius: 4px; font-size: 11px; min-height: 30px; }
+.target-actions { display: flex; gap: 4px; }
+.icon-btn { display: flex; align-items: center; gap: 4px; padding: 4px 12px; background: var(--bg4); color: var(--fg); border: 1px solid var(--border2); border-radius: 4px; font-size: 11px; min-height: 30px; }
 .icon-btn:hover:not(:disabled) { background: var(--bg5); color: var(--fg3); }
 .icon-btn:disabled { opacity: 0.4; }
 .icon-btn.danger:hover { background: var(--red-bg2); color: var(--red); border-color: var(--red); }
@@ -361,65 +486,89 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
 .spin { animation: spin 1s linear infinite; }
 
 /* 表单视图 */
-.edit-form { background: var(--bg3); border: 1px solid var(--status-bar); border-radius: 8px; padding: 16px; }
-.form-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
-.form-header h4 { font-size: 14px; font-weight: 500; }
-.back-btn { display: flex; align-items: center; gap: 4px; padding: 5px 10px; background: transparent; color: var(--fg2); border: 1px solid var(--border); border-radius: 4px; font-size: 12px; }
-.back-btn:hover { background: var(--border); color: var(--fg); }
+/* 表单是弹窗内容：BaseDialog 的 body 本身无内边距，这里补上四周留白，
+   否则分区块会直接贴到对话框边框上（拥挤、无呼吸感） */
+.edit-form { display: flex; flex-direction: column; padding: 16px 20px; }
+
+/* 目标表单偏长：把该弹窗放宽限高（BaseDialog 默认 80vh），尽量一屏放下、少滚动 */
+:deep(.base-dialog) { max-height: 88vh; }
+/* 弹窗 footer：结果在最左、其后测试连接、终点动作（取消/保存）最右 */
+/* 结果紧跟「测试连接」按钮左侧：不用 margin-right:auto（那会把它推到 footer 最左端、
+ * 与按钮之间留一大段空白，视线要横跨整个底部才能对上）。
+ * max-width + 省略号：连接错误可能很长，避免把按钮挤走；完整内容在 title 里可悬停查看。 */
+.test-result-inline {
+  display: inline-flex; align-items: center; gap: 4px;
+  max-width: 320px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  font-size: 11px;
+}
+.test-result-inline.success { color: var(--green); }
+.test-result-inline.error { color: var(--red); }
 
 /* 分组 */
-.form-section { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin-bottom: 10px; }
-.form-section-title {
-  font-size: 11px; color: var(--fg2); font-weight: 600;
-  text-transform: uppercase; letter-spacing: 0.5px;
-  margin-bottom: 10px;
+/* 分区块只描边不填色：浅色主题里 --bg(白) 会显得"浮起"、深色主题里 --bg 又比容器更暗（凹陷），
+   两套主题的层次关系相反；透明背景让"容器 + 描边分组"在两种主题下观感一致 */
+.form-section {
+  background: transparent; border: 1px solid var(--border); border-radius: 6px;
+  padding: 16px; margin: 0 0 12px;   /* 内边距 16：字段不再贴区块边框 */
 }
-.form-row { display: flex; gap: 12px; margin-bottom: 10px; }
-.form-row:last-child { margin-bottom: 0; }
-.form-field { flex: 1; display: flex; flex-direction: column; gap: 4px; }
-.form-field.flex-2 { flex: 2; }
-.form-field.flex-1 { flex: 1; }
-.form-field label { font-size: 11px; color: var(--fg2); }
-.field-hint { font-size: 10px; color: var(--fg2); opacity: 0.8; }
-.form-field input, .form-field select { padding: 7px 9px; background: var(--input-bg); color: var(--fg); border: 1px solid var(--border); border-radius: 4px; font-size: 12px; outline: none; transition: border-color 0.15s ease, box-shadow 0.15s ease; }
-.form-field input:focus, .form-field select:focus { border-color: var(--status-bar); box-shadow: 0 0 0 2px var(--accent3); }
-.file-picker { display: flex; gap: 4px; }
+.form-section:last-child { margin-bottom: 0; }
+.form-section-title {
+  /* 区块标题：13px + 主文本色，读得出来（此前 11px 灰 + uppercase/字距，层次几乎不可见）；
+     左边距与其他字段对齐（margin 只留底部） */
+  font-size: 13px; color: var(--fg); font-weight: 600;
+  margin: 0 0 12px;
+}
+/* 统一两列等宽栅格：此前各行用 flex 比例（1:1 / 2:1）导致列宽不一致、输入框长度怪异 */
+/* 所有行统一 8px 纵向间距、左右不缩进：此前 :last-child { margin: 0 } 让最后一行少 8px 缩进，
+   同一区块内两行的左边缘会差 8px（"主机"比"名称"靠左） */
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 0 0 12px; }
+/* 窄字段：协议(160px) / 端口(120px) —— 左边缘仍落在统一栅格的列起点上，
+   只是控件本身不长，避免"SFTP"这种短内容占用一整列 */
+.form-field--narrow { max-width: 160px; }
+.form-field--port { max-width: 120px; }
+.form-row.row-host { grid-template-columns: 1fr 1fr; }
+
+/* 密钥路径：按钮内嵌在输入框右侧（不占位）→ 与其它输入框等宽、右边缘对齐 */
+.file-picker { position: relative; display: flex; }
 .file-picker input { flex: 1; }
-.browse-btn { padding: 7px 12px; background: var(--bg4); color: var(--fg); border: 1px solid var(--border2); border-radius: 4px; font-size: 12px; white-space: nowrap; }
+.browse-btn {
+  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+  padding: 2px 8px; background: var(--bg4); color: var(--fg);
+  border: 1px solid var(--border); border-radius: 4px; font-size: 11px; white-space: nowrap;
+}
+.file-picker input { padding-right: 60px; }
 .browse-btn:hover { background: var(--bg5); color: var(--fg3); }
 
-.edit-mapping-row { display: flex; align-items: center; gap: 6px; padding: 4px 0; font-size: 11px; }
-.edit-mapping-row code { padding: 2px 6px; border-radius: 4px; font-size: 10px; }
+.edit-mapping-row { display: flex; align-items: center; gap: 4px; padding: 4px 0; font-size: 11px; }
+.edit-mapping-row code { padding: 4px 4px; border-radius: 4px; font-size: 11px; }
 .edit-mapping-row code:first-child { background: var(--green-bg); color: var(--green); }
 .edit-mapping-row code:last-of-type { background: var(--blue-bg); color: var(--blue); }
 .map-arrow { color: var(--fg2); flex-shrink: 0; }
-.map-desc { color: var(--fg2); font-size: 10px; margin-left: auto; }
-.edit-mapping-add { margin-top: 6px; padding-top: 8px; border-top: 1px dashed var(--border); }
-.inline-form { display: flex; align-items: center; gap: 6px; }
-.inline-input { padding: 5px 8px; background: var(--input-bg); color: var(--fg); border: 1px solid var(--border); border-radius: 4px; font-size: 11px; outline: none; flex: 1; min-width: 0; }
+.map-desc { color: var(--fg2); font-size: 11px; margin: auto; }
+.edit-mapping-add { margin: 4px; padding: 8px; border-top: 1px dashed var(--border); }
+.inline-form { display: flex; align-items: center; gap: 4px; }
+.inline-input { padding: 4px 8px; background: var(--input-bg); color: var(--fg); border: 1px solid var(--border); border-radius: 4px; font-size: 11px; outline: none; flex: 1; min-width: 0; }
 .inline-input.flex-remote { flex: 2; }
 .inline-input:focus { border-color: var(--status-bar); box-shadow: 0 0 0 2px var(--accent3); }
-.mini-add-btn { padding: 5px 12px; background: var(--accent); color: var(--on-accent); border-radius: 4px; font-size: 11px; }
-.mini-add-btn:hover { background: var(--accent2); }
-.mini-btn.danger { padding: 5px; background: transparent; color: var(--fg2); border-radius: 4px; font-size: 11px; display: flex; align-items: center; }
+/* 次要动作（表单内"添加映射"）：与列表里的 MappingEditor.add-btn 保持同一级别，
+   主色实心只留给当前视图的终点动作（保存目标），避免同页多个"主按钮"让人误点 */
+.mini-add-btn { padding: 4px 12px; background: transparent; color: var(--accent-text); border: 1px solid var(--accent-text); border-radius: 4px; font-size: 11px; }
+.mini-add-btn:hover { background: var(--accent); color: var(--on-accent); }
+.mini-btn.danger { padding: 4px; background: transparent; color: var(--fg2); border-radius: 4px; font-size: 11px; display: flex; align-items: center; }
 .mini-btn.danger:hover { background: var(--red-bg2); color: var(--red); }
 
 /* 底部操作区 */
-.form-footer { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
-.form-test-bar { display: flex; align-items: center; gap: 10px; }
-.test-btn { display: flex; align-items: center; gap: 4px; padding: 6px 14px; background: var(--bg4); color: var(--fg); border: 1px solid var(--border2); border-radius: 4px; font-size: 12px; }
+
+.test-btn { display: flex; align-items: center; gap: 4px; padding: 4px 16px; background: var(--bg4); color: var(--fg); border: 1px solid var(--border2); border-radius: 4px; font-size: 12px; }
 .test-btn:hover:not(:disabled) { background: var(--bg5); color: var(--fg3); }
 .test-btn:disabled { opacity: 0.4; }
 .test-result-inline { display: flex; align-items: center; gap: 4px; font-size: 12px; }
 .test-result-inline.success { color: var(--green); }
 .test-result-inline.error { color: var(--red); }
 
-.form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
-.cancel-btn { padding: 7px 18px; background: var(--bg4); color: var(--fg); border: 1px solid var(--border2); border-radius: 4px; }
-.cancel-btn:hover { background: var(--bg5); color: var(--fg3); }
-.save-btn { padding: 7px 18px; background: var(--accent); color: var(--on-accent); border-radius: 4px; }
-.save-btn:hover { background: var(--accent2); }
-.confirm-text { font-size: 13px; color: var(--fg); line-height: 1.6; padding: 8px 16px; }
-.danger-btn { padding: 7px 18px; background: var(--red); color: var(--on-danger); border-radius: 4px; }
-.danger-btn:hover { background: var(--red-bg2); }
+/* 必填标记：红色星号（配合表单提交前的校验提示） */
+/* 测试连接行：靠左贴近"连接"参数 */
+
+
+
 </style>

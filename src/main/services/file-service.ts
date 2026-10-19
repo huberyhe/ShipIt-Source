@@ -1,6 +1,6 @@
 import { promises as fs } from 'fs'
 import { join, relative, sep, basename } from 'path'
-import { IGNORE_DIRS } from './ignore-dirs'
+import { IGNORE_DIRS, UPLOAD_SKIP_DIRS } from './ignore-dirs'
 
 export interface FileEntry {
   name: string
@@ -41,6 +41,47 @@ export class FileService {
       await this._collect(dirPath, results)
     } catch { /* ignore */ }
     return results
+  }
+
+  /**
+   * 递归收集目录下所有文件（**上传遍历**用）。
+   *
+   * 与 `collectAllFiles`（文件树浏览）的区别：不跳过 dist/build/target/vendor 等构建产物目录，
+   * 只跳过 .git 与 node_modules；顶层目录不可读时**向上抛错**（由调用方转成明确提示），
+   * 不静默返回空集合 —— 空集合会被误报成「目录内没有文件」。
+   */
+  async collectFilesForUpload(dirPath: string, maxFiles: number = Number.POSITIVE_INFINITY): Promise<string[]> {
+    const results: string[] = []
+    await this._collectForUpload(dirPath, results, true, maxFiles)
+    return results
+  }
+
+  private async _collectForUpload(
+    dirPath: string,
+    results: string[],
+    top: boolean,
+    maxFiles: number = Number.POSITIVE_INFINITY
+  ): Promise<void> {
+    // 提前收手：上限在**遍历中**生效，而不是把整个目录收完再报错
+    // （百万文件目录会在报错前先吃掉大量内存/时间，P2-9）
+    if (results.length > maxFiles) return
+    let entries
+    try {
+      entries = await fs.readdir(dirPath, { withFileTypes: true })
+    } catch (error) {
+      if (top) throw error
+      return // 子目录不可读：跳过该子树，但如实保留已收集的部分
+    }
+    for (const entry of entries) {
+      if (results.length > maxFiles) return
+      if (UPLOAD_SKIP_DIRS.has(entry.name)) continue
+      // 不跟随符号链接/junction：指向项目外的链接会把外部文件带回上传集合（P1-5），
+      // 指向自身的环状链接还会让递归无法收敛。
+      if (entry.isSymbolicLink()) continue
+      const fullPath = join(dirPath, entry.name)
+      if (entry.isDirectory()) await this._collectForUpload(fullPath, results, false, maxFiles)
+      else results.push(fullPath)
+    }
   }
 
   private async _collect(dirPath: string, results: string[]): Promise<void> {

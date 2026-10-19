@@ -4,6 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ShipIt</title>
+    <!-- 首帧前就用主题底色填充，避免加载期间露出白底（跟随系统/应用主题） -->
+    <style>
+      html, body { margin: 0; background: #1e1e1e; }
+      @media (prefers-color-scheme: light) {
+        html, body { background: #ffffff; }
+      }
+    </style>
   </head>
   <body>
     <div id="app"></div>

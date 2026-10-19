@@ -1,10 +1,10 @@
 {
   "name": "shipit",
-  "version": "1.0.3",
+  "version": "1.2.0",
   "description": "ShipIt - 开发者文件发布工具，支持 FTP/SFTP/FTPS 一键上传到多台服务器",
   "author": {
     "name": "huberyhe",
-    "email": "huberyhe@example.com"
+    "email": "hyc171819@gmail.com"
   },
   "main": "dist-electron/index.js",
   "scripts": {
@@ -13,14 +13,20 @@
     "preview": "vite preview",
     "test": "vitest run",
     "type-check": "vue-tsc --noEmit",
-    "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",
+    "electron:dev": "cross-env NODE_ENV=development vite",
     "electron:build": "node scripts/build.js",
-    "gen:icon": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/gen-icon.ps1 && node scripts/build-ico.cjs"
+    "build:cli": "node scripts/build-cli.js",
+    "publish:cli": "npm run build:cli && npm publish ./dist-cli --access public",
+    "gen:icon": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/gen-icon.ps1 && node scripts/build-ico.cjs",
+    "electron:dev:legacy": "concurrently \"vite\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",
+    "audit:ui": "node --experimental-websocket scripts/ui-audit.mjs"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "basic-ftp": "^5.0.0",
     "lucide-vue-next": "^0.344.0",
     "pinia": "^2.1.7",
+    "selfsigned": "^5.5.0",
     "simple-git": "^3.20.0",
     "ssh2-sftp-client": "^9.1.0",
     "vue": "^3.4.0"
@@ -33,6 +39,7 @@
     "cross-env": "^7.0.3",
     "electron": "^28.0.0",
     "electron-builder": "^24.9.0",
+    "esbuild": "^0.21.5",
     "typescript": "^5.3.0",
     "vite": "^5.0.0",
     "vite-plugin-electron": "^0.28.0",
@@ -97,7 +104,20 @@
       {
         "from": "build/icon.png",
         "to": "icon.png"
+      },
+      {
+        "from": "dist-cli",
+        "to": "cli"
       }
     ]
-  }
+  },
+  "license": "MIT",
+  "bin": {
+    "shipit": "dist-cli/index.js"
+  },
+  "files": [
+    "dist-cli/",
+    "README.md",
+    "LICENSE"
+  ]
 }

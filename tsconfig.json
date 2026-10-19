@@ -28,6 +28,8 @@
     "src/renderer/**/*.vue",
     "src/shared/**/*.ts",
     "src/main/**/*.ts",
+    "src/cli/**/*.ts",
+    "scripts/**/*.ts",
     "vite.config.ts"
   ]
 }

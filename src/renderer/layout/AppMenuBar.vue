@@ -3,16 +3,16 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import {
   FolderOpen, History, XCircle, LogOut,
   FolderTree, GitCommit, GitBranch, Monitor, Sun, Moon,
-  PanelBottom, RotateCw, Server, Keyboard, Info
+  PanelBottom, RotateCw, Keyboard, Info, Settings as SettingsIcon
 } from 'lucide-vue-next'
-import ContextMenu, { type ContextMenuItem } from '../components/common/ContextMenu.vue'
+import ContextMenu from '../components/common/ContextMenu.vue'
+import type { ContextMenuItem } from '../types/context-menu'
+import { shortenPath } from '../utils/path-display'
 import { useUiStore } from '../stores/ui'
 import { useProjectStore } from '../stores/project'
-import { useFilesStore } from '../stores/files'
 
 const uiStore = useUiStore()
 const projectStore = useProjectStore()
-const filesStore = useFilesStore()
 
 // 展开中的菜单：仅记录 label 与位置，items 实时取自 menus（数据变化时自动刷新，如清除最近项目后）
 const openMenuLabel = ref<string | null>(null)
@@ -28,9 +28,12 @@ function appAction(action: string, payload?: any) {
   window.deployApi.appAction(action, payload)
 }
 
-function closeProject() {
-  projectStore.projectPath = null
-  filesStore.clearSelection()
+/**
+ * 关闭项目 ≠ 只清空项目：项目窗口要连窗口一起关（托盘列表随之移除）。
+ * 角色判定在 App.vue（以主进程登记的 role 为准），菜单只负责发起同一件事。
+ */
+function requestCloseProject() {
+  window.dispatchEvent(new CustomEvent('close-project'))
 }
 
 
@@ -38,7 +41,7 @@ function recentProjectItems(): ContextMenuItem[] {
   const list = projectStore.recentProjects || []
   if (list.length === 0) return [{ label: '(无最近项目)', disabled: true }]
   const items: ContextMenuItem[] = list.map(p => ({
-    label: p.length > 50 ? '...' + p.slice(-46) : p,
+    label: shortenPath(p, { maxChars: 50 }),
     icon: History,
     action: () => appAction('open-recent', p)
   }))
@@ -55,6 +58,7 @@ function recentProjectItems(): ContextMenuItem[] {
 }
 
 const menus = computed<Array<{ label: string; items: ContextMenuItem[] }>>(() => {
+  // 有项目 ⇔ 该窗口是项目窗口（就地打开会提升角色；关闭项目会销毁窗口），因此用它判定即可
   const hasProject = !!projectStore.projectPath
   return [
     {
@@ -64,7 +68,10 @@ const menus = computed<Array<{ label: string; items: ContextMenuItem[] }>>(() =>
         { label: 'separator' },
         { label: '最近打开的项目', icon: History, children: recentProjectItems() },
         { label: 'separator' },
-        { label: '关闭项目', icon: XCircle, shortcut: 'Ctrl+W', disabled: !hasProject, action: closeProject },
+        { label: '关闭项目窗口', icon: XCircle, shortcut: 'Ctrl+W', disabled: !hasProject, action: requestCloseProject },
+        { label: 'separator' },
+        // 全局配置（上传目标 + 本地服务）统一入口：设置窗口（单实例）
+        { label: '设置', icon: SettingsIcon, shortcut: 'Ctrl+,', action: () => void window.deployApi.openSettings('targets') },
         { label: 'separator' },
         { label: '退出', icon: LogOut, shortcut: 'Alt+F4', action: () => appAction('quit') }
       ]
@@ -85,12 +92,6 @@ const menus = computed<Array<{ label: string; items: ContextMenuItem[] }>>(() =>
         { label: '显示/折叠上传日志', icon: PanelBottom, action: () => uiStore.toggleLogPanel() },
         { label: 'separator' },
         { label: '重新加载', icon: RotateCw, action: () => appAction('reload') }
-      ]
-    },
-    {
-      label: '设置',
-      items: [
-        { label: '上传目标管理', icon: Server, shortcut: 'Ctrl+,', action: () => window.dispatchEvent(new CustomEvent('open-settings')) }
       ]
     },
     {
@@ -162,16 +163,17 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 
 <style scoped>
 .app-menu-bar {
-  display: flex; align-items: center; gap: 2px;
-  height: 30px; padding: 0 6px;
+  display: flex; align-items: center; gap: 4px;
+  height: 30px; padding: 0 4px;
   background: var(--bg2);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 .menu-label {
-  padding: 3px 10px; background: transparent; color: var(--fg);
+  padding: 4px 8px; background: transparent; color: var(--fg);
   border-radius: 4px; font-size: 12px;
 }
-.menu-label:hover { background: var(--border); }
+/* 悬浮底色统一用 bg3（与工具条/图标按钮一致）；--border 是描边色，当底色用会发灰 */
+.menu-label:hover { background: var(--bg3); }
 .menu-label.active { background: var(--accent3); }
 </style>

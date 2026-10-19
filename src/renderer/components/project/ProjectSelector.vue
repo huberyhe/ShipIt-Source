@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { FolderOpen, Folder, ArrowRight } from 'lucide-vue-next'
+import { FolderOpen, Folder, ArrowRight, X } from 'lucide-vue-next'
+import { shortenPath } from '../../utils/path-display'
 
 defineProps<{
   recentProjects: string[]
@@ -8,6 +9,8 @@ defineProps<{
 const emit = defineEmits<{
   opened: [path: string]
   openRecent: [path: string]
+  /** 移除单条最近记录（由父组件执行 IPC + 刷新列表） */
+  removeRecent: [path: string]
 }>()
 
 async function handleOpen() {
@@ -31,16 +34,22 @@ async function handleOpen() {
 
       <div v-if="recentProjects.length > 0" class="recent-section">
         <h3>最近打开的项目</h3>
-        <div
-          v-for="proj in recentProjects"
-          :key="proj"
-          class="recent-item"
-          @click="emit('openRecent', proj)"
-        >
-          <Folder :size="14" />
-          <span class="recent-path">{{ proj }}</span>
-          <ArrowRight :size="14" class="arrow" />
+        <div v-for="proj in recentProjects" :key="proj" class="recent-row">
+          <button type="button" class="recent-item" :title="proj" @click="emit('openRecent', proj)">
+            <Folder :size="14" />
+            <!-- 长路径省略中段（与状态栏同一实现），完整路径见 title -->
+            <span class="recent-path">{{ shortenPath(proj, { maxChars: 56 }) }}</span>
+            <ArrowRight :size="14" class="arrow" />
+          </button>
+          <button
+            type="button"
+            class="recent-remove"
+            :aria-label="`从最近项目移除 ${proj}`"
+            title="从最近项目移除"
+            @click.stop="emit('removeRecent', proj)"
+          ><X :size="12" /></button>
         </div>
+
       </div>
     </div>
   </div>
@@ -57,19 +66,21 @@ async function handleOpen() {
 
 .selector-card {
   text-align: center;
-  max-width: 500px;
+  /* 固定宽度：此前卡片按最长一行自适应，导致"路径长的那行背景更长"、各行不齐 */
+  width: 460px;
+  max-width: 90vw;
 }
 
 .app-title {
   font-size: 28px;
   color: var(--fg3);
-  margin-bottom: 8px;
+  margin: 8px;
 }
 
 .app-subtitle {
   font-size: 14px;
   color: var(--fg2);
-  margin-bottom: 32px;
+  margin: 32px;
 }
 
 .open-btn {
@@ -89,19 +100,34 @@ async function handleOpen() {
 }
 
 .recent-section {
-  margin-top: 40px;
+  margin: 24px 0 0;
   text-align: left;
 }
 
 .recent-section h3 {
   font-size: 12px;
   color: var(--fg2);
-  margin-bottom: 12px;
+  margin: 12px;
   text-transform: uppercase;
   letter-spacing: 1px;
 }
 
+/* 最近项目行：条目 + 移除按钮并排（移除按钮 hover 才显示，避免列表噪音） */
+.recent-row { display: flex; align-items: center; gap: 4px; }
+.recent-remove {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; padding: 0;
+  background: transparent; color: var(--fg2);
+  border: 1px solid transparent; border-radius: 4px; cursor: pointer;
+  opacity: 0; transition: opacity 0.15s;
+}
+.recent-row:hover .recent-remove { opacity: 1; }
+.recent-remove:hover { background: var(--red-bg2); color: var(--red); }
+.recent-remove:focus-visible { opacity: 1; }
+
+
 .recent-item {
+  width: 100%; text-align: left; font: inherit; cursor: pointer;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -118,6 +144,8 @@ async function handleOpen() {
 
 .recent-path {
   flex: 1;
+  /* min-width:0 才能让 flex 项收缩到内容宽度以下（否则长路径把行撑宽、各行背景不齐） */
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

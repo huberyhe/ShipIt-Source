@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { reportError } from '../utils/report-error'
 import { ref } from 'vue'
 import type { GitBranchInfo, GitChangeInfo, GitCommitInfo } from '../../shared/types'
 
@@ -9,6 +10,13 @@ export const useGitStore = defineStore('git', () => {
   const ahead = ref(0)
   const behind = ref(0)
   const commits = ref<GitCommitInfo[]>([])
+  /**
+   * 日志是否已**全部取完**（本次请求返回的条数少于请求上限 = 服务端再没有更多）。
+   *
+   * 用途：视图据此隐藏「加载更多」——否则取完之后按钮仍在，点了也不会变化，
+   * 用户会以为"日志还有更多"而反复点击。
+   */
+  const logExhausted = ref(false)
   const branches = ref<GitBranchInfo[]>([])
   const authors = ref<string[]>([])
   const isLoading = ref(false)
@@ -16,9 +24,7 @@ export const useGitStore = defineStore('git', () => {
   const isAnalyzing = ref(false)
 
   // 筛选状态
-  const logBranchFilter = ref<string>('')
-  const logAuthorFilter = ref<string>('')
-  /** 筛选被重置的信号（每次 resetLogFilters 自增）：
+    /** 筛选被重置的信号（每次 resetLogFilters 自增）：
    *  挂载中的日志视图据此清空本地选择并重新加载，不依赖 projectPath 是否发生“变化” */
   const logFilterResetToken = ref(0)
 
@@ -41,8 +47,8 @@ export const useGitStore = defineStore('git', () => {
       if (seq !== refsSeq) return // 已有更新的请求，丢弃本次响应
       branches.value = branchList
       if (authorList) authors.value = authorList
-    } catch {
-      // ignore
+    } catch (error) {
+      reportError('加载分支/提交者失败', error)
     } finally {
       refsInFlight.delete(dir)
     }
@@ -50,8 +56,7 @@ export const useGitStore = defineStore('git', () => {
 
   /** 重置日志筛选：分支/提交者不跨项目通用，切换/重开项目时必须清空 */
   function resetLogFilters() {
-    logBranchFilter.value = ''
-    logAuthorFilter.value = ''
+    // 只做"通知视图清空筛选"：真正的筛选值归 uiStore（单一来源），由视图据此重置
     logFilterResetToken.value++
   }
 
@@ -91,8 +96,8 @@ export const useGitStore = defineStore('git', () => {
       changes.value = statusView.changes
       ahead.value = statusView.ahead
       behind.value = statusView.behind
-    } catch {
-      // ignore
+    } catch (error) {
+      reportError('加载 Git 状态失败', error)
     } finally {
       statusInFlight.delete(dir)
       if (!silent) {
@@ -106,19 +111,27 @@ export const useGitStore = defineStore('git', () => {
    * 加载提交历史
    * @param silent 静默刷新：不触发列表"加载中"状态
    */
-  async function loadGitLog(dir: string, maxCount: number = 50, silent = false) {
+  async function loadGitLog(
+    dir: string,
+    opts: { branch?: string; author?: string; maxCount?: number; silent?: boolean } = {}
+  ) {
+    const maxCount = opts.maxCount ?? 50
+    const silent = opts.silent ?? false
     if (logInFlight.has(dir)) return
     logInFlight.add(dir)
     const seq = ++logSeq
     if (!silent) { logPending++; isLoading.value = true }
     try {
+      // 筛选值由调用方（视图）显式传入：store 不再持有第二份筛选状态，
+      // 避免"下拉显示"与"实际查询"各持一份而漂移（此前是 4 份副本 + 3 处手工同步）。
       const list = await window.deployApi.getGitLog(dir, {
-        branch: logBranchFilter.value || undefined,
-        author: logAuthorFilter.value || undefined,
+        branch: opts.branch || undefined,
+        author: opts.author || undefined,
         maxCount
       })
       if (seq !== logSeq) return // 已有更新的请求，丢弃本次响应
       commits.value = list
+      logExhausted.value = list.length < maxCount
     } finally {
       logInFlight.delete(dir)
       if (!silent) {
@@ -143,12 +156,11 @@ export const useGitStore = defineStore('git', () => {
     ahead,
     behind,
     commits,
+    logExhausted,
     branches,
     authors,
     isLoading,
     isAnalyzing,
-    logBranchFilter,
-    logAuthorFilter,
     logFilterResetToken,
     loadGitStatus,
     loadGitLog,

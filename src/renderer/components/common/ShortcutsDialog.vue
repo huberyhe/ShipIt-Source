@@ -9,8 +9,8 @@ const shortcuts = [
   { keys: ['Ctrl', '1'], desc: '文件树' },
   { keys: ['Ctrl', '2'], desc: 'Git 变更' },
   { keys: ['Ctrl', '3'], desc: 'Git 日志' },
-  { keys: ['Ctrl', ','], desc: '上传目标管理' },
-  { keys: ['Ctrl', 'W'], desc: '关闭项目' },
+  { keys: ['Ctrl', ','], desc: '设置' },
+  { keys: ['Ctrl', 'W'], desc: '关闭项目窗口' },
   { keys: ['Ctrl', 'X'], desc: '快速上传选中项' },
   { keys: ['Ctrl', 'Shift', 'X'], desc: '选择服务器上传' }
 ]
@@ -33,13 +33,13 @@ const shortcuts = [
 .shortcuts { padding: 8px 16px; }
 .shortcut-row {
   display: flex; align-items: center; gap: 16px;
-  padding: 7px 0;
+  padding: 8px 0;
   border-bottom: 1px solid var(--bg3);
 }
 .shortcut-row:last-child { border-bottom: none; }
 .keys { display: flex; gap: 4px; width: 160px; flex-shrink: 0; }
 kbd {
-  padding: 2px 8px;
+  padding: 4px 8px;
   background: var(--bg5); color: var(--fg);
   border: 1px solid var(--border2); border-bottom-width: 2px;
   border-radius: 4px;

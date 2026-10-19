@@ -1,8 +1,33 @@
 <script setup lang="ts">
+import type { DeployLogEntry } from '../types'
+
+/** 项目徽标：队列全局共享（多项目多窗口），条目要能一眼看出属于哪个项目 */
+function projectLabel(log: DeployLogEntry): string {
+  if (!log.projectRoot) return ''
+  const parts = log.projectRoot.replace(/\\/g, '/').split('/').filter(Boolean)
+  return parts[parts.length - 1] ?? ''
+}
+
+/** 来源三值标注：桌面 / CLI / MCP（D-25 / AC-037） */
+function originLabel(origin: DeployLogEntry['origin']): string {
+  if (origin === 'cli') return 'CLI'
+  if (origin === 'mcp') return 'MCP'
+  return '桌面'
+}
+
+function originTitle(log: DeployLogEntry): string {
+  const parts = [`来源：${originLabel(log.origin)}`]
+  if (log.projectRoot) parts.push(`项目：${log.projectRoot}`)
+  if (log.remoteAddress) parts.push(`来源地址：${log.remoteAddress}`)
+  parts.push(`任务：${log.taskId}`)
+  return parts.join('\n')
+}
 import { computed, ref } from 'vue'
-import { ChevronDown, ChevronRight, Check, X, Trash2 } from 'lucide-vue-next'
+import { ChevronDown, ChevronRight, Check, X, Trash } from 'lucide-vue-next'
 import { useUiStore } from '../stores/ui'
 import { useDeployStore } from '../stores/deploy'
+import EmptyState from '../components/common/EmptyState.vue'
+import { shortenPath } from '../utils/path-display'
 
 const uiStore = useUiStore()
 const deployStore = useDeployStore()
@@ -15,12 +40,19 @@ function toggleLog(taskId: string) {
   expandedLogs.value = s
 }
 
-// 长路径中间省略，hover 显示完整
-function shorten(path: string, maxLen = 48): string {
-  if (!path || path.length <= maxLen) return path
-  const headLen = Math.floor(maxLen * 0.4)
-  const tailLen = maxLen - headLen
-  return path.slice(0, headLen) + '…' + path.slice(-tailLen)
+/**
+ * 日志里的路径显示：本地路径与远端路径**必须用同一套省略规则**。
+ *
+ * 此前两处各写一份：本地 `shorten(p)` 用 48 字符、远端 `shorten(p, 40)` 用 40 字符，
+ * 远端还被 CSS 的 `max-width: 200px` 二次截断 —— 同一行里两种省略方式，读起来像两个系统。
+ * 现在统一调用 shared 的 `shortenPath`（按路径段保留头尾，与状态栏/最近项目一致）。
+ */
+const LOG_PATH_MAX_CHARS = 48
+const pathText = (path: string): string => shortenPath(path, { maxChars: LOG_PATH_MAX_CHARS })
+
+/** 错误文本不是路径：按字符保留开头（错误码/首因通常在前），不要按 / 分段 */
+function truncateText(text: string, maxChars = 60): string {
+  return text.length <= maxChars ? text : text.slice(0, maxChars - 1) + '…'
 }
 
 // 完整日期时间：YYYY-MM-DD HH:mm:ss
@@ -33,7 +65,15 @@ function formatTime(ts: number): string {
 
 <template>
   <div class="log-panel" :class="{ expanded: uiStore.logPanelExpanded, collapsed: !uiStore.logPanelExpanded }">
-    <div class="log-header" @click="uiStore.toggleLogPanel()">
+    <div
+      class="log-header"
+      role="button"
+      tabindex="0"
+      :aria-expanded="uiStore.logPanelExpanded"
+      @click="uiStore.toggleLogPanel()"
+      @keydown.enter.prevent="uiStore.toggleLogPanel()"
+      @keydown.space.prevent="uiStore.toggleLogPanel()"
+    >
       <component :is="uiStore.logPanelExpanded ? ChevronDown : ChevronRight" :size="14" />
       <span>上传日志</span>
       <span v-if="hasLogs" class="log-count">({{ deployStore.deployLogs.length }})</span>
@@ -43,17 +83,31 @@ function formatTime(ts: number): string {
         title="清空日志"
         aria-label="清空日志"
         @click.stop="deployStore.clearLogs()"
-      ><Trash2 :size="12" /></button>
+      ><Trash :size="14" /></button>
     </div>
     <div v-if="uiStore.logPanelExpanded" class="log-content">
-      <div v-if="!hasLogs" class="log-empty">暂无上传记录</div>
+      <EmptyState v-if="!hasLogs" text="暂无上传记录" size="inline" />
       <div v-for="log in deployStore.deployLogs" :key="log.taskId">
-        <div class="log-entry" @click="toggleLog(log.taskId)">
+        <div
+          class="log-entry"
+          role="button"
+          tabindex="0"
+          :aria-expanded="expandedLogs.has(log.taskId)"
+          @click="toggleLog(log.taskId)"
+          @keydown.enter.prevent="toggleLog(log.taskId)"
+          @keydown.space.prevent="toggleLog(log.taskId)"
+        >
           <span class="expand-arrow">
             <component :is="expandedLogs.has(log.taskId) ? ChevronDown : ChevronRight" :size="12" />
           </span>
           <component :is="log.cancelled ? X : log.failed === 0 ? Check : X" :size="12" :class="log.cancelled ? 'cancelled' : log.failed === 0 ? 'success' : 'error'" />
           <span class="log-time" :title="formatTime(log.timestamp)">{{ formatTime(log.timestamp) }}</span>
+          <span
+            class="log-origin"
+            :class="log.origin"
+            :title="originTitle(log)"
+          >{{ originLabel(log.origin) }}</span>
+          <span v-if="projectLabel(log)" class="log-project" :title="log.projectRoot ?? ''">{{ projectLabel(log) }}</span>
           <span class="log-target">→ {{ log.targetName }}</span>
           <span class="log-result" :class="{ cancelled: log.cancelled }">
             {{ log.cancelled ? `已取消 · 完成 ${log.succeeded} 个` : `${log.succeeded}/${log.totalFiles} 成功` }}
@@ -64,10 +118,10 @@ function formatTime(ts: number): string {
         <div v-if="expandedLogs.has(log.taskId)" class="log-files">
           <div v-for="d in log.details" :key="d.relativePath" class="log-file-row" :class="d.status">
             <component :is="d.status === 'success' ? Check : X" :size="10" />
-            <span class="log-file-path" :title="d.relativePath">{{ shorten(d.relativePath) }}</span>
+            <span class="log-file-path" :title="d.relativePath">{{ pathText(d.relativePath) }}</span>
             <span class="log-file-arrow">→</span>
-            <code class="log-file-remote" :title="d.remotePath">{{ shorten(d.remotePath, 40) }}</code>
-            <span v-if="d.error" class="log-file-error" :title="d.error">{{ shorten(d.error, 60) }}</span>
+            <code class="log-file-remote" :title="d.remotePath">{{ pathText(d.remotePath) }}</code>
+            <span v-if="d.error" class="log-file-error" :title="d.error">{{ truncateText(d.error) }}</span>
           </div>
         </div>
       </div>
@@ -79,13 +133,18 @@ function formatTime(ts: number): string {
 .log-panel { border-top: 1px solid var(--border); flex-shrink: 0; }
 .log-panel.collapsed { height: auto; }
 .log-header { display: flex; align-items: center; gap: 4px; padding: 4px 12px; background: var(--bg2); cursor: pointer; font-size: 12px; color: var(--fg); }
+.log-header:active { background: var(--bg4); }
 .log-header:hover { background: var(--bg3); }
 .log-count { color: var(--fg2); font-size: 11px; }
-.clear-btn { margin-left: auto; padding: 2px; background: transparent; color: var(--fg2); border-radius: 4px; }
+.log-origin { font-size: 11px; padding: 0 4px; border: 1px solid var(--border); border-radius: 4px; color: var(--fg3); }
+.log-project { font-size: 11px; padding: 0 4px; border: 1px solid var(--bg4); border-radius: 4px; color: var(--fg2); }
+.log-origin.cli { color: var(--blue); border-color: var(--blue-bg); }
+.log-origin.mcp { color: var(--yellow); border-color: var(--yellow-bg); }
+.clear-btn { margin: 0 0 0 auto; padding: 4px; background: transparent; color: var(--fg2); border-radius: 4px; }
 .clear-btn:hover { background: var(--border); color: var(--fg); }
 .log-content { max-height: 200px; overflow-y: auto; background: var(--bg); padding: 4px 12px; user-select: text; }
-.log-empty { color: var(--fg2); font-size: 12px; padding: 8px 0; }
-.log-entry { display: flex; align-items: center; gap: 6px; padding: 3px 0; font-size: 12px; color: var(--fg); border-bottom: 1px solid var(--bg3); cursor: pointer; }
+.log-entry { display: flex; align-items: center; gap: 4px; padding: 4px 0; font-size: 12px; color: var(--fg); border-bottom: 1px solid var(--bg3); cursor: pointer; }
+.log-entry:active { background: var(--bg3); }
 .log-entry:hover { background: var(--bg2); }
 .log-entry:last-child { border-bottom: none; }
 .success { color: var(--green); }
@@ -95,15 +154,17 @@ function formatTime(ts: number): string {
 .log-target { color: var(--blue); }
 .log-result { color: var(--fg); }
 .log-result.cancelled { color: var(--yellow); }
-.log-duration { color: var(--fg2); margin-left: auto; }
+/* 与清空按钮同理：只吃掉左侧剩余空间，贴在行尾（此前 margin:auto 导致居中） */
+.log-duration { color: var(--fg2); margin: 0 0 0 auto; font-variant-numeric: tabular-nums; }
 .expand-arrow { width: 14px; color: var(--fg2); flex-shrink: 0; }
 
-.log-files { padding: 2px 0 4px 24px; }
-.log-file-row { display: flex; align-items: center; gap: 4px; padding: 2px 0; font-size: 11px; }
+.log-files { padding: 4px 0 4px 24px; }
+.log-file-row { display: flex; align-items: center; gap: 4px; padding: 4px 0; font-size: 11px; }
 .log-file-row.success { color: var(--fg2); }
 .log-file-row.failed { color: var(--red); }
 .log-file-path { color: var(--fg); }
-.log-file-arrow { color: var(--fg2); margin: 0 2px; }
-.log-file-remote { padding: 1px 4px; background: var(--blue-bg); color: var(--blue); border-radius: 4px; font-size: 10px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.log-file-error { color: var(--red); margin-left: 4px; }
+.log-file-arrow { color: var(--fg2); margin: 0 4px; }
+/* 不再用 max-width + text-overflow 二次截断：省略只在 pathText 里做一次 */
+.log-file-remote { padding: 1px 4px; background: var(--blue-bg); color: var(--blue); border-radius: 4px; font-size: 11px; white-space: nowrap; }
+.log-file-error { color: var(--red); margin: 4px; }
 </style>

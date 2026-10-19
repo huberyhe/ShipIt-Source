@@ -1,11 +1,15 @@
 <script setup lang="ts">
+import { toastError } from '../../utils/toast'
 import { computed, ref } from 'vue'
 import { useFilesStore } from '../../stores/files'
 import type { FileEntry } from '../../stores/files'
+import { ChevronsUpDown, ChevronsDownUp } from 'lucide-vue-next'
 import { useDeployStore } from '../../stores/deploy'
 import { useProjectStore } from '../../stores/project'
 import FileTreeNode from '../filetree/FileTreeNode.vue'
+import EmptyState from '../common/EmptyState.vue'
 import ContextMenu from '../common/ContextMenu.vue'
+import ServerTargetMenu from '../common/ServerTargetMenu.vue'
 import { useDeployHotkeys } from '../../composables/useDeployHotkeys'
 import { useServerMenu } from '../../composables/useServerMenu'
 
@@ -27,7 +31,7 @@ async function deployEntry(entry: FileEntry, targetId?: string) {
     if (entry.isDirectory) {
       const allPaths = await window.deployApi.collectFiles(entry.path)
       if (allPaths.length === 0) {
-        window.dispatchEvent(new CustomEvent('toast', { detail: '目录为空或无文件' }))
+        toastError('目录为空或无文件')
         return
       }
       await deployStore.previewDeploy(allPaths, projectStore.projectPath, targetId)
@@ -35,7 +39,7 @@ async function deployEntry(entry: FileEntry, targetId?: string) {
       await deployStore.previewDeploy([entry.path], projectStore.projectPath, targetId)
     }
   } catch (e: any) {
-    window.dispatchEvent(new CustomEvent('toast', { detail: e?.message || '上传失败' }))
+    toastError(e?.message || '上传失败')
   }
 }
 
@@ -78,35 +82,30 @@ function countFiles(entries: any[]): number {
     <div class="view-header">
       <span>文件树</span>
       <div class="header-right">
-        <span class="file-count" v-if="filesStore.fileTree">已加载 {{ loadedFiles }} 个文件 · {{ loadedDirs }} 个目录</span>
-        <button class="header-btn" @click="handleExpandAll">全部展开</button>
-        <button class="header-btn" @click="handleCollapseAll">全部收起</button>
+        <span class="file-count" v-if="filesStore.fileTree" :title="`已加载 ${loadedFiles} 个文件、${loadedDirs} 个目录`">{{ loadedFiles }} 文件 · {{ loadedDirs }} 目录</span>
+        <button class="icon-btn" title="全部展开" aria-label="全部展开" @click="handleExpandAll">
+          <ChevronsUpDown :size="14" />
+        </button>
+        <button class="icon-btn" title="全部收起" aria-label="全部收起" @click="handleCollapseAll">
+          <ChevronsDownUp :size="14" />
+        </button>
       </div>
     </div>
     <div class="file-list">
       <FileTreeNode v-for="entry in rootChildren" :key="entry.path" :entry="entry" :depth="0"
         :expand-all="expandAllFlag" :collapse-all="collapseAllCounter" />
-      <div v-if="rootChildren.length === 0 && !filesStore.isLoading" class="empty-state">目录为空</div>
+      <EmptyState v-if="rootChildren.length === 0 && !filesStore.isLoading" text="目录为空" size="page" />
     </div>
-    <ContextMenu
-      v-if="serverMenu"
-      :x="serverMenu.x"
-      :y="serverMenu.y"
-      :items="serverMenu.items"
-      number-select
-      title="选择要上传到的服务器"
-      @close="closeServerMenu"
-    />
+    <ServerTargetMenu :menu="serverMenu" @close="closeServerMenu" />
   </div>
 </template>
 
 <style scoped>
 .filetree-view { display: flex; flex-direction: column; height: 100%; }
-.view-header { display: flex; align-items: center; justify-content: space-between; padding: 6px 12px; background: var(--bg2); border-bottom: 1px solid var(--border); font-size: 12px; color: var(--fg); }
-.header-right { display: flex; align-items: center; gap: 6px; }
+.view-header { display: flex; align-items: center; justify-content: space-between; padding: 4px 12px; background: var(--bg2); border-bottom: 1px solid var(--border); font-size: 12px; color: var(--fg); }
+.header-right { display: flex; align-items: center; gap: 4px; }
 .file-count { color: var(--fg2); font-size: 11px; }
-.header-btn { padding: 3px 10px; background: var(--bg4); color: var(--fg); border: 1px solid var(--border2); border-radius: 4px; font-size: 11px; }
-.header-btn:hover { background: var(--bg5); color: var(--fg3); }
+.icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; background: transparent; border: 1px solid transparent; border-radius: 4px; color: var(--fg2); }
+.icon-btn:hover { background: var(--border); color: var(--fg); }
 .file-list { flex: 1; overflow-y: auto; padding: 4px 0; }
-.empty-state { padding: 24px; text-align: center; color: var(--fg2); }
 </style>
