@@ -102,7 +102,7 @@ npm run gen:icon       # 换图标后重新生成 build/icon.ico
 
 - 执行位置唯一：CLI 与 MCP 都是薄前端，所有执行（上传、Git 查询）都经桌面主进程的服务端完成，不要在前端复制业务逻辑。
 - 契约单一来源：协议常量、错误类别、退出码、`Selector`、任务与计划对象定义在 `src/shared/cli-contract.ts` / `src/shared/types.ts`；命令实现放 `src/cli/commands/`，服务端业务处理放 `src/main/services/server-handlers.ts`。
-- **MCP 工具参数必须白名单校验**（`callTool` 里按 `inputSchema.properties` 拒绝未知参数，返回 `USAGE`）：写操作忽略错名参数会静默回落默认选择器。实机事故：`deploy` 传 `files`（正确字段是 `selector: { kind: 'files', paths }`）→ 回落 `all-changed` → 一次调用上传了 23 个文件。新增工具/参数要同步更新 `CLI-README.md` 的「MCP 工具参数（与 CLI 的差异）」。
+- **MCP 工具参数必须白名单校验**（`callTool` 里按 `inputSchema.properties` 拒绝未知参数，返回 `USAGE`）：写操作忽略错名参数会静默回落默认选择器。实机事故：`deploy` 传 `files`（正确字段是 `selector: { kind: 'files', paths }`）→ 回落 `all-changed` → 一次调用上传了 23 个文件。新增工具/参数要同步更新 `docs/CLI-README.md` 的「MCP 工具参数（与 CLI 的差异）」。
 - 测试：`npm test` 覆盖 CLI 命令级用例（测试基座 `src/cli/testing/harness.ts` 会起真实 TLS 服务端）。
 - 服务端默认关闭；令牌与凭据不得进入输出与日志；上传日志仅内存不落盘。
 - npm 包只发布 `dist-cli/` 构建产物（CON-11），发布命令：`npm run publish:cli`（内部为 `npm publish ./dist-cli --access public`，目录名必须带 `./`）。
