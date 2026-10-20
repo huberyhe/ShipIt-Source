@@ -181,7 +181,14 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         # dist-cli 已在上面的 Build CLI/MCP bundle 步骤产出
         # 注意必须是 ./dist-cli（裸 dist-cli 会被当作 registry 包名，报 404）
-        run: npm publish ./dist-cli --access public
+        # 幂等：版本已存在就跳过（重跑 tag、或版本已手工发布过时，不该让整个 workflow 失败）
+        run: |
+          VERSION=$(node -p "require('./dist-cli/package.json').version")
+          if npm view "@huberyhe/shipit-mcp@$VERSION" version >/dev/null 2>&1; then
+            echo "npm: @huberyhe/shipit-mcp@$VERSION 已发布，跳过"
+          else
+            npm publish ./dist-cli --access public
+          fi
 
       - name: Upload artifacts to ShipIt (distribution)
         uses: softprops/action-gh-release@v2
