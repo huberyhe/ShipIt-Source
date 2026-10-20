@@ -88,8 +88,9 @@ export class DeployService {
 
   /** local 协议：把映射出的远程路径转成本地目标路径（host 为根目录） */
   private resolveLocalDest(task: UploadTask, target: DeployTarget): string {
-    const rel = task.remotePath.replace(/\//g, '\\')
-    return target.host ? join(target.host, rel) : rel
+    // remotePath 是 POSIX 口径；交给 join 按**当前平台**归一分隔符。
+    // 不能手工把 `/` 换成 `\`：在 POSIX 上会把 `\out\a.txt` 当成一个文件名（CI 上就是这么挂的）。
+    return target.host ? join(target.host, task.remotePath) : task.remotePath
   }
 
   async testConnection(target: DeployTarget): Promise<{ success: boolean; error?: string }> {

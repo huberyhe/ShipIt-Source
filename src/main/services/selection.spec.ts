@@ -27,6 +27,8 @@ const deps = (over: Partial<SelectionDeps> = {}): SelectionDeps => ({
 
 describe('P1-7 选择器路径不得越出项目根（方案 B 的纵深防御）', () => {
   const ROOT = 'D:/work/app'
+  /** 「项目根之外」的绝对路径：必须按当前平台取，否则在 POSIX 上 D:/secret 会被当成相对路径 */
+  const OUTSIDE_DIR = process.platform === 'win32' ? 'D:/secret' : '/etc/secret'
 
   function deps(over: Partial<SelectionDeps> = {}): SelectionDeps {
     return {
@@ -39,7 +41,7 @@ describe('P1-7 选择器路径不得越出项目根（方案 B 的纵深防御�
   }
 
   it('绝对路径的 dir 落在项目根外 → USAGE（此前会被直接遍历并回显）', async () => {
-    const r = await resolveSelection({ kind: 'dir', path: 'D:/secret' }, ROOT, deps())
+    const r = await resolveSelection({ kind: 'dir', path: OUTSIDE_DIR }, ROOT, deps())
     expect(r.ok).toBe(false)
     if (r.ok) return
     expect(r.code).toBe('USAGE')
@@ -65,7 +67,7 @@ describe('P1-7 选择器路径不得越出项目根（方案 B 的纵深防御�
   })
 
   it('files 里混入项目根外的路径 → USAGE 且点名（调用方自己传的，回显无泄露问题）', async () => {
-    const r = await resolveSelection({ kind: 'files', paths: ['dist/a.js', 'D:/secret/id_rsa'] }, ROOT, deps())
+    const r = await resolveSelection({ kind: 'files', paths: ['dist/a.js', `${OUTSIDE_DIR}/id_rsa`] }, ROOT, deps())
     expect(r.ok).toBe(false)
     if (r.ok) return
     expect(r.code).toBe('USAGE')

@@ -256,20 +256,21 @@ defineExpose({ save, discard, isDirty })
     </div>
 
     <!-- 作用域（D-25）：只在开放到局域网时才有意义/才需配置 -->
-    <div v-if="lanEnabled" class="scope">
-      <div class="scope-head">
-        <span class="row-label">允许的项目根</span>
+    <div v-if="lanEnabled" class="row scope-row">
+      <span class="row-label">允许的项目根</span>
+      <!-- 与其他行同一列宽（.row-control.fixed = 286px）：此前 textarea 拉满整行，视觉上与其他输入框脱节 -->
+      <span class="row-control fixed scope-control">
+        <textarea
+          class="scope-input"
+          :value="allowedRootsText"
+          rows="3"
+          spellcheck="false"
+          aria-label="允许的项目根（每行一个）"
+          placeholder="例如：D:/WorkSpace"
+          @input="onAllowedRootsInput"
+        />
         <span class="scope-note">留空 = 仅允许桌面已打开的项目（每行一个目录）</span>
-      </div>
-      <textarea
-        class="scope-input"
-        :value="allowedRootsText"
-        rows="3"
-        spellcheck="false"
-        aria-label="允许的项目根（每行一个）"
-        placeholder="例如：D:/WorkSpace"
-        @input="onAllowedRootsInput"
-      />
+      </span>
     </div>
 
     <div class="row">
@@ -349,11 +350,13 @@ defineExpose({ save, discard, isDirty })
 .row-label { width: 160px; flex-shrink: 0; color: var(--fg2); cursor: default; }
 .row-control { display: flex; align-items: center; gap: 4px; min-width: 0; }
 /* 端口 / 令牌 / 证书指纹 三行等长：值区定宽 + 操作区定宽（按钮靠右纵向对齐） */
-.scope { display: flex; flex-direction: column; gap: 4px; margin: 4px 0 0; }
-.scope-head { display: flex; align-items: baseline; gap: 8px; }
-.scope-note { font-size: 11px; color: var(--fg2); }
+/* 项目根是纵向控件：与其他行的控件同宽（286px），说明文字放到控件下方 */
+.scope-row { align-items: flex-start; }
+.scope-row .row-label { padding-top: 6px; }
+.scope-control { flex-direction: column; align-items: stretch; gap: 4px; }
+.scope-note { font-size: 11px; color: var(--fg2); line-height: 1.5; }
 .scope-input {
-  width: 100%; min-height: 60px; resize: vertical;
+  width: 100%; min-height: 60px; resize: vertical; box-sizing: border-box;
   padding: 8px; font-family: inherit; font-size: 12px;
   background: var(--input-bg); color: var(--fg);
   border: 1px solid var(--border2); border-radius: 6px;
