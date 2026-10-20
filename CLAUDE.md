@@ -98,6 +98,19 @@ npm run gen:icon       # 换图标后重新生成 build/icon.ico
 - **主进程 → 渲染层提示走正式通道**（如 `WINDOW_LIMIT_HINT`）：只发触发窗口；渲染层订阅要放 **setup 同步注册**（onMounted 里的 await 会让注册晚于 push），并配 `takeWindowLimitHint()` 拉取兜底
 - **作用域（D-28，方案 B）**：`bind=local` 不限路径（回环等价于本机权限）；`bind=lan` 只允许「已打开项目 + `server.allowedRoots`」，越界 `PROJECT_OUT_OF_SCOPE`（退出码 4）。判定在 `ProjectContext#inScope`，路径前缀**按段比较**（`D:/Work` 不匹配 `D:/Work2`）；`allowedRoots` 需填**绝对路径**
 
+## 文档索引
+
+| 文档 | 用途 |
+| --- | --- |
+| `.project/specs/architecture.md` | **代码架构与维护**：进程/目录职责、执行链路、关键不变量、扩展指南、排障入口 |
+| `.project/design/DESIGN.md` | **UI 设计规范**：token、排版节奏、组件基座、交互规范（多选/对话框/上传/状态栏/日志）、红线与自检清单 |
+| `.project/specs/cli-agent-interface/spec.md` | CLI/MCP/HTTP 契约与决策记录（验收口径） |
+| `docs/CLI-README.md` | CLI/MCP 使用文档（项目文档） |
+| `docs/CLI-RELEASE-README.md` | npm 包发布文档（面向使用者） |
+| `docs/RELEASE-README.md` | GitHub 分发仓库发布文档 |
+
+改代码前读架构文档，改界面前读设计规范；两者与代码冲突时，以代码为准并**当轮修正文档**。
+
 ## 发布纪律（硬性）
 
 - **提交并发布前，先与用户确认版本号**：不自行决定、不自行递增；确认后按该版本号统一全部位置。
