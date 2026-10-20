@@ -63,13 +63,13 @@ async function bundle(root) {
 /**
  * 随包文档。
  *
- * README 用**面向使用者**的 `docs/cli-mcp-readme.md`（npm 页面就是它），
+ * README 用**面向使用者**的 `CLI-RELEASE-README.md`（npm 页面就是它），
  * 不要直接复制仓库根 README —— 那是面向开发者的项目说明（目录结构/构建命令），
  * 对 `npm install` 的人没有用，也没解释「这是桌面版的配套 MCP 工具」。
  */
 function copyDocs() {
   const sources = [
-    ['README.md', join(ROOT, 'docs', 'cli-mcp-readme.md')],
+    ['README.md', join(ROOT, 'CLI-RELEASE-README.md')],
     ['LICENSE', join(ROOT, 'LICENSE')]
   ]
   for (const [name, from] of sources) {

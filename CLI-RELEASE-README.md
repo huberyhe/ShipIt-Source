@@ -1,5 +1,7 @@
 # ShipIt MCP / CLI
 
+> 本文件是 **npm 包 `@huberyhe/shipit-mcp` 的发布文档**（构建时复制为包内 `README.md`，即 npm 页面正文）。面向使用者。
+
 **ShipIt 桌面版的配套 MCP 工具**（同时提供同名 CLI）。
 
 它本身**不做任何上传或 Git 操作**：只把工具调用转发给你电脑上正在运行的 **ShipIt 桌面版**，

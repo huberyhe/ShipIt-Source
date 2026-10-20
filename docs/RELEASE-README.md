@@ -1,5 +1,7 @@
 # ShipIt
 
+> 本文件是 **GitHub `huberyhe/ShipIt` 的发布文档**（分发仓库的 README：功能、下载、安装、使用、截图）。
+
 面向开发者的文件发布工具 —— 将本地文件通过 SFTP/FTP/FTPS/FTPES/本地目录一键上传到多台服务器，集成 Git 变更与提交历史查看。
 
 ![版本](https://img.shields.io/badge/version-1.0.3-blue)

@@ -11,7 +11,7 @@ import { BOOL_FLAGS, COMMANDS, helpText, VALUE_FLAGS } from './args'
 import { mcpToolNames } from './mcp-tools'
 
 const ROOT = join(__dirname, '..', '..')
-const doc = readFileSync(join(ROOT, 'docs', 'cli-mcp-usage.md'), 'utf-8')
+const doc = readFileSync(join(ROOT, 'CLI-README.md'), 'utf-8')
 const readme = readFileSync(join(ROOT, 'README.md'), 'utf-8')
 const claude = readFileSync(join(ROOT, 'CLAUDE.md'), 'utf-8')
 
@@ -112,7 +112,7 @@ describe('使用文档（DFX-DEP-005）', () => {
 
   it('README 提供 CLI / MCP 入口说明并链接使用文档', () => {
     expect(readme).toContain('## CLI 与 MCP（agent 接入）')
-    expect(readme).toContain('docs/cli-mcp-usage.md')
+    expect(readme).toContain('CLI-README.md')
     expect(readme).toContain('@huberyhe/shipit-mcp')
   })
 

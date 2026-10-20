@@ -79,7 +79,7 @@ shipit mcp                               # 以 stdio 启动 MCP server（9 个�
 前置：桌面版「设置 → 本地服务管理」中开启服务（与「上传目标管理」分列的独立入口）（**默认关闭**）。端口与令牌由服务端写入连接信息文件，
 CLI / MCP 自动发现，不需要手填；通道强制 TLS 自签并固定证书指纹。
 
-- 完整命令、参数、退出码、MCP 宿主配置与故障排查：[docs/cli-mcp-usage.md](docs/cli-mcp-usage.md)
+- 完整命令、参数、退出码、MCP 宿主配置与故障排查：[CLI-README.md](CLI-README.md)
 - npm 包：`@huberyhe/shipit-mcp`（只含构建产物，版本与桌面版一致）
 
 ## 架构
