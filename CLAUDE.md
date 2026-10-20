@@ -146,6 +146,8 @@ npm run gen:icon       # 换图标后重新生成 build/icon.ico
   新增界面优先复用，不要再复制一套按钮/表单/空态样式；`scripts/ui-audit.mjs` 依赖既有类名（`.ftn-row`/`.tree-row`/`.add-btn`/`.switch` 等），改造时保留类名或同批更新脚本。
 - 渲染层工具：`utils/toast.ts`（`toastError` / `toastSuccess`，不要再手写 `CustomEvent`）、`utils/dom.ts`（`isTextInputTarget`）、`utils/change-status.ts`（Git 状态 → 短标记/类名）、`utils/path-display.ts`。
 - **全局配置只有一个可写窗口**（`role: 'settings'`，`showSettingsWindow(section)` 单实例）：上传目标 / 本地服务合并为一个「设置」页面（`components/settings/SettingsWindow.vue`：左侧分区导航 + 内容区 + 需要显式提交的分区给底部「取消/确定」+ 未保存提示）。入口：**文件菜单 →「设置」**（顶层「设置」菜单已移除）、工具栏图标、状态栏服务状态、托盘「设置」。所有入口统一调 `deployApi.openSettings(section)`，**不要**再自建可写编辑器——多处可写会导致并发编辑互相覆盖。设置窗口关窗即销毁（`closeActionFor`）。
+- **多选与上传作用域**（文件树 / Git 变更树一致）：普通点击=替换、`Ctrl/Cmd`=切换、`Shift`=区间（**Shift 优先于 Ctrl**）；按键→模式与状态迁移统一走 `src/renderer/utils/selection.ts`，不要在视图里另写一份。
+  行内「快速上传」按钮**只作用于本行**；右键「快速上传」、「上传到」与 `Ctrl+X` / `Ctrl+Shift+X` 作用于**整个选区**。去重键用 `selectionKey()`（相对/绝对路径 + `/` 归一 + win32 小写）。
 - 快捷键（渲染层统一处理，主进程无原生菜单）：`Ctrl+O` 打开目录、`Ctrl+1/2/3` 切视图、**`Ctrl+,` 设置**、`Ctrl+W` 关闭项目、`Ctrl+X` / `Ctrl+Shift+X` 上传、`F5` 刷新。新增快捷键要同时更新 `ShortcutsDialog`（快捷键面板）与对应菜单项的 `shortcut` 标注。
 - **传 IPC 的对象必须是纯 JSON**：Vue 的 reactive 代理无法被结构化克隆，直接丢给 `ipcRenderer.invoke` 会抛 "An object could not be cloned"；不接住的话表现为"点了按钮没反应"（`MappingEditor` 曾因此保存失败）。渲染层调用 IPC 前统一 `JSON.parse(JSON.stringify(payload))`，并且**每次调用都要 try/catch + toast**（失败必须可见）。
 - **toast 宿主在应用层**（`components/common/ToastHost.vue`，挂在 `App.vue`）：设置窗口等"非项目窗口"此前没有 toast 宿主，`toast` / `toast-success` 事件无人监听 → 校验与成功提示静默丢失（窗口内看不到任何反馈）。新增窗口类型时不要再单独挂 toast。

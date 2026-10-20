@@ -5,6 +5,7 @@ import { useFilesStore } from '../../stores/files'
 import type { FileEntry } from '../../stores/files'
 import { ChevronsUpDown, ChevronsDownUp } from 'lucide-vue-next'
 import { useDeployStore } from '../../stores/deploy'
+import { useSelectionDeploy } from '../../composables/useSelectionDeploy'
 import { useProjectStore } from '../../stores/project'
 import FileTreeNode from '../filetree/FileTreeNode.vue'
 import EmptyState from '../common/EmptyState.vue'
@@ -19,37 +20,18 @@ const projectStore = useProjectStore()
 const expandAllFlag = ref(false)
 const collapseAllCounter = ref(0)
 
+// 选中项上传（Ctrl+X / 右键「快速上传」/ 服务器菜单共用）
+const { deploySelection } = useSelectionDeploy()
+
 // 服务器选择菜单（Ctrl+Shift+X 唤起 / 右键「上传到」，数字键或鼠标选择）
 const { serverMenu, openServerMenu, closeServerMenu } = useServerMenu((targetId) => {
-  const entry = filesStore.selectedDeployEntry
-  if (entry) deployEntry(entry, targetId)
+  void deploySelection(targetId)
 })
 
-async function deployEntry(entry: FileEntry, targetId?: string) {
-  if (!projectStore.projectPath) return
-  try {
-    if (entry.isDirectory) {
-      const allPaths = await window.deployApi.collectFiles(entry.path)
-      if (allPaths.length === 0) {
-        toastError('目录为空或无文件')
-        return
-      }
-      await deployStore.previewDeploy(allPaths, projectStore.projectPath, targetId)
-    } else {
-      await deployStore.previewDeploy([entry.path], projectStore.projectPath, targetId)
-    }
-  } catch (e: any) {
-    toastError(e?.message || '上传失败')
-  }
-}
-
 useDeployHotkeys(
-  () => !!filesStore.selectedDeployEntry,
+  () => filesStore.deploySelection.length > 0,
   () => !!serverMenu.value,
-  () => {
-    const entry = filesStore.selectedDeployEntry
-    if (entry) deployEntry(entry)
-  },
+  () => { void deploySelection() },
   () => {
     const pos = filesStore.selectedDeployPos || { x: 240, y: 160 }
     openServerMenu(pos.x, pos.y)

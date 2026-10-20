@@ -4,6 +4,7 @@ import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { ChevronsUpDown, ChevronsDownUp, RefreshCw } from 'lucide-vue-next'
 import { useGitStore } from '../../stores/git'
 import { statusClassOf, statusShort } from '../../utils/change-status'
+import { reduceSelection } from '../../utils/selection'
 import { useDeployStore } from '../../stores/deploy'
 import { useProjectStore } from '../../stores/project'
 import DiffPreview from '../git/DiffPreview.vue'
@@ -22,28 +23,50 @@ const projectStore = useProjectStore()
 const AUTO_REFRESH_MS = 60000
 
 // 服务器选择菜单（Ctrl+Shift+X 唤起，数字键或鼠标选择）
-const selectedNode = ref<ChangeTreeNode | null>(null)
+const selectedPaths = ref<string[]>([])
+const selectionAnchor = ref<string | null>(null)
 const selectedPos = ref<{ x: number; y: number } | null>(null)
 
-function onSelectNode(node: ChangeTreeNode, pos?: { x: number; y: number }) {
-  selectedNode.value = node
+/** 路径 → 节点索引（Shift 区间只需要 DOM 里的路径顺序） */
+const nodeIndex = computed(() => {
+  const map = new Map<string, ChangeTreeNode>()
+  const walk = (n: ChangeTreeNode) => { map.set(n.path, n); n.children.forEach(walk) }
+  if (projectRootNode.value) walk(projectRootNode.value)
+  return map
+})
+
+function isSelectedPath(path: string): boolean {
+  return selectedPaths.value.includes(path)
+}
+
+/** Ctrl 切换 / Shift 区间 / 普通点击替换 */
+/** 当前可见行顺序（区间选择用）：DOM 顺序即渲染顺序 */
+function visibleOrder(): string[] {
+  const container = document.querySelector('.changes-view') ?? document
+  return Array.from(container.querySelectorAll<HTMLElement>('.tree-row'))
+    .map((row) => row.dataset.path ?? '')
+    .filter(Boolean)
+}
+
+/** Ctrl 切换 / Shift 区间 / 普通点击替换：语义由 utils/selection 统一 */
+function onSelectNode(node: ChangeTreeNode, pos?: { x: number; y: number }, mode: 'replace' | 'toggle' | 'range' = 'replace') {
   if (pos) selectedPos.value = pos
+  const next = reduceSelection(
+    { paths: selectedPaths.value, anchor: selectionAnchor.value },
+    { path: node.path, mode, order: mode === 'range' ? visibleOrder() : undefined }
+  )
+  selectedPaths.value = next.paths
+  selectionAnchor.value = next.anchor
 }
 
 const { serverMenu, openServerMenu, closeServerMenu } = useServerMenu((targetId) => {
-  const n = selectedNode.value
-  if (!n) return
-  if (n.isDirectory) handleDeployDir(n, targetId); else handleDeployFile(n.path, targetId)
+  void deploySelection(targetId)
 })
 
 useDeployHotkeys(
-  () => !!selectedNode.value,
+  () => selectedPaths.value.length > 0,
   () => !!serverMenu.value,
-  () => {
-    const n = selectedNode.value
-    if (!n) return
-    if (n.isDirectory) handleDeployDir(n); else handleDeployFile(n.path)
-  },
+  () => { void deploySelection() },
   () => {
     const pos = selectedPos.value || { x: 240, y: 160 }
     openServerMenu(pos.x, pos.y)
@@ -200,6 +223,50 @@ function toggleDir(dirPath: string) {
 // 正在上传的节点路径（用于按钮 loading 态）
 const deployingPath = ref<string | null>(null)
 
+/**
+ * 上传整个选区：目录递归收集「有变更且未删除」的文件，文件直接入列，按绝对路径去重。
+ * 快速上传（按钮/右键/Ctrl+X）都走这里，保证与多选语义一致。
+ */
+async function deploySelection(targetId?: string): Promise<void> {
+  const root = projectStore.projectPath
+  if (!root) return
+  if (selectedPaths.value.length === 0) {
+    toastError('请先选择要上传的文件或目录（Ctrl / Shift 可多选）')
+    return
+  }
+  try {
+    const paths: string[] = []
+    const collect = (n: ChangeTreeNode) => {
+      if (n.isDirectory) {
+        for (const child of n.children) collect(child)
+      } else if (n.change && n.change.status !== 'deleted') {
+        paths.push(root.replace(/\\/g, '/') + '/' + n.path)
+      }
+    }
+    for (const path of selectedPaths.value) {
+      const node = nodeIndex.value.get(path)
+      if (node) collect(node)
+    }
+    const unique = [...new Set(paths)]
+    if (unique.length === 0) {
+      toastError('选中项没有可上传的变更文件')
+      return
+    }
+    await deployStore.previewDeploy(unique, root, targetId)
+  } catch (e: any) {
+    toastError(e?.message || '上传失败')
+  }
+}
+
+/** 快速上传：右键/按钮作用于未选中项时，先把它变成唯一选区 */
+function quickDeploy(node: ChangeTreeNode, targetId?: string): void {
+  if (!isSelectedPath(node.path)) {
+    selectedPaths.value = [node.path]
+    selectionAnchor.value = node.path
+  }
+  void deploySelection(targetId)
+}
+
 async function handleDeployFile(filePath: string, targetId?: string) {
   if (!projectStore.projectPath) return
   deployingPath.value = filePath
@@ -215,7 +282,6 @@ async function handleDeployFile(filePath: string, targetId?: string) {
 
 async function handleDeployDir(node: ChangeTreeNode, targetId?: string) {
   if (!projectStore.projectPath) return
-  deployingPath.value = node.path
   deployingPath.value = node.path
   try {
     const paths: string[] = []
@@ -268,11 +334,12 @@ async function handleDeployDir(node: ChangeTreeNode, targetId?: string) {
         :depth="0"
         :expanded-dirs="expandedDirs"
         :busy-path="deployingPath"
-        :selected-path="selectedNode?.path"
+        :selected-paths="selectedPaths"
         @select="onSelectNode"
         @toggle-dir="toggleDir"
         @deploy-file="handleDeployFile"
         @deploy-dir="handleDeployDir"
+        @quick-deploy="quickDeploy"
         @show-diff="previewFile = $event"
       />
     </div>

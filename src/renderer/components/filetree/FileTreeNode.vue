@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { toastError } from '../../utils/toast'
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { reportError } from '../../utils/report-error'
 import { ChevronRight, ChevronDown, File, Folder, FolderOpen, Wrench, Server } from 'lucide-vue-next'
 import type { FileEntry } from '../../stores/files'
@@ -12,6 +12,8 @@ import ServerTargetMenu from '../common/ServerTargetMenu.vue'
 import TreeRow from '../common/TreeRow.vue'
 import type { ContextMenuItem } from '../../types/context-menu'
 import { useServerMenu } from '../../composables/useServerMenu'
+import { useSelectionDeploy } from '../../composables/useSelectionDeploy'
+import { resolveSelectionMode } from '../../utils/selection'
 
 const props = defineProps<{
   entry: FileEntry; depth: number
@@ -23,11 +25,31 @@ const projectStore = useProjectStore()
 const filesStore = useFilesStore()
 
 const expanded = ref(false)
-const isSelected = computed(() => filesStore.selectedDeployEntry?.path === props.entry.path)
+const isSelected = computed(() => filesStore.isDeploySelected(props.entry.path))
+
+// Shift 区间要知道「当前可见行」的顺序：用 DOM 顺序（展开状态在子组件内部，父级看不到）
+function visibleRowPaths(e: MouseEvent): string[] {
+  const container = (e.currentTarget as HTMLElement).closest('.filetree-view')
+  if (!container) return []
+  return Array.from(container.querySelectorAll<HTMLElement>('.ftn-row'))
+    .map((row) => row.dataset.path ?? '')
+    .filter(Boolean)
+}
 
 function selectSelf(e: MouseEvent) {
-  filesStore.selectDeployEntry(props.entry, { x: e.clientX, y: e.clientY })
+  const pos = { x: e.clientX, y: e.clientY }
+  const mode = resolveSelectionMode(e)
+  if (mode === 'range') {
+    // 只更新「当前行」，锚点保持不变；区间右端是本次点击的行
+    filesStore.setCurrent(props.entry, pos)
+    filesStore.selectDeployRange(visibleRowPaths(e), props.entry.path)
+    return
+  }
+  filesStore.selectDeployEntry(props.entry, pos, mode)
 }
+
+onMounted(() => filesStore.registerDeployEntry(props.entry))
+onBeforeUnmount(() => filesStore.unregisterDeployEntry(props.entry.path))
 const children = ref<FileEntry[]>([])
 const isDeploying = ref(false)
 const ctxMenu = ref<{ x: number; y: number; items: ContextMenuItem[] } | null>(null)
@@ -50,6 +72,10 @@ const { serverMenu, openServerMenu, closeServerMenu } = useServerMenu((targetId)
 function onContextMenu(e: MouseEvent) {
   e.preventDefault(); e.stopPropagation()
   const { clientX: x, clientY: y } = e
+  // 右键项若不在多选集合里，先让它成为唯一选区（与资源管理器一致）
+  if (!filesStore.isDeploySelected(props.entry.path)) {
+    filesStore.selectDeployEntry(props.entry)
+  }
   const items: ContextMenuItem[] = [{
     label: '快速上传', icon: Wrench, shortcut: 'Ctrl+X',
     action: () => doDeploy()
@@ -60,8 +86,25 @@ function onContextMenu(e: MouseEvent) {
   ctxMenu.value = { x, y, items }
 }
 
+const { deploySelection } = useSelectionDeploy()
+
+/** 右键「快速上传」/ Ctrl+X：作用于**整个选区** */
 async function doDeploy(targetId?: string) {
-  if (!projectStore.projectPath) return
+  if (!filesStore.isDeploySelected(props.entry.path)) {
+    filesStore.selectDeployEntry(props.entry)
+  }
+  isDeploying.value = true
+  try {
+    await deploySelection(targetId)
+  } finally {
+    isDeploying.value = false
+  }
+}
+
+/** 行内「快速上传」按钮：只上传**本行**对应的文件/目录（与选区无关） */
+async function deployThis(): Promise<void> {
+  const root = projectStore.projectPath
+  if (!root) return
   isDeploying.value = true
   try {
     if (props.entry.isDirectory) {
@@ -70,12 +113,12 @@ async function doDeploy(targetId?: string) {
         toastError('目录为空或无文件')
         return
       }
-      await deployStore.previewDeploy(allPaths, projectStore.projectPath, targetId)
+      await deployStore.previewDeploy(allPaths, root)
     } else {
-      await deployStore.previewDeploy([props.entry.path], projectStore.projectPath, targetId)
+      await deployStore.previewDeploy([props.entry.path], root)
     }
-  } catch (e: any) {
-    toastError(e?.message || '上传失败')
+  } catch (error: any) {
+    toastError(error?.message || '上传失败')
   } finally {
     isDeploying.value = false
   }
@@ -115,6 +158,7 @@ async function doDeploy(targetId?: string) {
   <div class="ftn-wrapper">
     <TreeRow
       row-class="ftn-row"
+      :data-path="entry.path"
       :selected="isSelected"
       :indent="depth * 16 + 8"
       role="treeitem"
@@ -143,7 +187,7 @@ async function doDeploy(targetId?: string) {
       <template #label><span class="ftn-name">{{ entry.name }}</span></template>
       <template #meta><span class="ftn-spacer" /></template>
       <template #actions>
-        <button class="ftn-deploy-btn row-actions" :disabled="isDeploying" @click.stop="doDeploy()">
+        <button class="ftn-deploy-btn row-actions" :disabled="isDeploying" @click.stop="deployThis()">
           {{ isDeploying ? '收集中...' : '快速上传' }}
         </button>
       </template>

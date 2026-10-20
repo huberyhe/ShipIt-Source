@@ -7,6 +7,7 @@ import TreeRow from '../common/TreeRow.vue'
 import type { ContextMenuItem } from '../../types/context-menu'
 import type { ChangeTreeNode } from '../../types/git'
 import { useServerMenu } from '../../composables/useServerMenu'
+import { resolveSelectionMode } from '../../utils/selection'
 
 export type { ChangeTreeNode }
 
@@ -15,20 +16,22 @@ const props = defineProps<{
   depth: number
   expandedDirs: Set<string>
   busyPath?: string | null
-  /** 当前选中的节点 path（各节点自行比对，递归时原样透传） */
-  selectedPath?: string
+  /** 当前选中的节点路径集合（Ctrl 切换 / Shift 区间，递归时原样透传） */
+  selectedPaths?: string[]
 }>()
 
 const emit = defineEmits<{
   toggleDir: [path: string]
   deployFile: [path: string, targetId?: string]
   deployDir: [node: ChangeTreeNode, targetId?: string]
+  /** 快速上传：由视图决定「作用于整个选区」 */
+  quickDeploy: [node: ChangeTreeNode, targetId?: string]
   showDiff: [path: string]
-  select: [node: ChangeTreeNode, pos?: { x: number; y: number }]
+  select: [node: ChangeTreeNode, pos?: { x: number; y: number }, mode?: 'replace' | 'toggle' | 'range']
 }>()
 
 function onRowClick(e: MouseEvent) {
-  emit('select', props.node, { x: e.clientX, y: e.clientY })
+  emit('select', props.node, { x: e.clientX, y: e.clientY }, resolveSelectionMode(e))
 }
 
 /** 行级键盘交互：Enter 展开/选中，Space 选中（此前整棵树键盘不可达） */
@@ -43,8 +46,8 @@ const menu = ref<{ x: number; y: number; items: ContextMenuItem[] } | null>(null
 
 // 服务器选择菜单（与 Ctrl+Shift+X 一致）
 const { serverMenu, openServerMenu, closeServerMenu } = useServerMenu((targetId) => {
-  if (props.node.isDirectory) emit('deployDir', props.node, targetId)
-  else emit('deployFile', props.node.path, targetId)
+  // 选完服务器后上传**整个选区**（与 Ctrl+X 一致），必须带上用户选的 targetId
+  emit('quickDeploy', props.node, targetId)
 })
 
 function onContextMenu(e: MouseEvent) {
@@ -52,6 +55,10 @@ function onContextMenu(e: MouseEvent) {
   e.stopPropagation()
 
   const { clientX: x, clientY: y } = e
+  // 右键项若不在选区里，先让它成为唯一选区（与文件树一致）
+  if (!(props.selectedPaths ?? []).includes(props.node.path)) {
+    emit('select', props.node, { x, y })
+  }
   const items: ContextMenuItem[] = []
 
   if (props.node.isDirectory) {
@@ -59,7 +66,7 @@ function onContextMenu(e: MouseEvent) {
       label: '快速上传',
       icon: Wrench,
       shortcut: 'Ctrl+X',
-      action: () => emit('deployDir', props.node)
+      action: () => emit('quickDeploy', props.node)
     })
     items.push({
       label: '上传到',
@@ -72,7 +79,7 @@ function onContextMenu(e: MouseEvent) {
       label: '快速上传',
       icon: Wrench,
       shortcut: 'Ctrl+X',
-      action: () => emit('deployFile', props.node.path)
+      action: () => emit('quickDeploy', props.node)
     })
     items.push({
       label: '上传到',
@@ -117,7 +124,8 @@ function getDirStats(n: ChangeTreeNode): string {
   <TreeRow
     v-if="node.isDirectory"
     row-class="tree-row dir-row"
-    :selected="selectedPath === node.path"
+    :data-path="node.path"
+    :selected="(selectedPaths ?? []).includes(node.path)"
     :indent="depth * 16 + 8"
     role="button"
     :tabindex="0"
@@ -140,7 +148,7 @@ function getDirStats(n: ChangeTreeNode): string {
       <component :is="expandedDirs.has(node.path) ? FolderOpen : Folder" :size="14" class="dir-icon" />
     </template>
     <template #label>
-      <span class="node-name" @click.stop="emit('toggleDir', node.path)">{{ node.name }}</span>
+      <span class="node-name">{{ node.name }}</span>
     </template>
     <template #meta><span class="dir-badge">{{ getDirStats(node) }}</span></template>
     <template #actions>
@@ -159,12 +167,13 @@ function getDirStats(n: ChangeTreeNode): string {
       :depth="depth + 1"
       :expanded-dirs="expandedDirs"
       :busy-path="busyPath"
-      :selected-path="selectedPath"
-      @select="(n, p) => emit('select', n, p)"
+      :selected-paths="selectedPaths"
+      @select="(n, p, m) => emit('select', n, p, m)"
       @toggle-dir="emit('toggleDir', $event)"
       @deploy-file="(p, t) => emit('deployFile', p, t)"
       @deploy-dir="(n, t) => emit('deployDir', n, t)"
       @show-diff="emit('showDiff', $event)"
+      @quick-deploy="(n, t) => emit('quickDeploy', n, t)"
     />
   </template>
 
@@ -172,7 +181,8 @@ function getDirStats(n: ChangeTreeNode): string {
   <TreeRow
     v-else-if="!node.isDirectory"
     row-class="tree-row file-row"
-    :selected="selectedPath === node.path"
+    :data-path="node.path"
+    :selected="(selectedPaths ?? []).includes(node.path)"
     :indent="depth * 16 + 22"
     role="button"
     :tabindex="0"
