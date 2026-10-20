@@ -78,6 +78,7 @@ npx -y @huberyhe/shipit-mcp projects list          # 当前打开的项目
 npx -y @huberyhe/shipit-mcp deploy --project . --target my_dev --wait
 ```
 
+- **协议版本：`1`** —— CLI/MCP 与桌面版必须一致，不一致会返回 `PROTOCOL_MISMATCH`（升级其中一方即可）
 - 前置：桌面版「设置 → 本地服务管理」开启服务（默认关闭）
 - MCP：宿主里以 `npx -y @huberyhe/shipit-mcp mcp` 启动，暴露 9 个工具
 - 跨机器：开启「允许来自局域网的连接」，用导出的**连接串** `--connect '<JSON>'` 指定远端
