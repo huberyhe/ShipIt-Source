@@ -29,7 +29,8 @@ function defaultPort(p: Protocol): number {
 const editingId = ref<string | null | undefined>(undefined)
 const editingForm = ref({
   name: '', protocol: 'sftp' as Protocol, host: '', port: 22,
-  username: '', password: '', privateKeyPath: '', passphrase: ''
+  username: '', password: '', privateKeyPath: '', passphrase: '',
+  postUploadScript: ''
 })
 const editingMappings = ref<any[]>([]) // 编辑中的映射列表
 
@@ -100,7 +101,8 @@ function startAdd() {
   editingId.value = null
   editingForm.value = {
     name: '', protocol: 'sftp', host: '', port: 22,
-    username: '', password: '', privateKeyPath: '', passphrase: ''
+    username: '', password: '', privateKeyPath: '', passphrase: '',
+    postUploadScript: ''
   }
   editingMappings.value = []
   baseline.value = currentSnapshot()
@@ -112,7 +114,8 @@ function startEdit(target: any) {
     name: target.name, protocol: target.protocol, host: target.host,
     port: target.port || defaultPort(target.protocol),
     username: target.username, password: target.password || '',
-    privateKeyPath: target.privateKeyPath || '', passphrase: target.passphrase || ''
+    privateKeyPath: target.privateKeyPath || '', passphrase: target.passphrase || '',
+    postUploadScript: target.postUploadScript || ''
   }
   editingMappings.value = JSON.parse(JSON.stringify(target.mappings || []))
   baseline.value = currentSnapshot()
@@ -145,6 +148,7 @@ async function saveTarget(): Promise<boolean> {
     password: editingForm.value.password,
     privateKeyPath: editingForm.value.privateKeyPath,
     passphrase: editingForm.value.passphrase,
+    postUploadScript: editingForm.value.postUploadScript.trim(),
     mappings: editingMappings.value.map((m: any) => ({
       localPrefix: m.localPrefix,
       remotePath: m.remotePath,
@@ -225,6 +229,24 @@ function doDelete() {
   toastSuccess(`已移出待保存列表：${target.name}`)
 }
 
+async function pickScriptFile() {
+  try {
+    const current = editingForm.value.postUploadScript.trim()
+    const defaultPath = current ? current.replace(/[\\/][^\\/]*$/, '') : undefined
+    const filePath = await window.deployApi.openFileDialog({
+      title: '选择上传后要执行的本地脚本',
+      filters: [
+        { name: '脚本', extensions: ['sh', 'bash', 'ps1', 'bat', 'cmd', 'py', 'js'] },
+        { name: 'All Files', extensions: ['*'] }
+      ],
+      ...(defaultPath ? { defaultPath } : {})
+    })
+    if (filePath) editingForm.value.postUploadScript = filePath
+  } catch (error) {
+    reportError('选择脚本文件失败', error)
+  }
+}
+
 async function pickKeyFile() {
   try {
     const filePath = await window.deployApi.openFileDialog({
@@ -272,6 +294,7 @@ function buildTestTarget() {
     password: editingForm.value.password,
     privateKeyPath: editingForm.value.privateKeyPath,
     passphrase: editingForm.value.passphrase,
+    postUploadScript: editingForm.value.postUploadScript,
     mappings: editingMappings.value
   }
 }
@@ -401,6 +424,19 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
         </div>
       </div>
 
+      <!-- 上传后脚本（仅 SFTP / 本地目录；FTP 系列没有 exec 能力） -->
+      <div v-if="editingForm.protocol === 'sftp' || editingForm.protocol === 'local'" class="form-section">
+        <h5 class="form-section-title">上传后脚本</h5>
+        <div class="form-row">
+          <FormField label="本地脚本路径（可选）" for="tgt-post-script" class="full">
+            <div class="file-picker">
+              <input id="tgt-post-script" v-model="editingForm.postUploadScript" placeholder="例如：scripts/reload.sh" />
+              <button class="browse-btn" aria-label="选择脚本文件" title="选择脚本文件" @click="pickScriptFile">浏览</button>
+            </div>
+          </FormField>
+        </div>
+      </div>
+
       <!-- 目录映射 -->
       <div class="form-section">
         <h5 class="form-section-title">目录映射</h5>
@@ -525,6 +561,7 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
 /* 窄字段：协议(160px) / 端口(120px) —— 左边缘仍落在统一栅格的列起点上，
    只是控件本身不长，避免"SFTP"这种短内容占用一整列 */
 .form-field--narrow { max-width: 160px; }
+.form-field.full { flex: 1; }
 .form-field--port { max-width: 120px; }
 .form-row.row-host { grid-template-columns: 1fr 1fr; }
 

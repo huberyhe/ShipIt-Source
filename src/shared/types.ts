@@ -48,7 +48,27 @@ export interface DeployTarget {
   /** SFTP 私钥文件路径 */
   privateKeyPath?: string
   passphrase?: string
+  /**
+   * 上传完成后执行的**本地脚本路径**。
+   * 仅 SFTP / 本地目录生效：脚本会先传到目标临时目录（内容寻址，同内容跳过）再执行，
+   * FTP 系列没有 exec 能力，配置了也会被跳过。
+   */
+  postUploadScript?: string
   mappings: DirectoryMapping[]
+}
+
+/** 上传后脚本的执行结果（退出码是「脚本是否跑对」的判据） */
+export interface PostUploadScriptResult {
+  status: 'success' | 'failed' | 'skipped'
+  exitCode: number | null
+  stdout: string
+  stderr: string
+  durationMs: number
+  /** 远端路径（sftp） */
+  remotePath?: string
+  /** 本次是否真的上传了脚本（内容寻址命中则跳过） */
+  uploaded?: boolean
+  message?: string
 }
 
 /** 目标摘要（前端清单展示用；不含任何凭据字段，INV-5） */
@@ -140,6 +160,8 @@ export interface TaskResultView {
     cancelled: boolean
   }
   details: DeployDetail[]
+  /** 上传后脚本结果（未配置时缺省） */
+  postUpload?: PostUploadScriptResult
 }
 
 /** 队列状态：空闲 / 有任务在执行且无排队 / 有排队（可能同时也在执行） */
@@ -228,6 +250,8 @@ export interface DeployResult {
   cancelled?: boolean
   duration: number
   details: DeployDetail[]
+  /** 上传后脚本结果（未配置时缺省） */
+  postUpload?: PostUploadScriptResult
 }
 
 /** Git 工作区单个变更文件 */
@@ -248,6 +272,8 @@ export interface DeployLogEntry {
   duration: number
   details: DeployDetail[]
   cancelled?: boolean
+  /** 上传后脚本结果（退出码用于区分脚本是否执行成功） */
+  postUpload?: PostUploadScriptResult
   origin: 'desktop' | 'cli' | 'mcp'
   projectRoot?: string
   /** 来源地址（跨机器调用时标注） */

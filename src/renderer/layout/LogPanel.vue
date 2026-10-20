@@ -50,6 +50,45 @@ function toggleLog(taskId: string) {
 const LOG_PATH_MAX_CHARS = 48
 const pathText = (path: string): string => shortenPath(path, { maxChars: LOG_PATH_MAX_CHARS })
 
+/**
+ * 行内结果文案：正常用自然语言（不堆数字），异常才给计数。
+ * - 有脚本：`上传成功，脚本已执行（0）`
+ * - 无脚本：`上传成功`
+ * 脚本失败的退出码/输出放到 title 里，避免把一行撑满。
+ */
+function resultText(log: DeployLogEntry): string {
+  if (log.cancelled) return `已取消 · 完成 ${log.succeeded} 个`
+  const parts: string[] = []
+  if (log.failed > 0) parts.push(`${log.succeeded} 个成功，${log.failed} 个失败`)
+  else parts.push('上传成功')
+  if (log.postUpload) parts.push(scriptPhrase(log.postUpload))
+  return parts.join('，')
+}
+
+/** 脚本结果的简短说法（退出码只在「执行成功/失败」时出现） */
+function scriptPhrase(post: NonNullable<DeployLogEntry['postUpload']>): string {
+  if (post.status === 'skipped') return '脚本已跳过'
+  if (post.status === 'success') return `脚本已执行（${post.exitCode ?? 0}）`
+  return post.exitCode === null ? '脚本执行失败' : `脚本执行失败（${post.exitCode}）`
+}
+
+/** 上传后脚本：退出码是判据（success / failed / skipped） */
+function scriptText(post: NonNullable<DeployLogEntry['postUpload']>): string {
+  if (post.status === 'skipped') return '脚本 跳过'
+  if (post.exitCode === null) return '脚本 无退出码'
+  return `脚本 退出码 ${post.exitCode}`
+}
+
+function scriptTitle(post: NonNullable<DeployLogEntry['postUpload']>): string {
+  const lines = [scriptText(post)]
+  if (post.remotePath) lines.push(`远端：${post.remotePath}`)
+  if (post.uploaded === false) lines.push('本次未重传（内容一致）')
+  if (post.message) lines.push(post.message)
+  if (post.stderr) lines.push(`stderr：${post.stderr}`)
+  if (post.stdout) lines.push(`stdout：${post.stdout}`)
+  return lines.join('\n')
+}
+
 /** 错误文本不是路径：按字符保留开头（错误码/首因通常在前），不要按 / 分段 */
 function truncateText(text: string, maxChars = 60): string {
   return text.length <= maxChars ? text : text.slice(0, maxChars - 1) + '…'
@@ -109,9 +148,11 @@ function formatTime(ts: number): string {
           >{{ originLabel(log.origin) }}</span>
           <span v-if="projectLabel(log)" class="log-project" :title="log.projectRoot ?? ''">{{ projectLabel(log) }}</span>
           <span class="log-target">→ {{ log.targetName }}</span>
-          <span class="log-result" :class="{ cancelled: log.cancelled }">
-            {{ log.cancelled ? `已取消 · 完成 ${log.succeeded} 个` : `${log.succeeded}/${log.totalFiles} 成功` }}
-          </span>
+          <span
+            class="log-result"
+            :class="{ cancelled: log.cancelled }"
+            :title="log.postUpload ? scriptTitle(log.postUpload) : ''"
+          >{{ resultText(log) }}</span>
           <span class="log-duration">{{ (log.duration / 1000).toFixed(1) }}s</span>
         </div>
 

@@ -215,6 +215,7 @@ const deployQueue = createQueue({
       duration: record.result?.duration ?? 0,
       details: record.result?.details ?? [],
       cancelled: record.cancelled ?? false,
+      ...(record.result?.postUpload ? { postUpload: record.result.postUpload } : {}),
       origin: record.origin,
       projectRoot: record.projectRoot,
       ...(record.remoteAddress ? { remoteAddress: record.remoteAddress } : {})
@@ -843,6 +844,7 @@ function registerIpcHandlers() {
       duration: result.duration,
       details: result.details,
       cancelled: result.cancelled === true,
+      ...(result.postUpload ? { postUpload: result.postUpload } : {}),
       origin: 'desktop',
       ...(projectRoot ? { projectRoot } : {})
     })

@@ -34,15 +34,20 @@ const features = [
 </template>
 
 <style scoped>
-.about { padding: 12px 16px; }
+/*
+ * 所有子元素共用同一条左边界（16px，与 BaseDialog 头部的 padding 一致）。
+ * 此前每块各自 margin: 4/12px，左边缘分别是 16/20/28/28 —— 看起来就是"没对齐"。
+ */
+.about { padding: 16px; display: flex; flex-direction: column; }
 .app-name { font-size: 17px; font-weight: 600; color: var(--fg3); }
-.version { font-size: 12px; color: var(--fg2); margin: 4px; }
-.desc { font-size: 12px; color: var(--fg); line-height: 1.7; margin: 12px; }
-.features { margin: 12px; padding: 8px; border-top: 1px solid var(--bg3); }
-.feature {
-  display: flex; align-items: center; gap: 8px;
-  font-size: 12px; color: var(--fg);
-  padding: 4px 0;
+.version { margin-top: 2px; font-size: 12px; color: var(--fg2); }
+.desc { margin: 12px 0 0; font-size: 12px; color: var(--fg); line-height: 1.7; }
+.features {
+  margin-top: 12px; padding-top: 12px;
+  border-top: 1px solid var(--bg3);
+  display: flex; flex-direction: column; gap: 8px;
 }
-.dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
+/* 圆点对齐首行文字中线：多行文案时不再"贴着第二行偏上" */
+.feature { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; line-height: 1.6; color: var(--fg); }
+.dot { margin-top: 8px; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
 </style>
