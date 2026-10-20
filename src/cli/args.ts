@@ -202,12 +202,6 @@ const COMMAND_HELP: Record<string, CommandHelp> = {
   mcp: {
     summary: '以 stdio 启动 MCP server（供 agent 接入）',
     usage: 'mcp',
-    notes: [
-      '启动即预检：确认桌面版在运行、认证通过、协议版本一致；任一不过立即非零退出（不会以"半可用"状态挂起）。',
-      '启动后 stdout 只承载 MCP 协议消息，诊断信息一律走 stderr（否则会污染协议）。',
-      '本机默认零配置：自动读取桌面版写入的连接信息文件（端口 / 令牌都不用填）。',
-      '跨机器或桌面版用了非默认数据目录时，用 --connect <连接串> 或 --profile <名称> 指定连接（见下方「远端连接」）。'
-    ],
     examples: [
       'shipit mcp',
       'npx -y @huberyhe/shipit-mcp mcp   # 宿主里可直接这样拉起',
