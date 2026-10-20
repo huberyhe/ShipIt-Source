@@ -205,11 +205,13 @@ const COMMAND_HELP: Record<string, CommandHelp> = {
     notes: [
       '启动即预检：确认桌面版在运行、认证通过、协议版本一致；任一不过立即非零退出（不会以"半可用"状态挂起）。',
       '启动后 stdout 只承载 MCP 协议消息，诊断信息一律走 stderr（否则会污染协议）。',
-      '客户端不需要配置端口 / 令牌：自动读取桌面版写入的连接信息文件。'
+      '本机默认零配置：自动读取桌面版写入的连接信息文件（端口 / 令牌都不用填）。',
+      '跨机器或桌面版用了非默认数据目录时，用 --connect <连接串> 或 --profile <名称> 指定连接（见下方「远端连接」）。'
     ],
     examples: [
       'shipit mcp',
-      'npx -y @huberyhe/shipit-mcp mcp   # 宿主里可直接这样拉起'
+      'npx -y @huberyhe/shipit-mcp mcp   # 宿主里可直接这样拉起',
+      'shipit mcp --connect \'{"host":"192.168.1.20","port":4517,"token":"…","protocolVersion":1,"fingerprint":"…"}\''
     ],
     params: [
       {
@@ -217,6 +219,13 @@ const COMMAND_HELP: Record<string, CommandHelp> = {
         entries: [
           ['command', 'npx'],
           ['args', '["-y", "@huberyhe/shipit-mcp", "mcp"]']
+        ]
+      },
+      {
+        title: '远端连接（跨机器 / 非默认数据目录）',
+        entries: [
+          ['--connect <连接串>', '桌面版「导出连接串」复制的单行 JSON（含 host/port/token/fingerprint）'],
+          ['--profile <名称>', '本机保存的连接配置：<SHIPIT_HOME>/profiles/<名称>.json（未设时 Windows 为 %APPDATA%\\shipit）']
         ]
       },
       {

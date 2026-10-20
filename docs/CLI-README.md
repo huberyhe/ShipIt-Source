@@ -14,7 +14,7 @@
 
 | 形态 | 获取方式 | 说明 |
 | --- | --- | --- |
-| 随安装包 | 安装 ShipIt 后位于 `<安装目录>/resources/cli/index.js` | 用 Node 20+ 运行：`node "<安装目录>/resources/cli/index.js" <命令>`（产物自包含，不需要额外安装依赖） |
+| 随安装包 | 安装 ShipIt 后位于 `<安装目录>/cli/index.js`（与 ShipIt.exe 同级） | 用 Node 20+ 运行：`node "<安装目录>/resources/cli/index.js" <命令>`（产物自包含，不需要额外安装依赖） |
 | npx | `npx @huberyhe/shipit-mcp <命令>` | npm 包只含构建产物，版本与桌面版一致 |
 
 前置条件：
@@ -289,7 +289,7 @@ Claude Desktop（`claude_desktop_config.json`）：
   "mcpServers": {
     "shipit": {
       "command": "node",
-      "args": ["C:/Program Files/ShipIt/resources/cli/index.js", "mcp"]
+      "args": ["C:/Program Files/ShipIt/cli/index.js", "mcp"]
     }
   }
 }

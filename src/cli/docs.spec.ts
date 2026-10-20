@@ -61,7 +61,7 @@ describe('使用文档（DFX-DEP-005）', () => {
   })
 
   it('文档给出三种安装形态（随包入口 / npx / MCP 宿主配置）', () => {
-    expect(doc).toContain('resources/cli/index.js')
+    expect(doc).toContain('<安装目录>/cli/index.js')
     expect(doc).toContain('npx @huberyhe/shipit-mcp')
     expect(doc).toContain('mcpServers')
   })

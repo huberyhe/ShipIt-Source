@@ -117,7 +117,7 @@ describe('CI 配置（构建与发布分离）', () => {
     }
   })
 
-  it('P1-5 三平台打包前先构建 dist-cli（否则安装包静默缺少 resources/cli）', () => {
+  it('P1-5 三平台打包前先构建 dist-cli（否则安装包静默缺少 cli/）', () => {
     const buildCliAt = workflow.indexOf('npm run build:cli')
     const firstBuilderAt = workflow.indexOf('npx electron-builder')
     expect(buildCliAt).toBeGreaterThan(-1)

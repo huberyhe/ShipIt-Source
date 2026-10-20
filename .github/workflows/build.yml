@@ -135,7 +135,7 @@ jobs:
         run: npm run build
 
       - name: Build CLI/MCP bundle
-        # 安装包 extraResources 依赖 dist-cli：必须先构建，否则打包只有一条 warn 并静默缺少 resources/cli
+        # 安装包 extraFiles 依赖 dist-cli：必须先构建，否则打包只有一条 warn 并静默缺少 cli/
         run: npm run build:cli
 
       - name: Verify CLI bundle

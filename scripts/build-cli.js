@@ -31,7 +31,7 @@ async function bundle(root) {
     format: 'cjs',
     sourcemap: false,
     // 全部依赖打进产物（**故意不留 external**）：
-    // 安装包把 dist-cli 原样复制到 <安装目录>/resources/cli，不会带 node_modules，
+    // 安装包把 dist-cli 原样复制到 <安装目录>/cli，不会带 node_modules，
     // 一旦把 MCP SDK 当外部依赖，用「安装包内入口」启动 MCP 就会 MODULE_NOT_FOUND，
     // 只有 npx 形态能用（而文档两种形态都推荐了）。自包含后两种形态一致可用。
     banner: { js: '#!/usr/bin/env node' },

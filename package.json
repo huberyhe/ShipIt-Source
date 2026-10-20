@@ -104,7 +104,9 @@
       {
         "from": "build/icon.png",
         "to": "icon.png"
-      },
+      }
+    ],
+    "extraFiles": [
       {
         "from": "dist-cli",
         "to": "cli"
