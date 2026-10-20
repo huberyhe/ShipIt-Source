@@ -98,6 +98,25 @@ npm run gen:icon       # 换图标后重新生成 build/icon.ico
 - **主进程 → 渲染层提示走正式通道**（如 `WINDOW_LIMIT_HINT`）：只发触发窗口；渲染层订阅要放 **setup 同步注册**（onMounted 里的 await 会让注册晚于 push），并配 `takeWindowLimitHint()` 拉取兜底
 - **作用域（D-28，方案 B）**：`bind=local` 不限路径（回环等价于本机权限）；`bind=lan` 只允许「已打开项目 + `server.allowedRoots`」，越界 `PROJECT_OUT_OF_SCOPE`（退出码 4）。判定在 `ProjectContext#inScope`，路径前缀**按段比较**（`D:/Work` 不匹配 `D:/Work2`）；`allowedRoots` 需填**绝对路径**
 
+## 发布纪律（硬性）
+
+- **提交并发布前，先与用户确认版本号**：不自行决定、不自行递增；确认后按该版本号统一全部位置。
+- **版本号必须处处一致**，发布前逐项核对（任何一处不一致就先对齐再发）：
+
+  | 位置 | 怎么来 |
+  | --- | --- |
+  | `package.json` | **唯一来源**（`npm version X --no-git-tag-version`） |
+  | `package-lock.json` | 随上一步自动更新 |
+  | `dist-cli/package.json` | `npm run build:cli` 从根清单生成，不要手改 |
+  | npm `latest` | 发布结果 |
+  | GitHub Release tag（`huberyhe/ShipIt-Source`、`huberyhe/ShipIt`） | 与版本号同名 |
+  | 安装包文件名 | `ShipIt-v<版本>-build<号>-x64.exe` |
+  | `docs/CLI-README.md`、`docs/CLI-RELEASE-README.md` 的「当前发布版本」 | 已发布版本 |
+  | `docs/RELEASE-README.md` 的版本徽章 | 已发布版本 |
+
+- 文档里的版本**跟随已发布版本**；占位/未发布版本不要写进文档。
+- 发布前还要确认：`npm test`、`npm run type-check`、`npx tsc --noEmit`、`npx vite build`、`npm run audit:ui`（双主题）全绿。
+
 ## CLI / MCP 与服务端约定
 
 - 执行位置唯一：CLI 与 MCP 都是薄前端，所有执行（上传、Git 查询）都经桌面主进程的服务端完成，不要在前端复制业务逻辑。

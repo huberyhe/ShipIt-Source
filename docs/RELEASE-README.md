@@ -4,7 +4,7 @@
 
 面向开发者的文件发布工具 —— 将本地文件通过 SFTP/FTP/FTPS/FTPES/本地目录一键上传到多台服务器，集成 Git 变更与提交历史查看。
 
-![版本](https://img.shields.io/badge/version-1.2.1-blue)
+![版本](https://img.shields.io/badge/version-1.2.2-blue)
 ![平台](https://img.shields.io/badge/platform-Windows%2010+-green)
 
 ## 功能特性
