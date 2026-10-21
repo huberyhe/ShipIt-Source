@@ -98,18 +98,18 @@ async function doRemove() {
     </div>
 
     <EmptyState v-if="mappings.length === 0 && !isAdding" size="inline" text="暂无映射规则，例如：项目目录">
-      <code>manage/</code> → 远程 <code>/opt/ssmp/</code>
+      <code>dist/</code> → 远程 <code>/var/www/app/</code>
     </EmptyState>
 
     <div v-if="isAdding || editingMappingId" class="mapping-form">
       <div class="form-row">
         <FormField label="本地路径（相对于项目根目录）" :for="'map-local-' + props.targetId">
-          <input :id="'map-local-' + props.targetId" v-model="editingForm.localPrefix" placeholder="例如: manage/ 或 src/app/" />
+          <input :id="'map-local-' + props.targetId" v-model="editingForm.localPrefix" placeholder="例如: dist/ 或 src/assets/" />
         </FormField>
       </div>
       <div class="form-row">
         <FormField label="远程目标路径" :for="'map-remote-' + props.targetId">
-          <input :id="'map-remote-' + props.targetId" v-model="editingForm.remotePath" placeholder="例如: /opt/ssmp/ 或 /var/www/html/" />
+          <input :id="'map-remote-' + props.targetId" v-model="editingForm.remotePath" placeholder="例如: /var/www/app/ 或 /opt/web/" />
         </FormField>
       </div>
       <div class="form-row">

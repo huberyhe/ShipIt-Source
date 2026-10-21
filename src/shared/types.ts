@@ -18,9 +18,9 @@ export type Protocol = 'sftp' | 'ftp' | 'ftps' | 'ftpes' | 'local'
 /** 目录映射规则：本地路径前缀 → 远程路径前缀 */
 export interface DirectoryMapping {
   id: string
-  /** 本地路径前缀（相对项目根目录），如 "manage/" */
+  /** 本地路径前缀（相对项目根目录），如 "dist/" */
   localPrefix: string
-  /** 远程路径前缀，如 "/opt/ssmp/" */
+  /** 远程路径前缀，如 "/var/www/app/" */
   remotePath: string
   description?: string
 }

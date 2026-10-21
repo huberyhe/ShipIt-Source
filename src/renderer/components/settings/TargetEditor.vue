@@ -99,6 +99,7 @@ function requestExit() {
 
 function startAdd() {
   editingId.value = null
+  resetFormFeedback()
   editingForm.value = {
     name: '', protocol: 'sftp', host: '', port: 22,
     username: '', password: '', privateKeyPath: '', passphrase: '',
@@ -110,6 +111,7 @@ function startAdd() {
 
 function startEdit(target: any) {
   editingId.value = target.id
+  resetFormFeedback()
   editingForm.value = {
     name: target.name, protocol: target.protocol, host: target.host,
     port: target.port || defaultPort(target.protocol),
@@ -121,7 +123,16 @@ function startEdit(target: any) {
   baseline.value = currentSnapshot()
 }
 
-function cancelEdit() { editingId.value = undefined }
+function cancelEdit() {
+  editingId.value = undefined
+  resetFormFeedback()
+}
+
+/** 清空「测试连接」的瞬时结果：它是上一个表单的状态，不能带到下一个目标 */
+function resetFormFeedback(): void {
+  formTestResult.value = null
+  isFormTesting.value = false
+}
 
 /**
  * 保存目标（新增或修改）。
@@ -449,9 +460,9 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
         </div>
         <div class="edit-mapping-add">
           <div class="inline-form">
-            <input v-model="tempMap.localPrefix" aria-label="本地路径前缀" placeholder="本地前缀，如 manage/" class="inline-input" @keyup.enter="addTempMapping({ id:Date.now().toString(36), localPrefix:tempMap.localPrefix, remotePath:tempMap.remotePath, description:tempMap.description })" />
+            <input v-model="tempMap.localPrefix" aria-label="本地路径前缀" placeholder="本地前缀，如 dist/" class="inline-input" @keyup.enter="addTempMapping({ id:Date.now().toString(36), localPrefix:tempMap.localPrefix, remotePath:tempMap.remotePath, description:tempMap.description })" />
             <span class="map-arrow">→</span>
-            <input v-model="tempMap.remotePath" aria-label="远程目标路径" placeholder="远程路径，如 /opt/ssmp/" class="inline-input flex-remote" @keyup.enter="addTempMapping({ id:Date.now().toString(36), localPrefix:tempMap.localPrefix, remotePath:tempMap.remotePath, description:tempMap.description })" />
+            <input v-model="tempMap.remotePath" aria-label="远程目标路径" placeholder="远程路径，如 /var/www/app/" class="inline-input flex-remote" @keyup.enter="addTempMapping({ id:Date.now().toString(36), localPrefix:tempMap.localPrefix, remotePath:tempMap.remotePath, description:tempMap.description })" />
             <button class="mini-add-btn" @click="addTempMapping({ id:Date.now().toString(36), localPrefix:tempMap.localPrefix, remotePath:tempMap.remotePath, description:tempMap.description })">添加</button>
           </div>
         </div>
