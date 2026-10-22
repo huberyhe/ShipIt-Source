@@ -34,6 +34,13 @@ function onRowClick(e: MouseEvent) {
   emit('select', props.node, { x: e.clientX, y: e.clientY }, resolveSelectionMode(e))
 }
 
+/** 双击文件 = 查看差异（已删除的文件没有本地内容，跳过） */
+function onRowDblClick(): void {
+  if (props.node.isDirectory || !props.node.change) return
+  if (props.node.change.status === 'deleted') return
+  emit('showDiff', props.node.path)
+}
+
 /** 行级键盘交互：Enter 展开/选中，Space 选中（此前整棵树键盘不可达） */
 function onRowKeydown(event: KeyboardEvent): void {
   if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Spacebar') return
@@ -187,6 +194,7 @@ function getDirStats(n: ChangeTreeNode): string {
     role="button"
     :tabindex="0"
     @click="onRowClick"
+    @dblclick="onRowDblClick"
     @contextmenu="onContextMenu"
     @keydown="onRowKeydown"
   >
