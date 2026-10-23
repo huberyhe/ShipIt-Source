@@ -48,10 +48,20 @@ export interface RunScriptOptions {
   timeoutMs?: number
 }
 
+/** 读取配置（兼容旧的 postUploadScript 字段） */
+export function postUploadOf(target: DeployTarget): { kind: 'script' | 'command'; value: string } | null {
+  const current = target.postUpload
+  if (current && current.value.trim()) return { kind: current.kind, value: current.value.trim() }
+  const legacy = target.postUploadScript?.trim()
+  return legacy ? { kind: 'script', value: legacy } : null
+}
+
 export async function runPostUploadScript(options: RunScriptOptions): Promise<PostUploadScriptResult> {
   const startedAt = Date.now()
-  const scriptPath = options.target.postUploadScript?.trim()
+  const config = postUploadOf(options.target)
+  const scriptPath = config?.value ?? ''
   const base: PostUploadScriptResult = {
+    kind: config?.kind,
     status: 'failed',
     exitCode: null,
     stdout: '',
@@ -59,7 +69,23 @@ export async function runPostUploadScript(options: RunScriptOptions): Promise<Po
     durationMs: 0
   }
 
-  if (!scriptPath) return { ...base, status: 'skipped', message: '未配置脚本' }
+  if (!scriptPath) return { ...base, status: 'skipped', message: '未配置上传后执行' }
+  if (config!.kind === 'command') {
+    if (options.target.protocol !== 'sftp' && options.target.protocol !== 'local') {
+      return {
+        ...base,
+        status: 'skipped',
+        message: `协议 ${options.target.protocol.toUpperCase()} 不支持执行命令（仅 SFTP / 本地目录）`,
+        durationMs: Date.now() - startedAt
+      }
+    }
+    const timeout = options.timeoutMs ?? DEFAULT_SCRIPT_TIMEOUT_MS
+    const run =
+      options.target.protocol === 'local'
+        ? await execShell(scriptPath, options.target, timeout)
+        : await execRemote((options.sftpClient as { client?: unknown } | null)?.client, scriptPath, timeout)
+    return { ...run, status: run.exitCode === 0 ? 'success' : 'failed', durationMs: Date.now() - startedAt }
+  }
   if (!existsSync(scriptPath)) {
     return { ...base, status: 'failed', message: `本地脚本不存在：${scriptPath}`, durationMs: Date.now() - startedAt }
   }
@@ -128,6 +154,28 @@ function execLocal(
     const child = spawn(scriptPath, [], {
       cwd: target.host || undefined,
       shell: process.platform === 'win32' || /\.(bat|cmd|ps1)$/i.test(scriptPath),
+      windowsHide: true,
+      timeout: timeoutMs
+    })
+    let stdout = ''
+    let stderr = ''
+    child.stdout?.on('data', (d) => (stdout += d.toString()))
+    child.stderr?.on('data', (d) => (stderr += d.toString()))
+    child.on('error', (error) => resolve({ exitCode: null, stdout: truncate(stdout), stderr: truncate(error.message) }))
+    child.on('close', (code) => resolve({ exitCode: code, stdout: truncate(stdout), stderr: truncate(stderr) }))
+  })
+}
+
+/** 本地目录目标：命令用系统 shell 执行 */
+function execShell(
+  command: string,
+  target: DeployTarget,
+  timeoutMs: number
+): Promise<{ exitCode: number | null; stdout: string; stderr: string }> {
+  return new Promise((resolve) => {
+    const child = spawn(command, {
+      cwd: target.host || undefined,
+      shell: true,
       windowsHide: true,
       timeout: timeoutMs
     })

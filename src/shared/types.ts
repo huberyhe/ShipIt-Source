@@ -49,16 +49,26 @@ export interface DeployTarget {
   privateKeyPath?: string
   passphrase?: string
   /**
-   * 上传完成后执行的**本地脚本路径**。
-   * 仅 SFTP / 本地目录生效：脚本会先传到目标临时目录（内容寻址，同内容跳过）再执行，
-   * FTP 系列没有 exec 能力，配置了也会被跳过。
+   * 上传后执行：脚本文件（先传到远端临时目录再执行）或命令（直接在远端执行）。
+   * 仅 SFTP / 本地目录生效；FTP 系列没有 exec 能力，配置了也会被跳过。
    */
+  postUpload?: PostUploadConfig | null
+  /** @deprecated 旧字段（仅脚本文件）；读取时自动迁移到 postUpload */
   postUploadScript?: string
   mappings: DirectoryMapping[]
 }
 
+/** 上传后执行配置：脚本文件 或 命令，二选一 */
+export interface PostUploadConfig {
+  kind: 'script' | 'command'
+  /** 脚本：本地文件路径；命令：在远端执行的命令行 */
+  value: string
+}
+
 /** 上传后脚本的执行结果（退出码是「脚本是否跑对」的判据） */
 export interface PostUploadScriptResult {
+  /** 本次执行的是脚本还是命令（日志文案据此区分） */
+  kind?: 'script' | 'command'
   status: 'success' | 'failed' | 'skipped'
   exitCode: number | null
   stdout: string

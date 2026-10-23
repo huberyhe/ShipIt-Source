@@ -65,18 +65,20 @@ function resultText(log: DeployLogEntry): string {
   return parts.join('，')
 }
 
-/** 脚本结果的简短说法（退出码只在「执行成功/失败」时出现） */
+/** 脚本/命令结果的简短说法（退出码只在「执行成功/失败」时出现） */
 function scriptPhrase(post: NonNullable<DeployLogEntry['postUpload']>): string {
-  if (post.status === 'skipped') return '脚本已跳过'
-  if (post.status === 'success') return `脚本已执行（${post.exitCode ?? 0}）`
-  return post.exitCode === null ? '脚本执行失败' : `脚本执行失败（${post.exitCode}）`
+  const noun = post.kind === 'command' ? '命令' : '脚本'
+  if (post.status === 'skipped') return `${noun}已跳过`
+  if (post.status === 'success') return `${noun}已执行（${post.exitCode ?? 0}）`
+  return post.exitCode === null ? `${noun}执行失败` : `${noun}执行失败（${post.exitCode}）`
 }
 
 /** 上传后脚本：退出码是判据（success / failed / skipped） */
 function scriptText(post: NonNullable<DeployLogEntry['postUpload']>): string {
-  if (post.status === 'skipped') return '脚本 跳过'
-  if (post.exitCode === null) return '脚本 无退出码'
-  return `脚本 退出码 ${post.exitCode}`
+  const noun = post.kind === 'command' ? '命令' : '脚本'
+  if (post.status === 'skipped') return `${noun} 跳过`
+  if (post.exitCode === null) return `${noun} 无退出码`
+  return `${noun} 退出码 ${post.exitCode}`
 }
 
 function scriptTitle(post: NonNullable<DeployLogEntry['postUpload']>): string {

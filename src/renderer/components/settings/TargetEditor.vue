@@ -30,7 +30,10 @@ const editingId = ref<string | null | undefined>(undefined)
 const editingForm = ref({
   name: '', protocol: 'sftp' as Protocol, host: '', port: 22,
   username: '', password: '', privateKeyPath: '', passphrase: '',
-  postUploadScript: ''
+  /** 上传后执行：不执行 / 脚本文件 / 命令（三选一，互斥） */
+  postUploadKind: 'none' as 'none' | 'script' | 'command',
+  postUploadScript: '',
+  postUploadCommand: ''
 })
 const editingMappings = ref<any[]>([]) // 编辑中的映射列表
 
@@ -103,7 +106,7 @@ function startAdd() {
   editingForm.value = {
     name: '', protocol: 'sftp', host: '', port: 22,
     username: '', password: '', privateKeyPath: '', passphrase: '',
-    postUploadScript: ''
+    postUploadKind: 'none', postUploadScript: '', postUploadCommand: ''
   }
   editingMappings.value = []
   baseline.value = currentSnapshot()
@@ -117,7 +120,9 @@ function startEdit(target: any) {
     port: target.port || defaultPort(target.protocol),
     username: target.username, password: target.password || '',
     privateKeyPath: target.privateKeyPath || '', passphrase: target.passphrase || '',
-    postUploadScript: target.postUploadScript || ''
+    postUploadKind: target.postUpload?.kind ?? (target.postUploadScript ? 'script' : 'none'),
+    postUploadScript: target.postUpload?.kind === 'script' ? target.postUpload.value : (target.postUploadScript || ''),
+    postUploadCommand: target.postUpload?.kind === 'command' ? target.postUpload.value : ''
   }
   editingMappings.value = JSON.parse(JSON.stringify(target.mappings || []))
   baseline.value = currentSnapshot()
@@ -159,7 +164,15 @@ async function saveTarget(): Promise<boolean> {
     password: editingForm.value.password,
     privateKeyPath: editingForm.value.privateKeyPath,
     passphrase: editingForm.value.passphrase,
-    postUploadScript: editingForm.value.postUploadScript.trim(),
+    postUpload: editingForm.value.postUploadKind === 'none'
+      ? null
+      : {
+          kind: editingForm.value.postUploadKind,
+          value: editingForm.value.postUploadKind === 'script'
+            ? editingForm.value.postUploadScript.trim()
+            : editingForm.value.postUploadCommand.trim()
+        },
+    postUploadScript: undefined,
     mappings: editingMappings.value.map((m: any) => ({
       localPrefix: m.localPrefix,
       remotePath: m.remotePath,
@@ -240,6 +253,19 @@ function doDelete() {
   toastSuccess(`已移出待保存列表：${target.name}`)
 }
 
+const postUploadSupported = computed(() => editingForm.value.protocol === 'sftp' || editingForm.value.protocol === 'local')
+const postUploadOptions = computed(() => [
+  { value: 'none' as const, label: '不执行', disabled: false, hint: '上传完成后不做额外动作' },
+  { value: 'script' as const, label: '执行脚本', disabled: !postUploadSupported.value, hint: postUploadSupported.value ? '脚本会先传到目标临时目录（内容一致则跳过）再执行' : '仅 SFTP / 本地目录目标支持' },
+  { value: 'command' as const, label: '执行命令', disabled: !postUploadSupported.value, hint: postUploadSupported.value ? '命令直接在目标上执行' : '仅 SFTP / 本地目录目标支持' }
+])
+
+// 协议切到不支持的类型时，把选择收回到「不执行」，避免留下不生效的配置
+watch(
+  () => editingForm.value.protocol,
+  () => { if (!postUploadSupported.value) editingForm.value.postUploadKind = 'none' }
+)
+
 async function pickScriptFile() {
   try {
     const current = editingForm.value.postUploadScript.trim()
@@ -305,7 +331,9 @@ function buildTestTarget() {
     password: editingForm.value.password,
     privateKeyPath: editingForm.value.privateKeyPath,
     passphrase: editingForm.value.passphrase,
-    postUploadScript: editingForm.value.postUploadScript,
+    postUpload: editingForm.value.postUploadKind === 'none'
+      ? null
+      : { kind: editingForm.value.postUploadKind, value: editingForm.value.postUploadScript || editingForm.value.postUploadCommand },
     mappings: editingMappings.value
   }
 }
@@ -435,17 +463,52 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
         </div>
       </div>
 
-      <!-- 上传后脚本（仅 SFTP / 本地目录；FTP 系列没有 exec 能力） -->
-      <div v-if="editingForm.protocol === 'sftp' || editingForm.protocol === 'local'" class="form-section">
-        <h5 class="form-section-title">上传后脚本</h5>
+      <!-- 上传后执行：三选一（不执行 / 脚本文件 / 命令），仅 SFTP / 本地目录可用 -->
+      <div class="form-section">
+        <h5 class="form-section-title">上传后执行</h5>
         <div class="form-row">
-          <FormField label="本地脚本路径（可选）" for="tgt-post-script" class="full">
+          <FormField label="执行方式" class="full">
+            <div class="segmented" role="radiogroup" aria-label="上传后执行方式">
+              <button
+                v-for="opt in postUploadOptions"
+                :key="opt.value"
+                type="button"
+                class="segment"
+                role="radio"
+                :aria-checked="editingForm.postUploadKind === opt.value"
+                :class="{ on: editingForm.postUploadKind === opt.value }"
+                :disabled="opt.disabled"
+                :title="opt.hint"
+                @click="editingForm.postUploadKind = opt.value"
+              >{{ opt.label }}</button>
+            </div>
+          </FormField>
+        </div>
+
+        <div v-if="editingForm.postUploadKind === 'script'" class="form-row">
+          <FormField label="脚本文件" for="tgt-post-script" class="full">
             <div class="file-picker">
               <input id="tgt-post-script" v-model="editingForm.postUploadScript" placeholder="例如：scripts/reload.sh" />
               <button class="browse-btn" aria-label="选择脚本文件" title="选择脚本文件" @click="pickScriptFile">浏览</button>
             </div>
           </FormField>
         </div>
+
+        <div v-if="editingForm.postUploadKind === 'command'" class="form-row">
+          <FormField label="命令（在目标上执行）" for="tgt-post-command" class="full">
+            <textarea
+              id="tgt-post-command"
+              v-model="editingForm.postUploadCommand"
+              rows="2"
+              spellcheck="false"
+              class="cmd-input"
+              placeholder="例如：systemctl reload nginx"
+            />
+          </FormField>
+        </div>
+        <p v-if="editingForm.postUploadKind === 'command'" class="cmd-warning">
+          以目标用户身份执行，等同该用户的 SSH 权限；失败不影响已上传文件。
+        </p>
       </div>
 
       <!-- 目录映射 -->
@@ -573,6 +636,23 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
    只是控件本身不长，避免"SFTP"这种短内容占用一整列 */
 .form-field--narrow { max-width: 160px; }
 .form-field.full { flex: 1; }
+/* 三选一：分段控件（未单独抽组件，仅此一处消费） */
+.segmented { display: inline-flex; border: 1px solid var(--border2); border-radius: 4px; overflow: hidden; }
+.segment { padding: 4px 12px; background: transparent; color: var(--fg2); font-size: 12px; border: 0; border-right: 1px solid var(--border2); }
+.segment:last-child { border-right: 0; }
+.segment:hover:not(:disabled) { background: var(--bg3); color: var(--fg); }
+.segment.on { background: var(--accent); color: var(--on-accent); }
+.segment:disabled { opacity: 0.45; cursor: not-allowed; }
+.cmd-input {
+  width: 100%; min-height: 52px; resize: vertical; box-sizing: border-box;
+  padding: 8px; font-family: ui-monospace, monospace; font-size: 12px;
+  background: var(--input-bg); color: var(--fg); border: 1px solid var(--border); border-radius: 4px;
+}
+.cmd-input:focus-visible { border-color: var(--status-bar); }
+.cmd-warning {
+  margin: 4px 0 0; padding-left: 8px; font-size: 11px; line-height: 1.5; color: var(--fg2);
+  border-left: 2px solid var(--red);
+}
 .form-field--port { max-width: 120px; }
 .form-row.row-host { grid-template-columns: 1fr 1fr; }
 

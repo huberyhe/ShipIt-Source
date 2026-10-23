@@ -4,7 +4,7 @@ import { promises as fsPromises, readFileSync, constants } from 'fs'
 import { join, relative, posix, dirname } from 'path'
 import type { DeployTarget, DirectoryMapping, UploadTask, DeployResult, DeployDetail } from '../../shared/types'
 import { UPLOAD_SKIP_DIRS } from './ignore-dirs'
-import { runPostUploadScript } from './post-upload-script'
+import { postUploadOf, runPostUploadScript } from './post-upload-script'
 
 export type { DeployTarget, DirectoryMapping, UploadTask, DeployResult, DeployDetail }
 
@@ -298,7 +298,7 @@ export class DeployService {
       }
 
       // 上传后脚本：全部文件传完后执行一次（失败不影响已上传文件的成功状态）
-      if (target.postUploadScript) {
+      if (postUploadOf(target)) {
         result.postUpload = await runPostUploadScript({
           target,
           sftpClient: target.protocol === 'sftp' ? sftpClient : null,
