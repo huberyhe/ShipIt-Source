@@ -495,7 +495,7 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
         </div>
 
         <div v-if="editingForm.postUploadKind === 'command'" class="form-row">
-          <FormField label="命令（在目标上执行）" for="tgt-post-command" class="full">
+          <FormField label="命令" for="tgt-post-command" class="full">
             <textarea
               id="tgt-post-command"
               v-model="editingForm.postUploadCommand"
@@ -506,9 +506,6 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
             />
           </FormField>
         </div>
-        <p v-if="editingForm.postUploadKind === 'command'" class="cmd-warning">
-          以目标用户身份执行，等同该用户的 SSH 权限；失败不影响已上传文件。
-        </p>
       </div>
 
       <!-- 目录映射 -->
@@ -637,7 +634,7 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
 .form-field--narrow { max-width: 160px; }
 .form-field.full { flex: 1; }
 /* 三选一：分段控件（未单独抽组件，仅此一处消费） */
-.segmented { display: inline-flex; border: 1px solid var(--border2); border-radius: 4px; overflow: hidden; }
+.segmented { display: inline-flex; align-self: flex-start; width: fit-content; border: 1px solid var(--border2); border-radius: 4px; overflow: hidden; }
 .segment { padding: 4px 12px; background: transparent; color: var(--fg2); font-size: 12px; border: 0; border-right: 1px solid var(--border2); }
 .segment:last-child { border-right: 0; }
 .segment:hover:not(:disabled) { background: var(--bg3); color: var(--fg); }
@@ -649,10 +646,6 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
   background: var(--input-bg); color: var(--fg); border: 1px solid var(--border); border-radius: 4px;
 }
 .cmd-input:focus-visible { border-color: var(--status-bar); }
-.cmd-warning {
-  margin: 4px 0 0; padding-left: 8px; font-size: 11px; line-height: 1.5; color: var(--fg2);
-  border-left: 2px solid var(--red);
-}
 .form-field--port { max-width: 120px; }
 .form-row.row-host { grid-template-columns: 1fr 1fr; }
 
