@@ -289,7 +289,10 @@ const AUDIT_FN = String.raw`(opts => {
 
   // ---------- 5) 间距网格（4/8）----------
   // 60：输入框内嵌按钮时给按钮预留的 padding-right（宽度预留，不是间距节奏值）
-  const OK = new Set([0, 1, 2, 4, 8, 12, 16, 20, 24, 28, 32, 40, 48, 60, 64, 72, 80, 160])
+  // 4/8 网格 = 4 的整数倍（此前是白名单，漏了 56/88 这类合法值——
+  // 树形缩进 8 + 16n 会自然落到这些值上，被误判成“不在网格内”）
+  // 1~2px 是发丝级微调（描边对齐/图标基线），不算节奏值：与旧白名单口径保持一致
+  const onGrid = (v) => v <= 2 || (Number.isInteger(v) && v % 4 === 0)
   const seen = new Set()
   for (const el of all('*')) {
     if (!visible(el)) continue
@@ -298,7 +301,7 @@ const AUDIT_FN = String.raw`(opts => {
       const v = parseFloat(cs[prop])
       if (!Number.isFinite(v) || v === 0) continue
       if (v < 1) continue // 亚像素值：flex/grid 里 margin:auto 会解析出 0.5px 之类，不是间距节奏值
-      if (!OK.has(v)) {
+      if (!onGrid(v)) {
         const key = desc(el) + '|' + prop + '|' + v
         if (seen.has(key)) continue
         seen.add(key)
