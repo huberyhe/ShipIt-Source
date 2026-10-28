@@ -204,13 +204,16 @@ function onLogListKeydown(event: KeyboardEvent): void {
 .log-header:active { background: var(--bg4); }
 .log-header:hover { background: var(--bg3); }
 /*
- * 焦点环统一 2px --status-bar（与全局一致），只把 offset 改成内缩：
- * 面板头是**满宽**条带，全局的 outline-offset: 1px 会让左右两侧被窗口裁掉、
- * 下沿压到状态栏上，实际只剩上方一条线；内缩后是完整一圈。
+ * 面板底部这一片（上传日志条带 + 日志条目）是**行**，焦点只画上下两条 2px 边：
+ * - 满宽条带画整圈时，左右两条竖边贴着窗口边缘，看起来像多出来的边框；
+ * - 行式焦点（上下边）与列表行、状态栏状态项保持同一套语言。
+ * 用 inset 阴影：不占布局、不引起行高跳动。
  */
-.log-header:focus-visible { outline: 2px solid var(--status-bar); outline-offset: -2px; }
-/* 日志条目同理（在 .log-content 里滚动，外扩环会被容器裁掉） */
-.log-entry:focus-visible { outline: 2px solid var(--status-bar); outline-offset: -2px; }
+.log-header:focus-visible,
+.log-entry:focus-visible {
+  outline: none;
+  box-shadow: inset 0 2px 0 var(--status-bar), inset 0 -2px 0 var(--status-bar);
+}
 .log-count { color: var(--fg2); font-size: 11px; }
 .log-origin { font-size: 11px; padding: 0 4px; border: 1px solid var(--border); border-radius: 4px; color: var(--fg3); }
 .log-project { font-size: 11px; padding: 0 4px; border: 1px solid var(--bg4); border-radius: 4px; color: var(--fg2); }
