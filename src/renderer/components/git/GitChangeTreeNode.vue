@@ -213,7 +213,7 @@ function dirStatsTitle(n: ChangeTreeNode): string {
     :data-path="node.path"
     :data-depth="depth"
     :selected="(selectedPaths ?? []).includes(node.path)"
-    :indent="depth * 16 + 22"
+    :indent="depth * 16 + 24"
     role="button"
     :tabindex="-1"
     @click="onRowClick"

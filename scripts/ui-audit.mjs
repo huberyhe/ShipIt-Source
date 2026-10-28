@@ -788,6 +788,70 @@ function buildWalker() {
       expect: [{ selector: '.tree-row' }]
     },
     {
+      id: 'shot-filetree',
+      role: 'project',
+      label: '文件树（发布截图）',
+      setup: `(async () => {
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms))
+        const tab = Array.from(document.querySelectorAll('.view-btn')).find(x => x.textContent.includes('文件树'))
+        if (tab) tab.click()
+        await sleep(800)
+        // 只展开 src 下的两层：整棵树一屏放得下，截图不会被裁掉顶部
+        const expandByText = async (name) => {
+          const row = Array.from(document.querySelectorAll('.ftn-row')).find(r => (r.querySelector('.ftn-name')?.textContent || '').trim() === name)
+          const arrow = row?.querySelector('.ftn-expand')
+          if (arrow && arrow.getAttribute('aria-expanded') !== 'true') {
+            arrow.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+            await sleep(700)
+          }
+        }
+        await expandByText('src')
+        await expandByText('app')
+        await expandByText('components')
+        const list = document.querySelector('.file-list')
+        if (list) list.scrollTop = 0
+        await sleep(300)
+        return 'rows=' + document.querySelectorAll('.ftn-row').length +
+          ' scroll=' + (list ? list.scrollTop + '/' + list.scrollHeight + '/' + list.clientHeight : '?')
+      })()`,
+      expect: []
+    },
+    {
+      id: 'shot-changes',
+      role: 'project',
+      label: 'Git 变更（发布截图，全展开）',
+      setup: `(async () => {
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms))
+        const tab = Array.from(document.querySelectorAll('.view-btn')).find(x => x.textContent.includes('Git变更'))
+        if (tab) tab.click()
+        await sleep(900)
+        for (let i = 0; i < 5; i++) {
+          const arrows = Array.from(document.querySelectorAll('.tree-row .expand-icon')).filter(a => a.getAttribute('aria-expanded') !== 'true')
+          if (!arrows.length) break
+          arrows.forEach(a => a.dispatchEvent(new MouseEvent('click', { bubbles: true })))
+          await sleep(600)
+        }
+        return 'rows=' + document.querySelectorAll('.tree-row').length
+      })()`,
+      expect: []
+    },
+    {
+      id: 'shot-log',
+      role: 'project',
+      label: 'Git 日志（发布截图，展开首条提交）',
+      setup: `(async () => {
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms))
+        const tab = Array.from(document.querySelectorAll('.view-btn')).find(x => x.textContent.includes('Git日志'))
+        if (tab) tab.click()
+        await sleep(1200)
+        const item = document.querySelector('.commit-item')
+        if (item) item.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+        await sleep(1200)
+        return 'commits=' + document.querySelectorAll('.commit-item').length
+      })()`,
+      expect: []
+    },
+    {
       id: 'git-log',
       role: 'project',
       label: 'Git 日志视图',
