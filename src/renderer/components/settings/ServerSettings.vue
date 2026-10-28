@@ -70,10 +70,10 @@ const queueHint = computed(() => {
  * 证书指纹必须能整串看到：界面要求「跨机器请核对指纹」，只显示 12 位就无法完成核对。
  * 按 4 个字符一组分隔，长串折行展示，便于逐段比对。
  */
-const fingerprintText = computed(() => {
+const fingerprintGroups = computed<string[]>(() => {
   const fp = status.value?.fingerprint
-  if (!fp) return '未生成'
-  return fp.replace(/(.{4})/g, '$1 ').trim()
+  if (!fp) return ['未生成']
+  return fp.match(/.{1,4}/g) ?? [fp]
 })
 
 /**
@@ -338,7 +338,10 @@ defineExpose({ save, discard, isDirty })
     <div class="row">
       <span class="row-label">证书指纹</span>
       <span class="row-control fixed">
-        <code class="fingerprint value" :title="status?.fingerprint ?? ''">{{ fingerprintText }}</code>
+        <!-- 按 4 字符分组渲染：换行只发生在组与组之间，不会把 "df67" 拆成两行 -->
+        <code class="fingerprint value" :title="status?.fingerprint ?? ''">
+          <span v-for="(group, i) in fingerprintGroups" :key="i" class="fp-group">{{ group }}</span>
+        </code>
         <span class="actions">
           <IconButton label="复制证书指纹" size="sm" :disabled="!status?.fingerprint" @click="copy(status?.fingerprint ?? '', '证书指纹已复制')">
             <Copy :size="14" />
@@ -377,19 +380,20 @@ defineExpose({ save, discard, isDirty })
 /* 标签固定列宽、控件紧随其后：所有开关与输入框左对齐在同一列 */
 .row-label { width: 160px; flex-shrink: 0; color: var(--fg2); cursor: default; }
 .row-control { display: flex; align-items: center; gap: 4px; min-width: 0; }
-/* 端口 / 令牌 / 证书指纹 三行等长：值区定宽 + 操作区定宽（按钮靠右纵向对齐） */
-/* 项目根是纵向控件：与其他行的控件同宽（286px），说明文字放到控件下方 */
+/* 端口 / 令牌 / 证书指纹 三行等长：值区撑满定宽列 + 操作区（按钮靠右纵向对齐） */
+/* 项目根是纵向控件：与其他行的控件同宽，说明文字放到控件下方 */
 .scope-row { align-items: flex-start; }
 .scope-row .row-label { padding-top: 6px; }
 .scope-control { flex-direction: column; align-items: stretch; gap: 4px; }
 .scope-note { font-size: 11px; color: var(--fg2); line-height: 1.5; }
 .scope-input { width: 100%; min-height: 60px; resize: vertical; box-sizing: border-box; padding: 8px; font-size: 12px; }
-.row-control.fixed { width: 286px; }
-.value { width: 190px; flex-shrink: 0; }
+/* 控件列 380px：证书指纹（64 位 + 分组空格）两行放得下，不必折三行 */
+.row-control.fixed { width: 380px; }
+.value { width: 100%; flex-shrink: 1; min-width: 0; }
 .actions { flex: 1; min-width: 84px; display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
 
 /* 视觉（底色/描边/圆角/焦点）由 App.vue 的全局表单基座提供，这里只留尺寸与错误态 */
-.control { width: 190px; flex-shrink: 0; font-size: 13px; }
+.control { width: 100%; flex-shrink: 1; min-width: 0; font-size: 13px; }
 .control.invalid { border-color: var(--red); }
 
 /* v2rayN 风格开关：滑块 + On/Off */
@@ -414,16 +418,17 @@ defineExpose({ save, discard, isDirty })
 .queue { margin: 8px; font-size: 11px; color: var(--fg2); }
 /*
  * 证书指纹是只读展示：刻意不加边框与底色（否则与可编辑输入框同形，用户会尝试点击/输入）。
- * 仍固定 190px 宽，保证与端口/令牌等长、右侧按钮纵向对齐。
+ * 撑满控件列（380px），与端口/令牌同宽同左边缘，右侧按钮纵向对齐。
  */
 .fingerprint {
-  width: 190px; flex-shrink: 0;
+  width: 100%; flex-shrink: 1; min-width: 0;
   display: block;
   font-family: ui-monospace, monospace; font-size: 11px; line-height: 1.6; color: var(--fg2);
-  /* 完整指纹允许折行（核对要逐段比），比省略号有用得多 */
-  white-space: normal; word-break: break-all;
+  /* 完整指纹允许折行（核对要逐段比），但只在分组之间折 */
+  white-space: normal;
   border: 0; background: transparent;
 }
+.fp-group { display: inline-block; margin-right: 4px; white-space: nowrap; }
 
 
 .footnote { margin: 16px 0 0; font-size: 11px; color: var(--fg2); }
