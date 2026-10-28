@@ -73,11 +73,11 @@ const statusTitle = computed(() => {
   </div>
 </template>
 <style scoped>
-/* 中性底：状态栏是「系统状态」，不该比主操作（上传/保存）更抢眼；
-   蓝色只留给可交互与强调元素（此前整条品牌蓝是暗色主题里唯一的高饱和色块）。 */
+/* 底色比内容区深一档（--bg3）+ 顶部描边：既能和正文分层，又不像品牌蓝那样抢主操作；
+   颜色信息交给右侧两个状态项（运行=绿、异常=红、空闲=灰）。 */
 .status-bar {
   display: flex; align-items: center; height: 24px; padding: 0 12px;
-  background: var(--bg2); color: var(--fg2);
+  background: var(--bg3); color: var(--fg2);
   border-top: 1px solid var(--border);
   font-size: 12px; flex-shrink: 0;
 }
@@ -95,13 +95,13 @@ const statusTitle = computed(() => {
 .status-item:focus-visible { outline: 2px solid var(--status-bar); outline-offset: -2px; }
 .status-item .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: 0.55; flex-shrink: 0; }
 /*
- * 中性底上状态色直接复用主题语义色：--status-bar-on/error 是为品牌蓝底选的亮色，
- * 放在浅底上对比度不足（浅绿 on #f3f3f3 只有 1.7:1）。
+ * 状态项用语义色区分（文字与圆点同色）：运行中=绿、异常=红、空闲/排队=中性灰。
+ * 用主题的 --green / --red-text（不是为深蓝底准备的 --status-bar-on，那个在浅底上只有 1.7:1）。
  */
-.status-item.on { color: var(--fg); }
-.status-item.on .dot { background: var(--green); opacity: 1; }
-.status-item.error { color: var(--red); }
-.status-item.error .dot { background: var(--red); opacity: 1; }
+.status-item.on { color: var(--green); }
+.status-item.on .dot { background: currentColor; opacity: 1; }
+.status-item.error { color: var(--red-text); }
+.status-item.error .dot { background: currentColor; opacity: 1; }
 .status-text { display: flex; align-items: center; gap: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .analyzing { color: var(--fg2); }
 .spinner {

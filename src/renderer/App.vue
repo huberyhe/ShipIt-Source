@@ -357,6 +357,8 @@ async function loadProjectData(path: string) {
   --yellow-text: #e2b714;
   /* --red-bg2 压深：--red 文字压其上满足 AA（原 #5a1d1d 仅 3.59） */
   --red: #f44747; --red-bg: #3a1a1a; --red-bg2: #3a1010; --on-danger: #000000;
+  /* 错误态**文字**变体：--red 作 12px 文字在中性底上只有 3.8:1 */
+  --red-text: #ff8a80;
   --blue: #569cd6; --blue-bg: #142c47;   /* 压深：作为 code 文字底色时需满足 AA（#569cd6 on #1a3a5c 仅 3.95） */
   --purple: #dcb67a;
   --scrollbar: #424242; --scrollbar-hover: #4f4f4f;
@@ -383,6 +385,7 @@ async function loadProjectData(path: string) {
   --yellow-text: #7a6000;
   /* --red-bg2 提亮：--red 文字压其上满足 AA（原 #fdd 仅 4.49） */
   --red: #c42b1c; --red-bg: #ffe8e6; --red-bg2: #ffe0dc; --on-danger: #ffffff;
+  --red-text: #c42b1c;
   --blue: #1a6dad; --blue-bg: #e5f2fb;
   --purple: #a16b00;
   --scrollbar: #c1c1c1; --scrollbar-hover: #a0a0a0;
