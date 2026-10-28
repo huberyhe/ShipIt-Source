@@ -203,6 +203,13 @@ function onLogListKeydown(event: KeyboardEvent): void {
 .log-header { display: flex; align-items: center; gap: 4px; padding: 4px 12px; background: var(--bg2); cursor: pointer; font-size: 12px; color: var(--fg); }
 .log-header:active { background: var(--bg4); }
 .log-header:hover { background: var(--bg3); }
+/*
+ * 焦点环内缩：面板头是**满宽**条带，全局样式用的是 outline-offset: 1px（向外 3px），
+ * 左右两侧被窗口裁掉、下沿压到状态栏上，实际只剩「上方一条蓝线」，看着像画错了。
+ */
+.log-header:focus-visible { outline: 2px solid var(--status-bar); outline-offset: -2px; }
+/* 日志条目同理（在 .log-content 里滚动，外扩环会被容器裁掉） */
+.log-entry:focus-visible { outline: 2px solid var(--status-bar); outline-offset: -2px; }
 .log-count { color: var(--fg2); font-size: 11px; }
 .log-origin { font-size: 11px; padding: 0 4px; border: 1px solid var(--border); border-radius: 4px; color: var(--fg3); }
 .log-project { font-size: 11px; padding: 0 4px; border: 1px solid var(--bg4); border-radius: 4px; color: var(--fg2); }
