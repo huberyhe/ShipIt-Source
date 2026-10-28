@@ -91,8 +91,14 @@ const statusTitle = computed(() => {
   font: inherit; cursor: pointer;
 }
 .status-item:hover { color: var(--fg); text-decoration: underline; }
-/* 中性底上直接用全局蓝色焦点环（此前为压过蓝色底改成了白色） */
-.status-item:focus-visible { outline: 2px solid var(--status-bar); outline-offset: -2px; }
+/*
+ * 焦点只画**上下一对 2px 边**（与列表行的焦点语言一致），不画整圈：
+ * 状态项是 20px 高的行内文本，整圈会像输入框；用 inset 阴影不占布局、不引起跳动。
+ */
+.status-item:focus-visible {
+  outline: none;
+  box-shadow: inset 0 2px 0 var(--status-bar), inset 0 -2px 0 var(--status-bar);
+}
 .status-item .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: 0.55; flex-shrink: 0; }
 /*
  * 状态项用语义色区分（文字与圆点同色）：运行中=绿、异常=红、空闲/排队=中性灰。
