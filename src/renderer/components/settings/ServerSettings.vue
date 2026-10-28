@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ConfirmDialog from '../common/ConfirmDialog.vue'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { Copy, Eye, EyeOff, RefreshCw, Share2 } from 'lucide-vue-next'
 import type { ServerConfig } from '../../../shared/types'
@@ -65,9 +66,15 @@ const queueHint = computed(() => {
   return queue.pendingCount > 0 ? `队列 ${running.target} +${queue.pendingCount}` : `队列 ${running.target}`
 })
 
-const fingerprintShort = computed(() =>
-  status.value?.fingerprint ? `${status.value.fingerprint.slice(0, 12)}…` : '未生成'
-)
+/**
+ * 证书指纹必须能整串看到：界面要求「跨机器请核对指纹」，只显示 12 位就无法完成核对。
+ * 按 4 个字符一组分隔，长串折行展示，便于逐段比对。
+ */
+const fingerprintText = computed(() => {
+  const fp = status.value?.fingerprint
+  if (!fp) return '未生成'
+  return fp.replace(/(.{4})/g, '$1 ').trim()
+})
 
 /**
  * 提示。成功的消息必须走 `toast-success`：在 AppLayout 里 `toast` 事件默认按错误样式
@@ -83,9 +90,20 @@ function randomToken(): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
 }
 
+/**
+ * 重新生成 = 作废所有已连接客户端（CLI / MCP / 脚本）的凭据，
+ * 属破坏性操作：先确认，再改草稿（仍需「保存」才生效）。
+ */
+const confirmingRegenerate = ref(false)
+
 function regenerateToken(): void {
+  confirmingRegenerate.value = true
+}
+
+function doRegenerateToken(): void {
   draft.value.token = randomToken()
   draft.value.tokenMode = 'random'
+  confirmingRegenerate.value = false
 }
 
 /**
@@ -320,7 +338,7 @@ defineExpose({ save, discard, isDirty })
     <div class="row">
       <span class="row-label">证书指纹</span>
       <span class="row-control fixed">
-        <code class="fingerprint value" :title="status?.fingerprint ?? ''">{{ fingerprintShort }}</code>
+        <code class="fingerprint value" :title="status?.fingerprint ?? ''">{{ fingerprintText }}</code>
         <span class="actions">
           <IconButton label="复制证书指纹" size="sm" :disabled="!status?.fingerprint" @click="copy(status?.fingerprint ?? '', '证书指纹已复制')">
             <Copy :size="14" />
@@ -340,6 +358,16 @@ defineExpose({ save, discard, isDirty })
 
     <p class="footnote">客户端读取连接信息文件自动发现端口与令牌；跨机器请核对指纹。</p>
   </div>
+
+  <ConfirmDialog
+    v-if="confirmingRegenerate"
+    title="重新生成令牌？"
+    message="已连接的 CLI / MCP 客户端和脚本会立即失效，需更新令牌后才能继续上传。"
+    confirm-text="重新生成"
+    danger
+    @confirm="doRegenerateToken"
+    @cancel="confirmingRegenerate = false"
+  />
 </template>
 
 <style scoped>
@@ -355,27 +383,13 @@ defineExpose({ save, discard, isDirty })
 .scope-row .row-label { padding-top: 6px; }
 .scope-control { flex-direction: column; align-items: stretch; gap: 4px; }
 .scope-note { font-size: 11px; color: var(--fg2); line-height: 1.5; }
-.scope-input {
-  width: 100%; min-height: 60px; resize: vertical; box-sizing: border-box;
-  padding: 8px; font-family: inherit; font-size: 12px;
-  background: var(--input-bg); color: var(--fg);
-  border: 1px solid var(--border2); border-radius: 6px;
-}
-/* 只换描边、不摘掉 focus 环：键盘用户必须能看到焦点在哪（与 .control 同一套） */
-.scope-input:focus-visible { border-color: var(--status-bar); }
+.scope-input { width: 100%; min-height: 60px; resize: vertical; box-sizing: border-box; padding: 8px; font-size: 12px; }
 .row-control.fixed { width: 286px; }
 .value { width: 190px; flex-shrink: 0; }
 .actions { flex: 1; min-width: 84px; display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
 
-.control {
-  width: 190px; flex-shrink: 0;
-  background: var(--bg2); color: var(--fg);
-  border: 1px solid var(--border); border-radius: 6px;
-  padding: 4px 8px; font-size: 13px;
-  transition: border-color 0.15s ease;
-}
-.control:focus-visible { border-color: var(--status-bar); }
-.control::placeholder { color: var(--fg3); }
+/* 视觉（底色/描边/圆角/焦点）由 App.vue 的全局表单基座提供，这里只留尺寸与错误态 */
+.control { width: 190px; flex-shrink: 0; font-size: 13px; }
 .control.invalid { border-color: var(--red); }
 
 /* v2rayN 风格开关：滑块 + On/Off */
@@ -395,21 +409,22 @@ defineExpose({ save, discard, isDirty })
 .switch:hover { border-color: var(--fg2); }
 .switch:active { opacity: 0.85; }
 .switch.on .knob { left: 22px; }
-.switch-text { width: 24px; font-size: 12px; color: var(--fg3); }
+.switch-text { width: 24px; font-size: 12px; color: var(--fg2); }
 
-.queue { margin: 8px; font-size: 11px; color: var(--fg3); }
+.queue { margin: 8px; font-size: 11px; color: var(--fg2); }
 /*
  * 证书指纹是只读展示：刻意不加边框与底色（否则与可编辑输入框同形，用户会尝试点击/输入）。
  * 仍固定 190px 宽，保证与端口/令牌等长、右侧按钮纵向对齐。
  */
 .fingerprint {
   width: 190px; flex-shrink: 0;
-  display: flex; align-items: center;
-  font-family: ui-monospace, monospace; font-size: 12px; color: var(--fg2);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  display: block;
+  font-family: ui-monospace, monospace; font-size: 11px; line-height: 1.6; color: var(--fg2);
+  /* 完整指纹允许折行（核对要逐段比），比省略号有用得多 */
+  white-space: normal; word-break: break-all;
   border: 0; background: transparent;
 }
 
 
-.footnote { margin: 16px 0 0; font-size: 11px; color: var(--fg3); }
+.footnote { margin: 16px 0 0; font-size: 11px; color: var(--fg2); }
 </style>

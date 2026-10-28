@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BaseButton from '../common/BaseButton.vue'
 import { computed, onMounted, ref, watch } from 'vue'
 import { Server, Plug } from 'lucide-vue-next'
 import TargetEditor from './TargetEditor.vue'
@@ -202,16 +203,17 @@ onMounted(() => {
     </div>
 
     <footer class="page-footer">
-      <button
+      <BaseButton
         class="btn"
-        :class="{ armed: cancelArmed }"
+        :variant="cancelArmed ? 'danger' : 'secondary'"
+        size="md"
         :disabled="saving"
         :title="cancelArmed ? '再点一次将丢弃未保存的修改并关闭' : ''"
         @click="cancel"
       >
         {{ cancelArmed ? '确认放弃' : '取消' }}
-      </button>
-      <button class="btn primary" :disabled="saving" @click="confirm">保存</button>
+      </BaseButton>
+      <BaseButton class="btn" variant="primary" size="md" :disabled="saving" @click="confirm">保存</BaseButton>
     </footer>
   </div>
 </template>
@@ -260,26 +262,14 @@ onMounted(() => {
 .content { flex: 1; min-width: 0; overflow: auto; padding: 16px; display: flex; flex-direction: column; align-items: center; }
 .content > * { width: 100%; max-width: 880px; }
 .content:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
-.content-hint { margin: 0 0 12px; font-size: 11px; color: var(--fg3); }
+.content-hint { margin: 0 0 12px; font-size: 11px; color: var(--fg2); }
 
-.page-footer .btn.armed {
-  background: var(--red-bg2); color: var(--red); border-color: var(--red);
-}
-.page-footer .btn.armed:hover { background: var(--red); color: var(--on-danger); }
 
 .page-footer {
   display: flex; justify-content: flex-end; gap: 8px;
   padding: 12px 16px; background: var(--bg2); border-top: 1px solid var(--border);
   flex-shrink: 0;
 }
-.btn {
-  padding: 8px 16px; background: var(--bg4); color: var(--fg);
-  border: 1px solid var(--border2); border-radius: 4px; font-size: 12px; cursor: pointer;
-}
-.btn:hover { background: var(--bg5); }
-.btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.btn.primary { background: var(--accent); color: var(--on-accent); border-color: transparent; }
-.btn.primary:hover { background: var(--accent2); }
-.btn.small { padding: 4px 12px; font-size: 11px; }
-.btn.danger { background: var(--red-bg2); color: var(--red); border-color: var(--red); }
+/* 页脚按钮视觉由 BaseButton 提供；.btn 仅作定位/测试钩子 */
+.page-footer :deep(.btn) { min-width: 72px; }
 </style>

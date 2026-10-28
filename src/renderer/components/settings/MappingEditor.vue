@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import RowActions from '../common/RowActions.vue'
 import { toastError, toastSuccess } from '../../utils/toast'
 import { ref } from 'vue'
 import { Plus, Trash2, ArrowRight } from 'lucide-vue-next'
@@ -84,16 +85,16 @@ async function doRemove() {
       <BaseButton v-if="!isAdding" variant="outline" size="sm" class="add-btn" @click="startAdd"><Plus :size="12" /> 添加映射</BaseButton>
     </div>
 
-    <div v-for="mapping in mappings" :key="mapping.id" class="mapping-item">
+    <div v-for="mapping in mappings" :key="mapping.id" class="mapping-item has-row-actions">
       <div class="mapping-row">
         <code class="local-path">{{ mapping.localPrefix }}</code>
         <ArrowRight :size="12" class="arrow" />
         <code class="remote-path">{{ mapping.remotePath }}</code>
         <span v-if="mapping.description" class="desc">{{ mapping.description }}</span>
-        <div class="mapping-actions">
+        <RowActions class="mapping-actions">
           <button class="mini-btn" @click="startEdit(mapping)">编辑</button>
           <button class="mini-btn danger" aria-label="删除映射" @click="askRemove(mapping)"><Trash2 :size="12" /></button>
-        </div>
+        </RowActions>
       </div>
     </div>
 
@@ -150,10 +151,9 @@ code.remote-path { padding: 1px 4px; background: var(--blue-bg); color: var(--bl
 .arrow { color: var(--fg2); flex-shrink: 0; }
 .desc { color: var(--fg2); font-size: 11px; }
 /* margin:auto 会把按钮推到整行中间（悬空、与内容脱节）；改为贴行尾，与目标卡片的操作列对齐 */
-.mapping-actions { display: flex; gap: 4px; margin-left: auto; opacity: 0; transition: opacity 0.15s; }
-.mapping-item:hover .mapping-actions { opacity: 1; }
+.mapping-actions { margin-left: auto; }
 .mini-btn { display: flex; align-items: center; padding: 4px 4px; background: transparent; color: var(--fg2); border-radius: 4px; font-size: 11px; }
-.mini-btn:hover { background: var(--border); color: var(--fg); }
+.mini-btn:hover { background: var(--bg3); color: var(--fg); }
 .mini-btn.danger:hover { background: var(--red-bg2); color: var(--red); }
 .empty-state code { padding: 1px 4px; background: var(--bg4); border-radius: 4px; color: var(--fg); }
 .mapping-form { background: var(--bg2); border: 1px solid var(--border); border-radius: 4px; padding: 8px; margin: 8px; }

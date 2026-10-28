@@ -67,6 +67,22 @@ export const useFilesStore = defineStore('files', () => {
     applySelection({ path: entry.path, mode })
   }
 
+  /** 按路径单选/切换（键盘导航用：焦点移动时同步选区） */
+  function selectDeployPath(path: string, mode: 'replace' | 'toggle' = 'replace'): void {
+    const item = entryIndex.get(path)
+    if (!item) return
+    selectDeployEntry(item as FileEntry, undefined, mode)
+  }
+
+  /** 按可见行顺序整体选中（Ctrl+A） */
+  function selectDeployPaths(paths: string[]): void {
+    const items = paths
+      .map((path) => entryIndex.get(path))
+      .filter((item): item is { path: string; name: string; isDirectory: boolean } => !!item)
+    deploySelection.value = items
+    selectionAnchor.value = items.length > 0 ? items[items.length - 1].path : null
+  }
+
   /** Shift 区间：右端是 clickedPath；锚点保持不变（伸缩语义） */
   function selectDeployRange(visiblePaths: string[], clickedPath: string): void {
     applySelection({ path: clickedPath, mode: 'range', order: visiblePaths })
@@ -118,6 +134,8 @@ export const useFilesStore = defineStore('files', () => {
     selectedDeployPos,
     deploySelection,
     selectDeployEntry,
+    selectDeployPath,
+    selectDeployPaths,
     selectDeployRange,
     setCurrent,
     registerDeployEntry,

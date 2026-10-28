@@ -37,6 +37,8 @@ function visibleRowPaths(e: MouseEvent): string[] {
 }
 
 function selectSelf(e: MouseEvent) {
+  // 行是 tabindex=-1：点击后显式聚焦，否则后续 Space/Enter 收不到按键（"空格选中失效"）
+  ;(e.currentTarget as HTMLElement | null)?.focus?.()
   const pos = { x: e.clientX, y: e.clientY }
   const mode = resolveSelectionMode(e)
   if (mode === 'range') {
@@ -124,34 +126,6 @@ async function deployThis(): Promise<void> {
   }
 }
 
-  /**
-   * 行级键盘交互：
-   * - Enter：目录展开/收起，文件选中
-   * - Space：选中当前行
-   * - ↑/↓：在树内相邻行之间移动焦点（跨行导航按 DOM 顺序）
-   */
-  function onRowKeydown(event: KeyboardEvent): void {
-    if (event.key === 'Enter') {
-      event.preventDefault()
-      if (props.entry.isDirectory) void toggleExpand()
-      else selectSelf(event as unknown as MouseEvent)
-      return
-    }
-    if (event.key === ' ' || event.key === 'Spacebar') {
-      event.preventDefault()
-      selectSelf(event as unknown as MouseEvent)
-      return
-    }
-    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-      event.preventDefault()
-      const current = event.currentTarget as HTMLElement
-      const container = current.closest('.filetree-view') ?? document
-      const rows = Array.from(container.querySelectorAll<HTMLElement>('.ftn-row'))
-      const index = rows.indexOf(current)
-      const target = rows[index + (event.key === 'ArrowDown' ? 1 : -1)]
-      target?.focus()
-    }
-  }
 </script>
 
 <template>
@@ -159,19 +133,20 @@ async function deployThis(): Promise<void> {
     <TreeRow
       row-class="ftn-row"
       :data-path="entry.path"
+      :data-depth="depth"
       :selected="isSelected"
       :indent="depth * 16 + 8"
       role="treeitem"
-      :tabindex="0"
+      :tabindex="-1"
       :aria-expanded="entry.isDirectory ? expanded : undefined"
       @click="selectSelf"
       @contextmenu="onContextMenu"
-      @keydown="onRowKeydown"
     >
       <template #toggle>
         <button
           v-if="entry.isDirectory"
           class="ftn-expand"
+          tabindex="-1"
           :aria-expanded="expanded"
           :aria-label="expanded ? '收起目录' : '展开目录'"
           @click.stop="toggleExpand"
@@ -187,7 +162,7 @@ async function deployThis(): Promise<void> {
       <template #label><span class="ftn-name">{{ entry.name }}</span></template>
       <template #meta><span class="ftn-spacer" /></template>
       <template #actions>
-        <button class="ftn-deploy-btn row-actions" :disabled="isDeploying" @click.stop="deployThis()">
+        <button class="ftn-deploy-btn" tabindex="-1" :disabled="isDeploying" @click.stop="deployThis()">
           {{ isDeploying ? '收集中...' : '快速上传' }}
         </button>
       </template>
@@ -218,8 +193,21 @@ async function deployThis(): Promise<void> {
 .ftn-dir-icon { color: var(--purple); flex-shrink: 0; }
 .ftn-file-icon { color: var(--fg2); flex-shrink: 0; }
 .ftn-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 深色主题的选中底是实色强调色：文字与图标必须转白，
+   --purple / --fg2 压在其上不足 3:1。
+   浅色主题是浅蓝底，保持原有语义色即可（不要反白）。 */
+.theme-dark .ftn-row.selected .ftn-name,
+.theme-dark .ftn-row.selected .ftn-expand,
+.theme-dark .ftn-row.selected .ftn-dir-icon,
+.theme-dark .ftn-row.selected .ftn-file-icon { color: var(--on-accent); }
 .ftn-spacer { flex: 1; }
 /* 悬浮显隐由 TreeRow 的 .row-actions 统一负责 */
 .ftn-deploy-btn { padding: 4px 8px; background: var(--accent); color: var(--on-accent); border-radius: 4px; font-size: 11px; white-space: nowrap; }
 .ftn-deploy-btn:hover { background: var(--accent2); }
+/* 深色主题选中行是实色底：按钮反色；浅色主题浅蓝底上正常显示即可 */
+.theme-dark .ftn-row.selected .ftn-deploy-btn { background: var(--on-accent); color: var(--accent); }
+.theme-dark .ftn-row.selected .ftn-deploy-btn:hover {
+  background: var(--on-accent); color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
 </style>

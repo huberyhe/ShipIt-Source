@@ -5,16 +5,20 @@ import { ChevronsUpDown, ChevronsDownUp, RefreshCw } from 'lucide-vue-next'
 import { useGitStore } from '../../stores/git'
 import { statusClassOf, statusShort } from '../../utils/change-status'
 import { reduceSelection } from '../../utils/selection'
+import { isEscapeKey, isSelectAllKey, parentRowOf, visibleRows } from '../../utils/tree-keyboard'
+import { isOnRow, leaveZoneBackward, tabIntoZoneControls } from '../../utils/focus-zone'
 import { useDeployStore } from '../../stores/deploy'
 import { useProjectStore } from '../../stores/project'
 import DiffPreview from '../git/DiffPreview.vue'
 import GitChangeTreeNode from '../git/GitChangeTreeNode.vue'
 import EmptyState from '../common/EmptyState.vue'
+import ViewHeader from '../common/ViewHeader.vue'
 import type { ChangeTreeNode } from '../../types/git'
 import ContextMenu from '../common/ContextMenu.vue'
 import ServerTargetMenu from '../common/ServerTargetMenu.vue'
 import { useDeployHotkeys } from '../../composables/useDeployHotkeys'
 import { useServerMenu } from '../../composables/useServerMenu'
+import { useContentKeyFallback } from '../../composables/useContentKeyFallback'
 
 const gitStore = useGitStore()
 const deployStore = useDeployStore()
@@ -46,6 +50,143 @@ function visibleOrder(): string[] {
   return Array.from(container.querySelectorAll<HTMLElement>('.tree-row'))
     .map((row) => row.dataset.path ?? '')
     .filter(Boolean)
+}
+
+/**
+ * 内容区键盘：统一在容器上处理（事件冒泡上来）。
+ * 行内不再绑 keydown —— 焦点可能停在容器（Shift+Tab 回退、点击空白），行级监听会失效。
+ */
+
+/** 从行回到容器时停在容器上，否则 Shift+Tab 会被推回首行、出不去 */
+let lastRowPath = ''
+const zoneEl = ref<HTMLElement | null>(null)
+// 焦点不在内容区时（刚打开项目/点过工具条）按空格也能选中
+useContentKeyFallback(zoneEl, '.tree-row')
+
+function onContentFocus(event: FocusEvent): void {
+  const zone = event.currentTarget as HTMLElement
+  const targetRow = (event.target as HTMLElement).closest?.<HTMLElement>('.tree-row')
+  if (event.target !== zone) {
+    if (targetRow?.dataset.path) lastRowPath = targetRow.dataset.path
+    return
+  }
+  const from = event.relatedTarget as Node | null
+  if (from && zone.contains(from)) return
+  const rows = Array.from(zone.querySelectorAll<HTMLElement>('.tree-row'))
+  const remembered = lastRowPath ? rows.find((row) => row.dataset.path === lastRowPath) : null
+  const target = remembered ?? rows[0]
+  // 只移焦点，不改选区
+  target?.focus()
+}
+
+function onContentKeydown(event: KeyboardEvent): void {
+  // 原生控件上的按键交给控件自己（下拉改值、按钮激活），内容区不接管
+  if (event.key === 'Tab' && event.shiftKey) {
+    // 区内第一个控件 Shift+Tab：跳过「不可见的容器停靠点」直接出区（与正向对称）
+    if (leaveZoneBackward(event.currentTarget as HTMLElement)) {
+      event.preventDefault()
+      return
+    }
+  }
+  if ((event.target as HTMLElement).closest?.('button, select, input, textarea, a[href], [contenteditable="true"]')) return
+
+  // 行不在 Tab 序列里：Tab 与 Shift+Tab 都要从「表头/筛选控件」这一侧进出，
+  // 否则一个方向进表头、另一个方向直接出区（路径不一致）
+  const zoneElNow = event.currentTarget as HTMLElement
+  if (event.key === 'Tab' && !event.shiftKey && isOnRow(zoneElNow) && tabIntoZoneControls(zoneElNow)) {
+    event.preventDefault()
+    return
+  }
+
+  const zone = event.currentTarget as HTMLElement
+  const rows = visibleRows(zone, '.tree-row')
+  if (rows.length === 0) return
+  const row = (event.target as HTMLElement).closest<HTMLElement>('.tree-row')
+  const index = row ? rows.indexOf(row) : -1
+  const path = row?.dataset.path ?? ''
+  const expandBtn = (el: HTMLElement | null): HTMLElement | null => el?.querySelector<HTMLElement>('.expand-icon') ?? null
+
+  /** 方向键只移动焦点；选区必须由空格/回车/鼠标点击显式改变 */
+  const focusAt = (next: number): void => {
+    rows[next]?.focus()
+  }
+
+  if (isSelectAllKey(event)) {
+    event.preventDefault()
+    selectAllVisible()
+    return
+  }
+  if (isEscapeKey(event)) {
+    event.preventDefault()
+    clearSelection()
+    return
+  }
+
+  switch (event.key) {
+    case ' ':
+    case 'Spacebar':
+      event.preventDefault()
+      if (index < 0) { focusAt(0); return }
+      onSelectNode(nodeIndex.value.get(path)!, undefined, event.ctrlKey || event.metaKey ? 'toggle' : 'replace')
+      return
+    case 'Enter':
+      event.preventDefault()
+      if (index < 0) { focusAt(0); return }
+      if (event.ctrlKey || event.metaKey) {
+        onSelectNode(nodeIndex.value.get(path)!, undefined, 'toggle')
+        return
+      }
+      if (expandBtn(row)) expandBtn(row)?.click()
+      else if (path) selectPathByKey(path)
+      return
+    case 'ArrowDown':
+      event.preventDefault()
+      focusAt(index < 0 ? 0 : index + 1)
+      return
+    case 'ArrowUp':
+      event.preventDefault()
+      focusAt(index < 0 ? rows.length - 1 : index - 1)
+      return
+    case 'ArrowRight': {
+      event.preventDefault()
+      const btn = expandBtn(row)
+      if (btn && row?.getAttribute('aria-expanded') !== 'true') btn.click()
+      else focusAt(index + 1)
+      return
+    }
+    case 'ArrowLeft': {
+      event.preventDefault()
+      const btn = expandBtn(row)
+      if (btn && row?.getAttribute('aria-expanded') === 'true') {
+        btn.click()
+        return
+      }
+      // 回父目录：只移焦点
+      parentRowOf(rows, index)?.focus()
+      return
+    }
+    default:
+      return
+  }
+}
+
+/** 键盘：按路径选中（方向键移动焦点时走这里） */
+function selectPathByKey(path: string): void {
+  const node = nodeIndex.value.get(path)
+  if (node) onSelectNode(node, undefined, 'replace')
+}
+
+/** 键盘 Ctrl+A：选中当前可见行 */
+function selectAllVisible(): void {
+  const order = visibleOrder().filter((path) => nodeIndex.value.has(path))
+  selectedPaths.value = order
+  selectionAnchor.value = order.length > 0 ? order[order.length - 1] : null
+}
+
+/** 键盘 Esc：清空选区 */
+function clearSelection(): void {
+  selectedPaths.value = []
+  selectionAnchor.value = null
 }
 
 /** Ctrl 切换 / Shift 区间 / 普通点击替换：语义由 utils/selection 统一 */
@@ -206,6 +347,21 @@ function collectAllDirPaths(nodes: ChangeTreeNode[]): string[] {
   return paths
 }
 
+function collapseAll() {
+  // 保留根节点展开，其余收起
+  expandedDirs.value = new Set([''])
+}
+
+// Ctrl+Shift++ / Ctrl+Shift+-（App 统一派发）
+onMounted(() => {
+  window.addEventListener('tree-expand-all', expandAll)
+  window.addEventListener('tree-collapse-all', collapseAll)
+})
+onUnmounted(() => {
+  window.removeEventListener('tree-expand-all', expandAll)
+  window.removeEventListener('tree-collapse-all', collapseAll)
+})
+
 function expandAll() {
   expandedDirs.value = new Set(['', ...collectAllDirPaths(changeTree.value)])
 }
@@ -307,21 +463,20 @@ async function handleDeployDir(node: ChangeTreeNode, targetId?: string) {
 </script>
 
 <template>
-  <div class="changes-view">
-    <div class="view-header">
-      <span>Git 未提交的变更 ({{ gitStore.changes.length }})</span>
-      <div class="header-actions">
-        <button class="icon-btn" title="刷新" aria-label="刷新 Git 变更" @click="refresh">
+  <div ref="zoneEl" class="changes-view" data-focus-zone tabindex="0" @keydown="onContentKeydown" @focusin="onContentFocus">
+    <ViewHeader :title="`Git 未提交的变更 (${gitStore.changes.length})`">
+      <template #actions>
+        <button class="icon-btn" tabindex="-1" title="刷新" aria-label="刷新 Git 变更" @click="refresh">
           <RefreshCw :size="14" />
         </button>
-        <button class="icon-btn" title="全部展开" aria-label="全部展开" @click="expandAll">
+        <button class="icon-btn" tabindex="-1" title="全部展开" aria-label="全部展开" @click="expandAll">
           <ChevronsUpDown :size="14" />
         </button>
-        <button class="icon-btn" title="全部收起" aria-label="全部收起" @click="expandedDirs.clear()">
+        <button class="icon-btn" tabindex="-1" title="全部收起" aria-label="全部收起" @click="expandedDirs.clear()">
           <ChevronsDownUp :size="14" />
         </button>
-      </div>
-    </div>
+      </template>
+    </ViewHeader>
 
     <div class="changes-list">
       <template v-if="changeTree.length === 0">
@@ -340,6 +495,9 @@ async function handleDeployDir(node: ChangeTreeNode, targetId?: string) {
         @deploy-file="handleDeployFile"
         @deploy-dir="handleDeployDir"
         @quick-deploy="quickDeploy"
+        @select-path="selectPathByKey"
+        @select-all-visible="selectAllVisible"
+        @clear-selection="clearSelection"
         @show-diff="previewFile = $event"
       />
     </div>
@@ -355,6 +513,8 @@ async function handleDeployDir(node: ChangeTreeNode, targetId?: string) {
 </template>
 
 <style scoped>
+/* 焦点容器本身不画外框：焦点交给行 */
+.changes-view:focus-visible { outline: none; }
 .changes-view {
   display: flex;
   flex-direction: column;
@@ -374,7 +534,7 @@ async function handleDeployDir(node: ChangeTreeNode, targetId?: string) {
 
 .header-actions { display: flex; align-items: center; gap: 4px; margin-left: auto; }
 .icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; background: transparent; border: 1px solid transparent; border-radius: 4px; color: var(--fg2); }
-.icon-btn:hover { background: var(--border); color: var(--fg); }
+.icon-btn:hover { background: var(--bg3); color: var(--fg); }
 .refresh-btn { display: flex; align-items: center; gap: 4px; }
 
 .changes-list {

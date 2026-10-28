@@ -39,7 +39,6 @@ function openTargetSettings(): void {
   padding: 4px; background: transparent; color: var(--fg2);
   border-radius: 4px; cursor: pointer;
 }
-.server-icon-btn:hover { background: var(--border); color: var(--fg); }
-.target-select { padding: 4px 8px; background: var(--input-bg); color: var(--fg); border: 1px solid var(--border); border-radius: 4px; font-size: 12px; outline: none; min-width: 180px; }
-.target-select:focus { border-color: var(--accent); }
+.server-icon-btn:hover { background: var(--bg3); color: var(--fg); }
+.target-select { font-size: 12px; min-width: 180px; }
 </style>

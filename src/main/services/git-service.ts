@@ -1,4 +1,5 @@
 import simpleGit, { SimpleGit, StatusResult } from 'simple-git'
+import type { GitCommitFile } from '../../shared/types'
 import { join } from 'path'
 import { toSlashes } from '../../shared/paths'
 import { isSafeGitRev } from '../../shared/git-rev'
@@ -176,7 +177,16 @@ export class GitService {
     }
   }
 
-  async getCommitFiles(dir: string, hash: string): Promise<Array<{ path: string; status: string }>> {
+  /**
+   * 某次提交涉及的文件。
+   *
+   * `--name-status` 的状态列可能是 `M` / `A` / `D`，也可能是重命名/复制的
+   * `R094` / `C075`：后者是「字母 + 相似度百分比」，且会产生**三列**
+   * `<状态>\t<旧路径>\t<新路径>`。
+   * 这里统一把 status 归一成单字母（下游 statusShort 才能映射成标签 + 颜色），
+   * 重命名/复制取**新路径**作为 path，旧路径与相似度单独带出供界面展示。
+   */
+  async getCommitFiles(dir: string, hash: string): Promise<GitCommitFile[]> {
     // 同样裸拼进 argv（`git show <hash>`）：非法值必须上抛，不能退化成"没有文件"
     if (!isSafeGitRev(hash)) throw new Error(`非法的提交 ID：${hash}`)
     try {
@@ -185,8 +195,18 @@ export class GitService {
       const result = await git.raw(['show', '--name-status', '--format=', '--relative', hash])
       return result.trim().split('\n').filter(l => l.trim()).map(line => {
         const parts = line.split('\t')
-        const path = toSlashes(parts[1] || line)
-        return { status: parts[0] || '?', path }
+        const rawStatus = (parts[0] || '?').trim()
+        const letter = rawStatus.charAt(0).toUpperCase() || '?'
+        const score = rawStatus.length > 1 ? Number(rawStatus.slice(1)) : undefined
+        if ((letter === 'R' || letter === 'C') && parts.length >= 3) {
+          return {
+            status: letter,
+            path: toSlashes(parts[2]),
+            oldPath: toSlashes(parts[1]),
+            score: Number.isFinite(score) ? score : undefined
+          }
+        }
+        return { status: letter, path: toSlashes(parts[1] || line) }
       }).filter(entry => entry.path.length > 0 && !entry.path.startsWith('..'))
     } catch {
       return []

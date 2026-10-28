@@ -97,7 +97,7 @@ const menus = computed<Array<{ label: string; items: ContextMenuItem[] }>>(() =>
     {
       label: '帮助',
       items: [
-        { label: '快捷键', icon: Keyboard, action: () => window.dispatchEvent(new CustomEvent('show-shortcuts')) },
+        { label: '快捷键', icon: Keyboard, shortcut: 'F1', action: () => window.dispatchEvent(new CustomEvent('show-shortcuts')) },
         { label: 'separator' },
         { label: '关于 ShipIt', icon: Info, action: () => window.dispatchEvent(new CustomEvent('show-about')) }
       ]

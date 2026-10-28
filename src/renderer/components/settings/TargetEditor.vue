@@ -2,6 +2,7 @@
 import { toastError, toastSuccess } from '../../utils/toast'
 import { computed, ref, watch, onMounted } from 'vue'
 import { reportError } from '../../utils/report-error'
+import { invalidFrom, missingFields, testResultHint, validationMessage } from '../../utils/target-form'
 import { Plus, Trash2, Radio, Check, X } from 'lucide-vue-next'
 import { useDeployStore } from '../../stores/deploy'
 import MappingEditor from './MappingEditor.vue'
@@ -55,7 +56,6 @@ function syncDraftFromStore(): void {
 
 // 每个目标的测试结果独立存储，避免串台
 const testResults = ref<Record<string, { success: boolean; error?: string; testing?: boolean }>>({})
-const formTestResult = ref<{ success: boolean; error?: string } | null>(null)
 const testingId = ref<string | null>(null)
 const isFormTesting = ref(false)
 const tempMap = ref({ localPrefix: '', remotePath: '', description: '' })
@@ -135,8 +135,33 @@ function cancelEdit() {
 
 /** 清空「测试连接」的瞬时结果：它是上一个表单的状态，不能带到下一个目标 */
 function resetFormFeedback(): void {
-  formTestResult.value = null
   isFormTesting.value = false
+  testSeq++               // 让在途的测试结果失效（关闭/重新打开后不得写回）
+  clearAllHints()
+}
+
+/**
+ * 页脚提示（唯一状态）：校验错误与测试结果共用。
+ * 「最后写者胜」——不再用两个 ref + 优先级，避免跨通道时序导致旧提示压住新结果。
+ */
+const hint = ref<{ tone: 'success' | 'error'; text: string; title: string } | null>(null)
+/** 测试请求代次：关闭/重开/重新测试都会自增，迟到的结果直接丢弃 */
+let testSeq = 0
+/** 缺项字段 → 输入框标红 */
+const invalid = ref({ name: false, host: false, username: false, postUpload: false })
+
+function clearAllHints(): void {
+  hint.value = null
+  invalid.value = { name: false, host: false, username: false, postUpload: false }
+}
+
+/** 校验当前表单：写页脚提示 + 字段红框，返回是否通过（规则见 utils/target-form） */
+function applyValidation(): boolean {
+  const missing = missingFields(editingForm.value)
+  invalid.value = invalidFrom(missing)
+  const message = validationMessage(missing)
+  hint.value = message ? { tone: 'error', text: message, title: message } : null
+  return missing.length === 0
 }
 
 /**
@@ -144,15 +169,10 @@ function resetFormFeedback(): void {
  * @returns 是否保存成功——由设置页的全局「确定」据此决定能否关闭页面。
  */
 async function saveTarget(): Promise<boolean> {
+  // 提交是一次新的判定：旧提示（含上一次的连接结果）由这次结果覆盖
+  clearAllHints()
   // 校验与表单里的必填标识（*）保持一致，避免"标了必填却提示别的字段"
-  const missing: string[] = []
-  if (!editingForm.value.name.trim()) missing.push('名称')
-  if (!editingForm.value.host.trim()) missing.push(editingForm.value.protocol === 'local' ? '本地根目录' : '主机')
-  if (editingForm.value.protocol !== 'local' && !editingForm.value.username.trim()) missing.push('用户名')
-  if (missing.length > 0) {
-    toastError(`请填写必填项：${missing.join('、')}`)
-    return false
-  }
+  if (!applyValidation()) return false
 
   // 转为纯 JSON 对象，避免 Vue reactive proxy 导致 IPC 克隆失败
   const data = JSON.parse(JSON.stringify({
@@ -310,14 +330,23 @@ async function testConnection(target: any) {
 }
 
 async function testFormConnection() {
+  // 新提示覆盖旧提示（同一时刻只有一条）
+  clearAllHints()
+  const seq = ++testSeq
+  const boundId = editingId.value
   isFormTesting.value = true
-  formTestResult.value = null
   try {
     const plain = JSON.parse(JSON.stringify(buildTestTarget()))
-    formTestResult.value = await window.deployApi.testConnection(plain)
+    const result = await window.deployApi.testConnection(plain)
+    // 迟到的结果不能写回：期间可能已关闭、重开或又点了一次测试
+    if (seq !== testSeq || editingId.value !== boundId) return
+    hint.value = testResultHint(result)
   } catch (err: any) {
-    formTestResult.value = { success: false, error: err.message }
-  } finally { isFormTesting.value = false }
+    if (seq !== testSeq || editingId.value !== boundId) return
+    hint.value = testResultHint({ success: false, error: err?.message })
+  } finally {
+    if (seq === testSeq) isFormTesting.value = false
+  }
 }
 
 // 从编辑表单构建临时目标对象用于测试
@@ -361,7 +390,8 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
           <div class="target-primary">
             <span class="target-name">{{ target.name }}</span>
             <span class="target-protocol">{{ (target.protocol as string).toUpperCase() }}</span>
-            <span class="target-host">{{ target.host }}:{{ target.port || (target.protocol==='ftp'?21:22) }}</span>
+            <!-- 本地目录没有端口语义：不显示 :22（此前会把 SFTP 默认端口接到目录路径后面） -->
+          <span class="target-host">{{ target.protocol === 'local' ? target.host : `${target.host}:${target.port || (target.protocol === 'ftp' ? 21 : 22)}` }}</span>
             <!-- 测试结果内联显示（不占额外行、无空白、天然无抖动） -->
             <span v-if="testResults[target.id]" class="test-result" :class="testResults[target.id].testing ? 'testing' : testResults[target.id].success ? 'success' : 'error'">
               <component :is="testResults[target.id].testing ? Radio : testResults[target.id].success ? Check : X" :size="12" :class="{ 'spin': testResults[target.id].testing }" />
@@ -371,11 +401,11 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
             </span>
           </div>
           <div class="target-actions">
-            <button class="icon-btn" title="测试连接" :disabled="testingId === target.id" @click="testConnection(target)">
-              <Radio :size="14" /> <span>{{ testingId === target.id ? '测试中' : '测试' }}</span>
-            </button>
-            <button class="icon-btn" title="编辑" @click="startEdit(target)">✎ 编辑</button>
-            <button class="icon-btn danger" title="删除" aria-label="删除目标" @click="askDelete(target)"><Trash2 :size="14" /></button>
+            <BaseButton class="icon-btn" variant="secondary" size="sm" title="测试连接" :disabled="testingId === target.id" @click="testConnection(target)">
+              <Radio :size="14" /> <span>{{ testingId === target.id ? '测试中' : '测试连接' }}</span>
+            </BaseButton>
+            <BaseButton class="icon-btn" variant="secondary" size="sm" title="编辑" @click="startEdit(target)">✎ 编辑</BaseButton>
+            <BaseButton class="icon-btn danger" variant="danger-ghost" size="sm" title="删除" :aria-label="'删除目标 ' + target.name" @click="askDelete(target)"><Trash2 :size="14" /></BaseButton>
           </div>
         </div>
 
@@ -401,7 +431,7 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
         <h5 class="form-section-title">连接</h5>
         <div class="form-row">
           <FormField label="名称" for="tgt-name" required>
-            <input id="tgt-name" v-model="editingForm.name" placeholder="例如：生产环境" />
+            <input id="tgt-name" v-model="editingForm.name" :class="{ invalid: invalid.name }" :aria-invalid="invalid.name || undefined" aria-required="true" placeholder="例如：生产环境" />
           </FormField>
           <FormField label="协议" for="tgt-protocol" class="form-field--narrow">
             <select id="tgt-protocol" v-model="editingForm.protocol" @change="editingForm.port = defaultPort(editingForm.protocol)">
@@ -423,13 +453,13 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
             hint="上传目标为本地/挂载目录"
             class="form-field--narrow"
           >
-            <input id="tgt-host" v-model="editingForm.host" placeholder="D:\deploy 或 \\server\share" />
+            <input id="tgt-host" v-model="editingForm.host" :class="{ invalid: invalid.host }" :aria-invalid="invalid.host || undefined" aria-required="true" placeholder="D:\deploy 或 \\server\share" />
           </FormField>
         </div>
 
         <div class="form-row row-host" v-else>
           <FormField label="主机" for="tgt-host" required>
-            <input id="tgt-host" v-model="editingForm.host" placeholder="ftp.example.com" />
+            <input id="tgt-host" v-model="editingForm.host" :class="{ invalid: invalid.host }" :aria-invalid="invalid.host || undefined" aria-required="true" placeholder="ftp.example.com" />
           </FormField>
           <FormField label="端口" for="tgt-port" class="form-field--port">
             <input id="tgt-port" v-model.number="editingForm.port" type="number" />
@@ -443,7 +473,7 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
         <h5 class="form-section-title">认证</h5>
         <div class="form-row">
           <FormField label="用户名" for="tgt-user" required>
-            <input id="tgt-user" v-model="editingForm.username" placeholder="root" />
+            <input id="tgt-user" v-model="editingForm.username" :class="{ invalid: invalid.username }" :aria-invalid="invalid.username || undefined" aria-required="true" placeholder="root" />
           </FormField>
           <FormField label="密码" for="tgt-pass">
             <input id="tgt-pass" v-model="editingForm.password" type="password" placeholder="（可选，留空使用密钥）" />
@@ -486,22 +516,26 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
         </div>
 
         <div v-if="editingForm.postUploadKind === 'script'" class="form-row">
-          <FormField label="脚本文件" for="tgt-post-script" class="full">
+          <FormField for="tgt-post-script" class="full">
             <div class="file-picker">
-              <input id="tgt-post-script" v-model="editingForm.postUploadScript" placeholder="例如：scripts/reload.sh" />
+              <input id="tgt-post-script" v-model="editingForm.postUploadScript" :class="{ invalid: invalid.postUpload }" :aria-invalid="invalid.postUpload || undefined" aria-required="true" aria-label="脚本文件" placeholder="例如：scripts/reload.sh" />
               <button class="browse-btn" aria-label="选择脚本文件" title="选择脚本文件" @click="pickScriptFile">浏览</button>
             </div>
           </FormField>
         </div>
 
         <div v-if="editingForm.postUploadKind === 'command'" class="form-row">
-          <FormField label="命令" for="tgt-post-command" class="full">
+          <FormField for="tgt-post-command" class="full">
             <textarea
               id="tgt-post-command"
               v-model="editingForm.postUploadCommand"
               rows="2"
               spellcheck="false"
               class="cmd-input"
+              :class="{ invalid: invalid.postUpload }"
+              :aria-invalid="invalid.postUpload || undefined"
+              aria-required="true"
+              aria-label="命令"
               placeholder="例如：systemctl reload nginx"
             />
           </FormField>
@@ -531,19 +565,20 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
       </div>
 
       <template #footer>
-        <!-- 顺序：测试结果 → 测试连接 → 取消 → 确定（终点动作在最右）；结果紧贴按钮左侧 -->
+        <!-- 校验提示与「测试连接」结果共用同一个位置（左侧，垂直居中）：同一时刻只显示一条 -->
         <span
-          v-if="formTestResult"
-          class="test-result-inline"
-          :class="formTestResult.success ? 'success' : 'error'"
-          :title="formTestResult.success ? '连接成功' : formTestResult.error"
+          v-if="hint"
+          class="footer-hint"
+          :class="hint.tone"
+          :title="hint.title"
+          :role="hint.tone === 'error' ? 'alert' : 'status'"
         >
-          <component :is="formTestResult.success ? Check : X" :size="12" />
-          {{ formTestResult.success ? '连接成功' : formTestResult.error }}
+          <component :is="hint.tone === 'error' ? X : Check" :size="12" />
+          <span class="footer-hint-text">{{ hint.text }}</span>
         </span>
-        <button class="test-btn" :disabled="isFormTesting || !editingForm.host" @click="testFormConnection">
+        <BaseButton class="test-btn" variant="secondary" size="md" :disabled="isFormTesting || !editingForm.host" @click="testFormConnection">
           <Radio :size="13" /> {{ isFormTesting ? '测试中...' : '测试连接' }}
-        </button>
+        </BaseButton>
         <BaseButton variant="secondary" size="md" class="cancel-btn" @click="cancelEdit">取消</BaseButton>
         <BaseButton variant="primary" size="md" class="save-btn" @click="saveTarget">确定</BaseButton>
       </template>
@@ -579,10 +614,6 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
 .target-protocol { font-size: 11px; padding: 1px 4px; background: var(--accent); color: var(--on-accent); border-radius: 4px; }
 .target-host { font-size: 12px; color: var(--fg2); }
 .target-actions { display: flex; gap: 4px; }
-.icon-btn { display: flex; align-items: center; gap: 4px; padding: 4px 12px; background: var(--bg4); color: var(--fg); border: 1px solid var(--border2); border-radius: 4px; font-size: 11px; min-height: 30px; }
-.icon-btn:hover:not(:disabled) { background: var(--bg5); color: var(--fg3); }
-.icon-btn:disabled { opacity: 0.4; }
-.icon-btn.danger:hover { background: var(--red-bg2); color: var(--red); border-color: var(--red); }
 /* 测试结果内联在信息行内：不占额外行高（无空白、天然无抖动）；长文本省略 */
 .test-result { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; font-size: 11px; border-radius: 4px; flex-shrink: 0; }
 .test-result-text { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -603,13 +634,18 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
 /* 结果紧跟「测试连接」按钮左侧：不用 margin-right:auto（那会把它推到 footer 最左端、
  * 与按钮之间留一大段空白，视线要横跨整个底部才能对上）。
  * max-width + 省略号：连接错误可能很长，避免把按钮挤走；完整内容在 title 里可悬停查看。 */
-.test-result-inline {
+/* 页脚提示：校验错误与连接结果共用（过长省略，全文在 title） */
+.footer-hint {
+  margin-right: 4px;   /* 紧贴「测试连接」左侧，与按钮同一组 */
   display: inline-flex; align-items: center; gap: 4px;
-  max-width: 320px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
-  font-size: 11px;
+  max-width: 320px; overflow: hidden;
+  font-size: 11px; line-height: 12px;   /* 与图标同高：否则图标看着偏上 */
 }
-.test-result-inline.success { color: var(--green); }
-.test-result-inline.error { color: var(--red); }
+/* 图标与文字各自是 flex 子项：svg 用 block 去掉 baseline 带来的 2-3px 偏移 */
+.footer-hint :deep(svg) { display: block; flex-shrink: 0; }
+.footer-hint-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.footer-hint.success { color: var(--green); }
+.footer-hint.error { color: var(--red); }
 
 /* 分组 */
 /* 分区块只描边不填色：浅色主题里 --bg(白) 会显得"浮起"、深色主题里 --bg 又比容器更暗（凹陷），
@@ -632,7 +668,8 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
 /* 窄字段：协议(160px) / 端口(120px) —— 左边缘仍落在统一栅格的列起点上，
    只是控件本身不长，避免"SFTP"这种短内容占用一整列 */
 .form-field--narrow { max-width: 160px; }
-.form-field.full { flex: 1; }
+.form-field.full { grid-column: 1 / -1; }
+.form-field :deep(input.invalid), .cmd-input.invalid { border-color: var(--red); }
 /* 三选一：分段控件（未单独抽组件，仅此一处消费） */
 .segmented { display: inline-flex; align-self: flex-start; width: fit-content; border: 1px solid var(--border2); border-radius: 4px; overflow: hidden; }
 .segment { padding: 4px 12px; background: transparent; color: var(--fg2); font-size: 12px; border: 0; border-right: 1px solid var(--border2); }
@@ -680,12 +717,6 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
 
 /* 底部操作区 */
 
-.test-btn { display: flex; align-items: center; gap: 4px; padding: 4px 16px; background: var(--bg4); color: var(--fg); border: 1px solid var(--border2); border-radius: 4px; font-size: 12px; }
-.test-btn:hover:not(:disabled) { background: var(--bg5); color: var(--fg3); }
-.test-btn:disabled { opacity: 0.4; }
-.test-result-inline { display: flex; align-items: center; gap: 4px; font-size: 12px; }
-.test-result-inline.success { color: var(--green); }
-.test-result-inline.error { color: var(--red); }
 
 /* 必填标记：红色星号（配合表单提交前的校验提示） */
 /* 测试连接行：靠左贴近"连接"参数 */

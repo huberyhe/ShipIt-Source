@@ -155,6 +155,14 @@ window.addEventListener('show-shortcuts', () => { openAppDialog('shortcuts') })
  * 输入控件聚焦时不拦截（铁律 5）。
  */
 function onGlobalKeydown(e: KeyboardEvent) {
+  if (e.key === 'F1') {
+    if (isTextInputTarget(e.target)) return
+    // 已经有弹窗（含快捷键面板本身）时不再叠开
+    if (document.querySelector('[role="dialog"][aria-modal="true"]')) return
+    e.preventDefault()
+    window.dispatchEvent(new CustomEvent('show-shortcuts'))
+    return
+  }
   if (e.key !== 'F5') return
   if (isTextInputTarget(e.target)) return
   if (document.querySelector('[role="dialog"][aria-modal="true"]')) return // 弹窗打开时不动背后的列表
@@ -197,6 +205,15 @@ function onAppShortcut(e: KeyboardEvent) {
   if (!(e.ctrlKey || e.metaKey) || e.altKey) return
   // 输入控件内不拦截（避免在设置表单里误触发关闭项目等）
   if (isTextInputTarget(e.target)) return
+  // Ctrl+Shift+- 收起全部 / Ctrl+Shift++ 展开全部（由当前挂载的视图响应）
+  // 弹窗打开时不派发：否则在设置/确认框里按快捷键会去动背后的树
+  if (e.shiftKey && ['Minus', 'NumpadSubtract', 'Equal', 'NumpadAdd'].includes(e.code)) {
+    if (document.querySelector('[role="dialog"][aria-modal="true"]')) return
+    e.preventDefault()
+    const expand = e.code === 'Equal' || e.code === 'NumpadAdd'
+    window.dispatchEvent(new CustomEvent(expand ? 'tree-expand-all' : 'tree-collapse-all'))
+    return
+  }
   if (e.shiftKey) return
   switch (e.code) {
     case 'KeyO': e.preventDefault(); window.deployApi.appAction('open-project'); break
@@ -330,10 +347,14 @@ async function loadProjectData(path: string) {
   /* accent 作**文字/描边**色时需要更亮的变体（深色下 #0e639c 对比度不足 3:1） */
   --accent-text: #4daafc;
   --status-bar: #0067b8; --input-bg: #3c3c3c;
+  /* 列表选中态：深色主题保持实色强调底 + 白字（浅色底会让 --red/--green 掉到 AA 以下） */
+  --row-selected-bg: #0e639c; --row-selected-fg: #ffffff;
   /* 状态栏底色是固定品牌蓝，状态点需在其上有足够对比度（与主题无关） */
   --status-bar-on: #4ade80; --status-bar-error: #ff8a80;
   --green: #4ec9b0; --green-bg: #1a3a1a;
   --yellow: #e2b714; --yellow-bg: #332b00;
+  /* accent 作**文字**色时的变体（深色下沿用 --yellow 即可） */
+  --yellow-text: #e2b714;
   /* --red-bg2 压深：--red 文字压其上满足 AA（原 #5a1d1d 仅 3.59） */
   --red: #f44747; --red-bg: #3a1a1a; --red-bg2: #3a1010; --on-danger: #000000;
   --blue: #569cd6; --blue-bg: #142c47;   /* 压深：作为 code 文字底色时需满足 AA（#569cd6 on #1a3a5c 仅 3.95） */
@@ -353,9 +374,13 @@ async function loadProjectData(path: string) {
   --accent: #0078d4; --accent2: #1a8ce8; --accent3: #e5f0fc; --on-accent: #ffffff;
   --accent-text: #005a9e;
   --status-bar: #0067b8; --input-bg: #ffffff;
+  /* 浅色主题用浅蓝底 + 正常文字色（语义色仍可读） */
+  --row-selected-bg: #e5f0fc; --row-selected-fg: #333333;
   --status-bar-on: #4ade80; --status-bar-error: #ff8a80;
   --green: #0b6e4f; --green-bg: #e6f7ee;
   --yellow: #8a6d00; --yellow-bg: #fff8e5;
+  /* 压深：#8a6d00 作为 11px 文字压在 --bg2 上仅 4.26:1 */
+  --yellow-text: #7a6000;
   /* --red-bg2 提亮：--red 文字压其上满足 AA（原 #fdd 仅 4.49） */
   --red: #c42b1c; --red-bg: #ffe8e6; --red-bg2: #ffe0dc; --on-danger: #ffffff;
   --blue: #1a6dad; --blue-bg: #e5f2fb;
@@ -366,6 +391,40 @@ async function loadProjectData(path: string) {
   --shadow-float: 0 4px 12px rgba(0, 0, 0, 0.4);
   --shadow-toast: 0 4px 16px rgba(0, 0, 0, 0.5);
 }
+
+/*
+ * 表单控件基座：底色 / 描边 / 圆角 / 焦点环只在这里定义。
+ * 此前设置页三套输入框（--bg2 vs --input-bg、--border vs --border2、4px vs 6px）各写一份。
+ */
+input:not([type='checkbox']):not([type='radio']),
+select,
+textarea {
+  background: var(--input-bg);
+  color: var(--fg);
+  border: 1px solid var(--border2);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font: inherit;
+  outline: none;
+}
+input:not([type='checkbox']):not([type='radio']):focus-visible,
+select:focus-visible,
+textarea:focus-visible { outline: 2px solid var(--status-bar); outline-offset: -1px; }
+input::placeholder, textarea::placeholder { color: var(--fg2); }
+input:disabled, select:disabled, textarea:disabled { opacity: 0.55; }
+
+/* 行内操作区：宿主行加 .has-row-actions，悬浮或键盘焦点进入时显示 */
+.row-actions { display: flex; align-items: center; gap: 4px; opacity: 0; transition: opacity 0.15s ease; }
+.has-row-actions:hover .row-actions,
+.has-row-actions:has(:focus-visible) .row-actions,
+.row-actions.always { opacity: 1; }
+
+/* 变更状态色：唯一定义处（组件里只挂 `.status-*` 类，不再各写一遍） */
+.status-modified { color: var(--yellow-text); }
+.status-added { color: var(--green); }
+.status-untracked { color: var(--green); }
+.status-deleted { color: var(--red); }
+.status-renamed { color: var(--blue); }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body, #app {

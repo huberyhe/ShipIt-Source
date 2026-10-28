@@ -61,4 +61,31 @@ describe('git-service 路径基准（P2 回归）', () => {
     const commitFiles = await svc.getCommitFiles(appDir, 'HEAD')
     expect(commitFiles.map((f) => f.path)).toEqual(['dist/a.js'])
   })
+
+  it('重命名（R094）归一成单字母状态，并取新路径 + 带出旧路径', async () => {
+    // 内容基本不变地挪位置：git 会输出 `R100\t旧路径\t新路径` 三列
+    git(repoRoot, ['mv', 'app/dist/a.js', 'app/dist/b.js'])
+    git(repoRoot, ['commit', '-qm', 'rename'])
+
+    const files = await svc.getCommitFiles(appDir, 'HEAD')
+    expect(files).toHaveLength(1)
+    const [renamed] = files
+    // 状态必须是单字母 R（下游 statusShort 依赖它映射成标签 + 颜色，'R094' 会穿透成裸文本）
+    expect(renamed.status).toBe('R')
+    // path = 新路径（上传目标）；旧路径单独带出供界面展示
+    expect(renamed.path).toBe('dist/b.js')
+    expect(renamed.oldPath).toBe('dist/a.js')
+    expect(renamed.score).toBe(100)
+  })
+
+  it('普通新增文件仍是单字母 A，且不带 oldPath', async () => {
+    writeFileSync(join(appDir, 'dist', 'copy.js'), 'v3', 'utf-8')
+    git(repoRoot, ['add', '-A'])
+    git(repoRoot, ['commit', '-qm', 'copy'])
+
+    const files = await svc.getCommitFiles(appDir, 'HEAD')
+    const added = files.find((f) => f.path === 'dist/copy.js')
+    expect(added?.status).toBe('A')
+    expect(added?.oldPath).toBeUndefined()
+  })
 })

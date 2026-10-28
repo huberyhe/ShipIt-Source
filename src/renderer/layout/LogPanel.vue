@@ -102,10 +102,35 @@ function formatTime(ts: number): string {
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
+
+/**
+ * 日志列表键盘：面板只保留「表头」一个 Tab 停靠点（DESIGN §6），
+ * 列表内部用 ↑/↓ 移动、Enter/空格 展开——否则条目 tabindex=-1 就真的谁都到不了。
+ */
+function onLogListKeydown(event: KeyboardEvent): void {
+  const list = Array.from(document.querySelectorAll<HTMLElement>('.log-entry'))
+  if (list.length === 0) return
+  const active = document.activeElement as HTMLElement | null
+  const current = active?.closest?.<HTMLElement>('.log-entry') ?? null
+  if (event.key === 'Enter' || event.key === ' ' || event.key === 'Spacebar') {
+    if (!current) return
+    event.preventDefault()
+    toggleLog(current.dataset.taskId ?? '')
+    return
+  }
+  if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
+  event.preventDefault()
+  const index = current ? list.indexOf(current) : -1
+  let next = 0
+  if (event.key === 'ArrowUp') next = index < 0 ? list.length - 1 : Math.max(index - 1, 0)
+  else if (event.key === 'End') next = list.length - 1
+  else if (event.key === 'ArrowDown') next = index < 0 ? 0 : Math.min(index + 1, list.length - 1)
+  list[next]?.focus()
+}
 </script>
 
 <template>
-  <div class="log-panel" :class="{ expanded: uiStore.logPanelExpanded, collapsed: !uiStore.logPanelExpanded }">
+  <div class="log-panel" data-focus-zone :class="{ expanded: uiStore.logPanelExpanded, collapsed: !uiStore.logPanelExpanded }">
     <div
       class="log-header"
       role="button"
@@ -121,22 +146,22 @@ function formatTime(ts: number): string {
       <button
         v-if="hasLogs && uiStore.logPanelExpanded"
         class="clear-btn"
+        tabindex="-1"
         title="清空日志"
         aria-label="清空日志"
         @click.stop="deployStore.clearLogs()"
       ><Trash :size="14" /></button>
     </div>
-    <div v-if="uiStore.logPanelExpanded" class="log-content">
+    <div v-if="uiStore.logPanelExpanded" class="log-content" @keydown="onLogListKeydown">
       <EmptyState v-if="!hasLogs" text="暂无上传记录" size="inline" />
       <div v-for="log in deployStore.deployLogs" :key="log.taskId">
         <div
           class="log-entry"
           role="button"
-          tabindex="0"
+          tabindex="-1"
+          :data-task-id="log.taskId"
           :aria-expanded="expandedLogs.has(log.taskId)"
           @click="toggleLog(log.taskId)"
-          @keydown.enter.prevent="toggleLog(log.taskId)"
-          @keydown.space.prevent="toggleLog(log.taskId)"
         >
           <span class="expand-arrow">
             <component :is="expandedLogs.has(log.taskId) ? ChevronDown : ChevronRight" :size="12" />
@@ -184,7 +209,7 @@ function formatTime(ts: number): string {
 .log-origin.cli { color: var(--blue); border-color: var(--blue-bg); }
 .log-origin.mcp { color: var(--yellow); border-color: var(--yellow-bg); }
 .clear-btn { margin: 0 0 0 auto; padding: 4px; background: transparent; color: var(--fg2); border-radius: 4px; }
-.clear-btn:hover { background: var(--border); color: var(--fg); }
+.clear-btn:hover { background: var(--bg3); color: var(--fg); }
 .log-content { max-height: 200px; overflow-y: auto; background: var(--bg); padding: 4px 12px; user-select: text; }
 .log-entry { display: flex; align-items: center; gap: 4px; padding: 4px 0; font-size: 12px; color: var(--fg); border-bottom: 1px solid var(--bg3); cursor: pointer; }
 .log-entry:active { background: var(--bg3); }

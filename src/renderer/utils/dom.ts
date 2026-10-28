@@ -13,5 +13,5 @@ export function isTextInputTarget(target: EventTarget | Element | null): boolean
   const element = target as HTMLElement | null
   if (!element) return false
   if (TEXT_INPUT_TAGS.has(element.tagName)) return true
-  return element.isContentEditable === true || element.closest?.('[contenteditable="true"]') !== null
+  return element.isContentEditable === true || Boolean(element.closest?.('[contenteditable="true"]'))
 }

@@ -111,6 +111,40 @@ npm run gen:icon       # 换图标后重新生成 build/icon.ico
 
 改代码前读架构文档，改界面前读设计规范；两者与代码冲突时，以代码为准并**当轮修正文档**。
 
+## 验证节奏（重要）
+
+- **不要每次改动都跑 `npm run audit:ui`**（一轮 ~3 分钟且会启 Electron）。开发过程中按需跑 `type-check` / `tsc --noEmit` / `vite build` / 相关单测即可。
+- 一个**功能阶段**完成（例如键盘/焦点体系、上传链路、设置页改版）后，先告知用户「可以跑 UI 审计了」，**等用户确认后再执行**。
+- 发布前仍按发布纪律全量验证（含双主题审计），那时不需要再次确认。
+- 不要每改一处就 `git commit`：等用户说「提交」再集中提交。
+
+## 界面截图（README / 发布用）
+
+README 与分发仓库的 `screenshots/*.png` 用**真实项目 + 真实配置**生成，不要用夹具截图（会出现 `demo-project` 与临时路径）。
+
+```bash
+# 用真实仓库与真实配置出图（端口强制 4599，避免和正在运行的桌面实例抢 4517）
+node --experimental-websocket scripts/ui-audit.mjs \
+  --project="D:/ExtWorkspace/git_gui" \
+  --real-config --themes=light \
+  --only=open-project,filetree,git-changes,git-log \
+  --shots=.audit/shots-real
+```
+
+然后把 `.audit/shots-real/` 下三张图复制并改名（README 引用的是这三个名字）：
+
+| 源 | 目标 |
+| --- | --- |
+| `light-filetree.png` | `screenshots/file-tree.png` |
+| `light-git-changes.png` | `screenshots/git-changes.png` |
+| `light-git-log.png` | `screenshots/git-log.png` |
+
+要点：
+
+- 不带 `--shots` 时审计**不留截图**（CI 门禁只用断言）；截图前会等 `.loading-overlay` 消失，避免截到"正在加载项目…"。
+- 交互界面有变化（导航、状态栏、工具栏、日志面板）后再各出一次图，并同步到 `huberyhe/ShipIt`（文件名不变）。
+- 截图里的端口显示 4599 属正常，不要为此改回 4517。
+
 ## 发布纪律（硬性）
 
 - **提交并发布前，先与用户确认版本号**：不自行决定、不自行递增；确认后按该版本号统一全部位置。

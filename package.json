@@ -1,6 +1,6 @@
 {
   "name": "shipit",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "description": "ShipIt - 开发者文件发布工具，支持 FTP/SFTP/FTPS 一键上传到多台服务器",
   "author": {
     "name": "huberyhe",

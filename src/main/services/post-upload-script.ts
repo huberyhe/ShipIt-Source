@@ -84,7 +84,8 @@ export async function runPostUploadScript(options: RunScriptOptions): Promise<Po
       options.target.protocol === 'local'
         ? await execShell(scriptPath, options.target, timeout)
         : await execRemote((options.sftpClient as { client?: unknown } | null)?.client, scriptPath, timeout)
-    return { ...run, status: run.exitCode === 0 ? 'success' : 'failed', durationMs: Date.now() - startedAt }
+    // 必须带 base：run 只有 exitCode/stdout/stderr，缺 kind 时日志会把「命令」写成「脚本」
+    return { ...base, ...run, status: run.exitCode === 0 ? 'success' : 'failed', durationMs: Date.now() - startedAt }
   }
   if (!existsSync(scriptPath)) {
     return { ...base, status: 'failed', message: `本地脚本不存在：${scriptPath}`, durationMs: Date.now() - startedAt }
@@ -104,7 +105,7 @@ export async function runPostUploadScript(options: RunScriptOptions): Promise<Po
 
   if (protocol === 'local') {
     const run = await execLocal(scriptPath, options.target, timeoutMs)
-    return { ...run, status: run.exitCode === 0 ? 'success' : 'failed', durationMs: Date.now() - startedAt }
+    return { ...base, ...run, status: run.exitCode === 0 ? 'success' : 'failed', durationMs: Date.now() - startedAt }
   }
 
   // SFTP：先按内容寻址上传到临时目录，再执行
@@ -132,6 +133,7 @@ export async function runPostUploadScript(options: RunScriptOptions): Promise<Po
     const command = `sh ${shellQuote(remotePath)}`
     const result = await execRemote(sftp.client, command, timeoutMs)
     return {
+      ...base,
       ...result,
       status: result.exitCode === 0 ? 'success' : 'failed',
       remotePath,

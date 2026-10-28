@@ -43,7 +43,7 @@ const statusTitle = computed(() => {
 })
 </script>
 <template>
-  <div class="status-bar">
+  <div class="status-bar" data-focus-zone>
     <div class="status-left">
       <span v-if="analyzingText" class="status-text analyzing">
         <span class="spinner" aria-hidden="true"></span>{{ analyzingText }}
@@ -53,6 +53,7 @@ const statusTitle = computed(() => {
     <div class="status-right">
       <button
         class="status-item"
+        tabindex="-1"
         :class="serverStore.stateTone"
         :title="serverStore.stateText + '（点击打开本地服务管理）'"
         @click="openServerSettings"
@@ -61,6 +62,7 @@ const statusTitle = computed(() => {
       </button>
       <button
         class="status-item"
+        tabindex="-1"
         :class="serverStore.queueTone"
         :title="serverStore.queueText + '（点击展开上传日志）'"
         @click="uiStore.toggleLogPanel()"
@@ -71,32 +73,37 @@ const statusTitle = computed(() => {
   </div>
 </template>
 <style scoped>
-.status-bar { display: flex; align-items: center; height: 24px; padding: 0 12px; background: var(--status-bar); color: var(--on-accent); font-size: 12px; flex-shrink: 0; }
+/* 中性底：状态栏是「系统状态」，不该比主操作（上传/保存）更抢眼；
+   蓝色只留给可交互与强调元素（此前整条品牌蓝是暗色主题里唯一的高饱和色块）。 */
+.status-bar {
+  display: flex; align-items: center; height: 24px; padding: 0 12px;
+  background: var(--bg2); color: var(--fg2);
+  border-top: 1px solid var(--border);
+  font-size: 12px; flex-shrink: 0;
+}
 .status-left { flex: 1; min-width: 0; }
 .status-right { display: flex; align-items: center; gap: 12px; flex-shrink: 0; padding: 0; }
 .status-item {
   display: flex; align-items: center; gap: 4px;
   min-height: 20px;   /* 点击目标别太小（此前 16px 高） */
   padding: 0; background: transparent; border: 0;
-  /* 不降透明度：白字 on #0067b8 是 5.78:1（AA 达标），乘 0.78 会掉到 ≈4.15:1（不达标）。
-      * 可点击态改用 hover 下划线表达，避免用 alpha 牺牲可读性。 */
-  color: var(--on-accent); opacity: 1; white-space: nowrap;
+  color: var(--fg2); opacity: 1; white-space: nowrap;
   font: inherit; cursor: pointer;
 }
-.status-item:hover { opacity: 1; text-decoration: underline; }
-/* 全局 focus 环用的是 --status-bar，与状态栏底色同色 → 键盘焦点完全看不见 */
-.status-item:focus-visible { outline: 2px solid var(--on-accent); outline-offset: -2px; }
+.status-item:hover { color: var(--fg); text-decoration: underline; }
+/* 中性底上直接用全局蓝色焦点环（此前为压过蓝色底改成了白色） */
+.status-item:focus-visible { outline: 2px solid var(--status-bar); outline-offset: -2px; }
 .status-item .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: 0.55; flex-shrink: 0; }
 /*
- * 状态栏底色是固定的品牌蓝（两套主题一致），因此文字固定白色是正确的；
- * 状态点则必须跟随主题：用语义色变量，而不是写死的十六进制。
+ * 中性底上状态色直接复用主题语义色：--status-bar-on/error 是为品牌蓝底选的亮色，
+ * 放在浅底上对比度不足（浅绿 on #f3f3f3 只有 1.7:1）。
  */
-.status-item.on { color: var(--on-accent); opacity: 1; }
-.status-item.on .dot { background: var(--status-bar-on); opacity: 1; }
-.status-item.error { color: var(--on-accent); opacity: 1; }
-.status-item.error .dot { background: var(--status-bar-error); opacity: 1; }
+.status-item.on { color: var(--fg); }
+.status-item.on .dot { background: var(--green); opacity: 1; }
+.status-item.error { color: var(--red); }
+.status-item.error .dot { background: var(--red); opacity: 1; }
 .status-text { display: flex; align-items: center; gap: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.analyzing { color: var(--on-accent); }
+.analyzing { color: var(--fg2); }
 .spinner {
   width: 10px; height: 10px; flex-shrink: 0;
   border: 2px solid currentColor;

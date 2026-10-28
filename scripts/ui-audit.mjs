@@ -39,6 +39,9 @@ const THEMES = String(getArg('themes', 'light,dark')).split(',').map((s) => s.tr
 const KEEP = argv.includes('--keep') // 保留夹具（排障用）
 const ONLY = (getArg('only', '') || '').split(',').map((s) => s.trim()).filter(Boolean) // 只跑指定步骤
 const SHOTS = getArg('shots', '') // 传目录则在该目录下按 <theme>-<step>.png 留证
+// 用真实项目/真实配置出图（面向 README 截图）：默认不生效，CI 门禁仍走夹具
+const REAL_PROJECT = getArg('project', '')
+const REAL_CONFIG = argv.includes('--real-config')
 
 // ---------------- 页面内检查（注入到渲染进程执行） ----------------
 const AUDIT_FN = String.raw`(opts => {
@@ -120,7 +123,9 @@ const AUDIT_FN = String.raw`(opts => {
     }
     // tablist 内的 tab 采用 roving tabindex（未选中项 -1）是标准模式，不算不可达
     const inTablist = !!el.closest('[role="tablist"]')
-    if (el.getAttribute('tabindex') === '-1' && !inTablist && !el.closest('[aria-hidden="true"]')) {
+    // 焦点容器模式：容器 tabindex=0 占 Tab 停靠点，内部行 -1 由方向键进入（树/列表的通行做法）
+    const inFocusZone = !!el.parentElement?.closest('[tabindex="0"]') || !!el.closest('[data-focus-zone]')
+    if (el.getAttribute('tabindex') === '-1' && !inTablist && !inFocusZone && !el.closest('[aria-hidden="true"]')) {
       push('Minor', 'a11y/tabindex', '交互元素 tabindex=-1（键盘不可达）', { target: desc(el) })
     }
   }
@@ -566,28 +571,36 @@ async function anyPage() {
 
 // ---------------- 夹具 ----------------
 function prepareFixture(baseDir) {
-  const project = join(baseDir, 'demo-project')
+  // --project=<真实路径>：跳过夹具项目，直接用真实仓库（README 截图用）
+  const project = REAL_PROJECT ? resolve(REAL_PROJECT) : join(baseDir, 'demo-project')
   const userData = join(baseDir, 'userdata')
-  mkdirSync(join(project, 'src', 'app'), { recursive: true })
-  mkdirSync(join(project, 'docs'), { recursive: true })
-  mkdirSync(userData, { recursive: true })
-  writeFileSync(join(project, 'README.md'), '# demo\n')
-  writeFileSync(join(project, 'src', 'app', 'main.ts'), 'console.log(1)\n')
-  writeFileSync(join(project, 'docs', 'guide.md'), '# guide\n')
+  if (REAL_PROJECT) {
+    if (!existsSync(project)) throw new Error(`--project 路径不存在：${project}`)
+  } else {
+    mkdirSync(join(project, 'src', 'app'), { recursive: true })
+    mkdirSync(join(project, 'docs'), { recursive: true })
+    writeFileSync(join(project, 'README.md'), '# demo\n')
+    writeFileSync(join(project, 'src', 'app', 'main.ts'), 'console.log(1)\n')
+    writeFileSync(join(project, 'docs', 'guide.md'), '# guide\n')
 
-  const git = (args) => execFileSync('git', args, { cwd: project, stdio: 'ignore' })
-  git(['init', '-q'])
-  git(['config', 'user.email', 'audit@local'])
-  git(['config', 'user.name', 'audit'])
-  git(['add', '-A'])
-  git(['commit', '-q', '-m', '初始化'])
-  // 造未提交改动（Git 变更视图需要内容）
-  writeFileSync(join(project, 'src', 'app', 'main.ts'), 'console.log(2)\n')
-  writeFileSync(join(project, 'src', 'new-file.ts'), 'export const a = 1\n')
+    const git = (args) => execFileSync('git', args, { cwd: project, stdio: 'ignore' })
+    git(['init', '-q'])
+    git(['config', 'user.email', 'audit@local'])
+    git(['config', 'user.name', 'audit'])
+    git(['add', '-A'])
+    git(['commit', '-q', '-m', '初始化'])
+    // 造未提交改动（Git 变更视图需要内容）
+    writeFileSync(join(project, 'src', 'app', 'main.ts'), 'console.log(2)\n')
+    writeFileSync(join(project, 'src', 'new-file.ts'), 'export const a = 1\n')
+  }
+  mkdirSync(userData, { recursive: true })
 
   const remote = join(baseDir, 'remote-out')
   mkdirSync(remote, { recursive: true })
-  const config = {
+  const realConfigPath = process.env.APPDATA ? join(process.env.APPDATA, 'shipit', 'deploy-config.json') : ''
+  const config = REAL_CONFIG && realConfigPath && existsSync(realConfigPath)
+    ? JSON.parse(readFileSync(realConfigPath, 'utf8'))
+    : {
     recentProjects: [project.replace(/\\/g, '/')],
     deploymentTargets: [
       {
@@ -614,6 +627,24 @@ function prepareFixture(baseDir) {
     projectViewState: {},
     server: { enabled: false, bind: 'local', port: 4599, tokenMode: 'custom', token: 'audit0123456789abcdef' }
   }
+
+  // 统一覆盖：最近项目 = 当前项目；开启服务（用空闲端口，避免和正在运行的桌面实例抢 4517）
+  config.recentProjects = [project.replace(/\\/g, '/')]
+  config.server = {
+    ...(config.server || {}),
+    enabled: true,
+    bind: 'local',
+    port: 4599,
+    tokenMode: config.server?.tokenMode || 'custom',
+    token: config.server?.token || 'audit0123456789abcdef'
+  }
+  if (!Array.isArray(config.deploymentTargets) || config.deploymentTargets.length === 0) {
+    config.deploymentTargets = [{
+      id: 't1', name: '演示服务器', protocol: 'sftp', host: '10.255.255.1', port: 22, username: 'root',
+      mappings: [{ id: 'm1', localPrefix: 'src/', remotePath: '/opt/app/src' }]
+    }]
+  }
+  config.currentTargetId = config.deploymentTargets[0].id
   writeFileSync(join(userData, 'deploy-config.json'), JSON.stringify(config, null, 2))
   return { project, userData }
 }
@@ -771,7 +802,8 @@ function buildWalker() {
       expect: [{ selector: '.commit-item' }, { selector: '.filter-item' }],
       assertSeverity: 'Major',
       assertTarget: 'git-log',
-      assertScript: `(async () => {
+      // --project=<真实仓库>：提交数远超一页（50 条满页），「已全部加载」类断言属夹具专用
+      assertScript: REAL_PROJECT ? '(async () => [])()' : `(async () => {
         const problems = []
         const count = document.querySelectorAll('.commit-item').length
         const btn = document.querySelector('.load-more-btn')
@@ -854,13 +886,34 @@ function buildWalker() {
       role: 'project',
       label: '上传确认弹窗（含项目名/目标名）',
       setup: `(async () => {
-        const b = Array.from(document.querySelectorAll('.view-btn')).find(x=>x.textContent.includes('文件树'))
-        if (b) b.click()
-        await new Promise(r=>setTimeout(r,800))
-        const btn = document.querySelector('.ftn-deploy-btn')
-        if (btn) btn.click()
-        await new Promise(r=>setTimeout(r,2000))
-        return 'ok'
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms))
+        const waitFor = async (fn, ms) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { const v = fn(); if (v) return v; await sleep(200) } return null }
+        // 必须用「本地目录目标 t2 + docs 目录」：t1 是连不通的 SFTP 测试地址，
+        // 上传会一直挂在连接超时上（进度条不出结果 → 后续 Toast/日志步骤全失败）
+        // 目标不写死 id：按协议挑「本地目录」目标（夹具或真实配置都能用）
+        const sel = document.querySelector('.target-select')
+        if (!sel) return 'no-target-select'
+        const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set
+        const localOpt = Array.from(sel.options).find(o => /\(LOCAL\)/i.test(o.textContent || '') || /本地/.test(o.textContent || ''))
+        if (localOpt) {
+          setter.call(sel, localOpt.value)
+          sel.dispatchEvent(new Event('change', { bubbles: true }))
+          await sleep(700)
+        }
+        const ft = Array.from(document.querySelectorAll('.view-btn')).find(x=>x.textContent.includes('文件树'))
+        if (ft) ft.click()
+        await sleep(700)
+        const rows = Array.from(document.querySelectorAll('.ftn-row'))
+        const row = rows.find(r => (r.textContent || '').trim().startsWith('docs')) ?? rows[0]
+        if (!row) return 'no-row'
+        const r0 = row.getBoundingClientRect()
+        row.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, clientX: r0.left + 30, clientY: r0.top + 8 }))
+        await sleep(400)
+        const btn = row.querySelector('.ftn-deploy-btn')
+        if (!btn) return 'no-deploy-btn'
+        btn.click()
+        const dlg = await waitFor(() => document.querySelector('.base-dialog'), 12000)
+        return dlg ? 'ok' : 'no-dialog'
       })()`,
       expect: [{ selector: '.base-dialog' }],
       teardown: `(async () => { const c = document.querySelector('.base-dialog-close'); if (c) c.click(); await new Promise(r=>setTimeout(r,600)); return 'ok' })()`
@@ -930,26 +983,37 @@ function buildWalker() {
       role: 'project',
       label: '上传成功提示（Toast）',
       setup: `(async () => {
-        const b = Array.from(document.querySelectorAll('.btn-label')).length
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms))
+        const waitFor = async (fn, ms) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { const v = fn(); if (v) return v; await sleep(150) } return null }
+        // 目标不写死 id：按协议挑「本地目录」目标（本步可能单独运行，不能依赖前一步的设置）
+        const sel = document.querySelector('.target-select')
+        if (!sel) return 'no-target-select'
+        const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set
+        const localOpt = Array.from(sel.options).find(o => /\(LOCAL\)/i.test(o.textContent || '') || /本地/.test(o.textContent || ''))
+        if (localOpt) {
+          setter.call(sel, localOpt.value)
+          sel.dispatchEvent(new Event('change', { bubbles: true }))
+          await sleep(700)
+        }
         const ft = Array.from(document.querySelectorAll('.view-btn')).find(x=>x.textContent.includes('文件树'))
         if (ft) ft.click()
-        await new Promise(r=>setTimeout(r,700))
-        const row = document.querySelector('.ftn-row')
-        if (row) {
-          const r = row.getBoundingClientRect()
-          row.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, clientX: r.left + 5, clientY: r.top + 5 }))
-        }
-        await new Promise(r=>setTimeout(r,400))
-        const btn = document.querySelector('.ftn-deploy-btn')
+        await sleep(700)
+        const rows = Array.from(document.querySelectorAll('.ftn-row'))
+        const row = rows.find(r => (r.textContent || '').trim().startsWith('docs')) ?? rows[0]
+        if (!row) return 'no-row'
+        const r0 = row.getBoundingClientRect()
+        row.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, clientX: r0.left + 30, clientY: r0.top + 8 }))
+        await sleep(400)
+        const btn = row.querySelector('.ftn-deploy-btn')
         if (!btn) return 'no-deploy-btn'
         btn.click()
-        // 等确认弹窗出现（预览需要计算文件列表，实测约 2s）
-        const waitFor = async (fn, ms) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { const v = fn(); if (v) return v; await new Promise(r=>setTimeout(r,200)) } return null }
-        const go = await waitFor(() => Array.from(document.querySelectorAll('.base-dialog-footer button')).find(x=>/确定|上传/.test(x.textContent)), 10000)
+        const go = await waitFor(() => {
+          const b = Array.from(document.querySelectorAll('.base-dialog-footer button')).find(x=>/确定|上传/.test(x.textContent))
+          return b && !b.disabled ? b : null
+        }, 12000)
         if (!go) return 'no-confirm'
         go.click()
-        // 等 Toast（上传完成提示）
-        const toast = await waitFor(() => document.querySelector('.toast'), 12000)
+        const toast = await waitFor(() => document.querySelector('.toast'), 15000)
         return toast ? 'ok' : 'no-toast'
       })()`,
       expect: [{ selector: '.toast' }]
@@ -989,10 +1053,11 @@ function buildWalker() {
         // 必须选命中 t1 映射（src/）的文件：展开 src 目录后点其中的文件行
         const dirRow = Array.from(document.querySelectorAll('.ftn-row')).find(r => (r.textContent || '').trim().startsWith('src'))
         if (!dirRow) return 'no-src-dir'
-        // 展开：点行首的展开按钮（点行本身是"选中"语义，不展开）
+        // 展开：点行首的展开按钮（点行本身是"选中"语义，不展开）；
+        // 已展开时不能再点，否则会收起（步骤之间共享窗口状态）
         const expand = dirRow.querySelector('.ftn-expand')
         if (!expand) return 'no-expand-btn'
-        expand.click()
+        if (expand.getAttribute('aria-expanded') !== 'true') expand.click()
         await new Promise(r=>setTimeout(r,1200))
         // src/ 下直接有 new-file.ts（命中 t1 的 src/ 映射）
         const fileRow = Array.from(document.querySelectorAll('.ftn-row')).find(r => (r.textContent || '').includes('new-file.ts'))
@@ -1280,6 +1345,12 @@ async function runTheme(theme, fixture) {
         }
         if (SHOTS) {
           try {
+            // 先等加载遮罩消失：否则截到的是「正在加载项目…」的整页淡化画面（留证图不可用）
+            for (let i = 0; i < 20; i++) {
+              const busy = await page.evaluate("!!document.querySelector('.loading-overlay')")
+              if (!busy) break
+              await sleep(200)
+            }
             // 页面忙碌/动画中时 captureScreenshot 可能超时，重试一次再放弃
             let shot = null
             for (let attempt = 0; attempt < 2 && !shot; attempt++) {

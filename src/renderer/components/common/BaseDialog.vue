@@ -160,11 +160,12 @@ onUnmounted(() => {
 }
 .close-hint { font-size: 11px; line-height: 14px; }
 .base-dialog-close svg { display: block; }
-.base-dialog-close:hover { background: var(--border); color: var(--fg); }
+.base-dialog-close:hover { background: var(--bg3); color: var(--fg); }
 .base-dialog-body { flex: 1; overflow-y: auto; }
 .base-dialog-footer {
-  display: flex; justify-content: flex-end; gap: 8px;
-  padding: 12px 16px;
+  display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+  /* 页脚左 24px：左侧可能放校验/状态文案（当前唯一实现见 TargetEditor 的页脚提示） */
+  padding: 12px 16px 12px 24px;
   background: var(--bg2);
   border-top: 1px solid var(--border);
   flex-shrink: 0;

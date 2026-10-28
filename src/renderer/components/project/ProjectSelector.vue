@@ -37,7 +37,8 @@ async function handleOpen() {
         <div v-for="proj in recentProjects" :key="proj" class="recent-row">
           <button type="button" class="recent-item" :title="proj" @click="emit('openRecent', proj)">
             <Folder :size="14" />
-            <!-- 长路径省略中段（与状态栏同一实现），完整路径见 title -->
+            <!-- 主文本是项目名（人认名字，不认路径），路径作副文本；完整路径见 title -->
+            <span class="recent-name">{{ proj.replace(/\\/g, '/').split('/').filter(Boolean).pop() }}</span>
             <span class="recent-path">{{ shortenPath(proj, { maxChars: 56 }) }}</span>
             <ArrowRight :size="14" class="arrow" />
           </button>
@@ -116,6 +117,8 @@ async function handleOpen() {
 .recent-row { display: flex; align-items: center; gap: 4px; }
 .recent-remove {
   display: inline-flex; align-items: center; justify-content: center;
+  /* 不参与收缩：主按钮里内容变多时不能把移除按钮挤小（点击目标 <20×20 会难点到） */
+  flex: 0 0 24px;
   width: 24px; height: 24px; padding: 0;
   background: transparent; color: var(--fg2);
   border: 1px solid transparent; border-radius: 4px; cursor: pointer;
@@ -127,7 +130,8 @@ async function handleOpen() {
 
 
 .recent-item {
-  width: 100%; text-align: left; font: inherit; cursor: pointer;
+  flex: 1 1 auto; min-width: 0;
+  width: auto; text-align: left; font: inherit; cursor: pointer;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -142,14 +146,28 @@ async function handleOpen() {
   background: var(--bg3);
 }
 
-.recent-path {
-  flex: 1;
-  /* min-width:0 才能让 flex 项收缩到内容宽度以下（否则长路径把行撑宽、各行背景不齐） */
+/* 项目名（主）+ 路径（副）：一个人可能有多个同名项目，路径负责区分 */
+.recent-name {
+  /* 名字优先：不参与收缩（只受 50% 上限约束），否则会被长路径挤成 demo-proj… */
+  flex: 0 0 auto;
+  max-width: 50%;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 13px;
+  color: var(--fg);
+}
+
+.recent-path {
+  flex: 1 1 auto;
+  /* min-width:0 才能让 flex 项收缩到内容宽度以下（否则长路径把行撑宽、各行背景不齐） */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--fg2);
 }
 
 .arrow {

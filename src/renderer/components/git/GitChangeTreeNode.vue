@@ -4,6 +4,7 @@ import { File, Folder, FolderOpen, ChevronRight, ChevronDown, FileCode, Wrench, 
 import ContextMenu from '../common/ContextMenu.vue'
 import ServerTargetMenu from '../common/ServerTargetMenu.vue'
 import TreeRow from '../common/TreeRow.vue'
+import StatusBadge from '../common/StatusBadge.vue'
 import type { ContextMenuItem } from '../../types/context-menu'
 import type { ChangeTreeNode } from '../../types/git'
 import { useServerMenu } from '../../composables/useServerMenu'
@@ -28,9 +29,17 @@ const emit = defineEmits<{
   quickDeploy: [node: ChangeTreeNode, targetId?: string]
   showDiff: [path: string]
   select: [node: ChangeTreeNode, pos?: { x: number; y: number }, mode?: 'replace' | 'toggle' | 'range']
+  /** 键盘导航：按路径选中（视图用节点索引还原） */
+  selectPath: [path: string]
+  /** Ctrl/Cmd+A：选中当前可见行 */
+  selectAllVisible: []
+  /** Esc：清空选区 */
+  clearSelection: []
 }>()
 
 function onRowClick(e: MouseEvent) {
+  // 行是 tabindex=-1：点击后显式聚焦，否则后续 Space/Enter 收不到按键
+  ;(e.currentTarget as HTMLElement | null)?.focus?.()
   emit('select', props.node, { x: e.clientX, y: e.clientY }, resolveSelectionMode(e))
 }
 
@@ -39,14 +48,6 @@ function onRowDblClick(): void {
   if (props.node.isDirectory || !props.node.change) return
   if (props.node.change.status === 'deleted') return
   emit('showDiff', props.node.path)
-}
-
-/** 行级键盘交互：Enter 展开/选中，Space 选中（此前整棵树键盘不可达） */
-function onRowKeydown(event: KeyboardEvent): void {
-  if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Spacebar') return
-  event.preventDefault()
-  if (props.node.isDirectory && event.key === 'Enter') emit('toggleDir', props.node.path)
-  else emit('select', props.node)
 }
 
 const menu = ref<{ x: number; y: number; items: ContextMenuItem[] } | null>(null)
@@ -107,22 +108,39 @@ function onContextMenu(e: MouseEvent) {
   menu.value = { x, y, items }
 }
 
-function getDirStats(n: ChangeTreeNode): string {
-  const stats = { modified: 0, added: 0, deleted: 0, untracked: 0 }
+const STATS_LABEL: Record<string, string> = { modified: '已修改', added: '已新增', deleted: '已删除', untracked: '未跟踪' }
+
+function countByStatus(n: ChangeTreeNode): Record<string, number> {
+  const stats: Record<string, number> = { modified: 0, added: 0, deleted: 0, untracked: 0 }
   function walk(node: ChangeTreeNode) {
     if (node.change) {
-      const s = node.change.status as keyof typeof stats
+      const s = node.change.status
       if (s in stats) stats[s]++
     }
     for (const child of node.children) walk(child)
   }
   walk(n)
+  return stats
+}
+
+/** 目录行的状态统计（M:1 ?:1）：字母沿用 git 记法，含义放到 title 里 */
+function getDirStats(n: ChangeTreeNode): string {
+  const stats = countByStatus(n)
   const parts: string[] = []
   if (stats.modified > 0) parts.push(`M:${stats.modified}`)
   if (stats.added > 0) parts.push(`A:${stats.added}`)
   if (stats.deleted > 0) parts.push(`D:${stats.deleted}`)
   if (stats.untracked > 0) parts.push(`?:${stats.untracked}`)
   return parts.join(' ')
+}
+
+/** 悬停说明：「M:1 ?:1」对不熟悉 git 记法的人不可读 */
+function dirStatsTitle(n: ChangeTreeNode): string {
+  const stats = countByStatus(n)
+  const parts = Object.keys(stats)
+    .filter((k) => stats[k] > 0)
+    .map((k) => `${STATS_LABEL[k]} ${stats[k]} 个`)
+  return parts.length ? parts.join('，') : '无文件变更'
 }
 </script>
 
@@ -132,18 +150,19 @@ function getDirStats(n: ChangeTreeNode): string {
     v-if="node.isDirectory"
     row-class="tree-row dir-row"
     :data-path="node.path"
+    :data-depth="depth"
     :selected="(selectedPaths ?? []).includes(node.path)"
     :indent="depth * 16 + 8"
     role="button"
-    :tabindex="0"
+    :tabindex="-1"
     :aria-expanded="expandedDirs.has(node.path)"
     @click="onRowClick"
     @contextmenu="onContextMenu"
-    @keydown="onRowKeydown"
   >
     <template #toggle>
       <button
         class="expand-icon"
+        tabindex="-1"
         :aria-expanded="expandedDirs.has(node.path)"
         :aria-label="expandedDirs.has(node.path) ? '收起目录' : '展开目录'"
         @click.stop="emit('toggleDir', node.path)"
@@ -157,9 +176,9 @@ function getDirStats(n: ChangeTreeNode): string {
     <template #label>
       <span class="node-name">{{ node.name }}</span>
     </template>
-    <template #meta><span class="dir-badge">{{ getDirStats(node) }}</span></template>
+    <template #meta><span class="dir-badge" :title="dirStatsTitle(node)">{{ getDirStats(node) }}</span></template>
     <template #actions>
-      <button class="quick-deploy-btn row-actions" :disabled="busyPath === node.path" @click.stop="emit('deployDir', node)">
+      <button class="quick-deploy-btn" tabindex="-1" :disabled="busyPath === node.path" @click.stop="emit('deployDir', node)">
         {{ busyPath === node.path ? '收集中...' : '快速上传' }}
       </button>
     </template>
@@ -181,6 +200,9 @@ function getDirStats(n: ChangeTreeNode): string {
       @deploy-dir="(n, t) => emit('deployDir', n, t)"
       @show-diff="emit('showDiff', $event)"
       @quick-deploy="(n, t) => emit('quickDeploy', n, t)"
+      @select-path="emit('selectPath', $event)"
+      @select-all-visible="emit('selectAllVisible')"
+      @clear-selection="emit('clearSelection')"
     />
   </template>
 
@@ -189,17 +211,17 @@ function getDirStats(n: ChangeTreeNode): string {
     v-else-if="!node.isDirectory"
     row-class="tree-row file-row"
     :data-path="node.path"
+    :data-depth="depth"
     :selected="(selectedPaths ?? []).includes(node.path)"
     :indent="depth * 16 + 22"
     role="button"
-    :tabindex="0"
+    :tabindex="-1"
     @click="onRowClick"
     @dblclick="onRowDblClick"
     @contextmenu="onContextMenu"
-    @keydown="onRowKeydown"
   >
     <template #before>
-      <span class="status-badge" :class="node.change?.cssClass" v-if="node.change">{{ node.change.label }}</span>
+      <StatusBadge v-if="node.change" class="status-badge" :status="node.change.status" />
     </template>
     <template #icon><File :size="14" class="file-icon" /></template>
     <template #label>
@@ -208,7 +230,8 @@ function getDirStats(n: ChangeTreeNode): string {
     <template #actions>
       <button
         v-if="node.change?.status !== 'deleted'"
-        class="quick-deploy-btn row-actions"
+        class="quick-deploy-btn"
+        tabindex="-1"
         :disabled="busyPath === node.path"
         @click.stop="emit('deployFile', node.path)"
       >{{ busyPath === node.path ? '收集中...' : '快速上传' }}</button>
@@ -244,18 +267,25 @@ function getDirStats(n: ChangeTreeNode): string {
 .expand-icon:hover { color: var(--fg); }
 
 .node-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.node-name.status-modified { color: var(--yellow); }
-.node-name.status-added { color: var(--green); }
-.node-name.status-untracked { color: var(--green); }
-.node-name.status-deleted { color: var(--red); text-decoration: line-through; }
+.node-name.node-name.node-name.node-name.status-deleted { color: var(--red); text-decoration: line-through; }
 
 /* 目录统计贴行尾（长目录名下不再紧贴名称），左侧留最小间距便于扫读 */
 .dir-badge { font-size: 11px; color: var(--fg2); white-space: nowrap; margin-left: auto; padding-left: 16px; }
 
 .status-badge { width: 16px; text-align: center; font-size: 11px; font-weight: bold; flex-shrink: 0; }
+/* 仅深色主题（实色选中底）反白；浅色主题是浅蓝底，保留语义色 */
+.theme-dark .tree-row.selected .node-name,
+.theme-dark .tree-row.selected .node-name.status-modified,
+.theme-dark .tree-row.selected .node-name.status-added,
+.theme-dark .tree-row.selected .node-name.status-untracked,
+.theme-dark .tree-row.selected .node-name.status-deleted,
+.theme-dark .tree-row.selected .dir-badge,
+.theme-dark .tree-row.selected .status-badge,
+.theme-dark .tree-row.selected .expand-icon,
+.theme-dark .tree-row.selected .dir-icon,
+.theme-dark .tree-row.selected .file-icon { color: var(--on-accent); }
 .status-modified { color: var(--yellow); }
 .status-added { color: var(--green); }
-.status-deleted { color: var(--red); }
 .status-untracked { color: var(--green); }
 
 .file-icon { color: var(--fg2); flex-shrink: 0; }
@@ -267,4 +297,11 @@ function getDirStats(n: ChangeTreeNode): string {
 }
 .quick-deploy-btn:hover:not(:disabled) { background: var(--accent2); }
 .quick-deploy-btn:disabled { opacity: 0.5; cursor: wait; }
+/* 深色主题选中行是实色底：按钮反色，否则蓝底上叠蓝钮 */
+.theme-dark .tree-row.selected .quick-deploy-btn { background: var(--on-accent); color: var(--accent); }
+/* 悬停不改颜色（改色后蓝底上文字会看不清）：用内描边做反馈 */
+.theme-dark .tree-row.selected .quick-deploy-btn:hover:not(:disabled) {
+  background: var(--on-accent); color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
 </style>

@@ -298,6 +298,18 @@ export interface GitChangeInfo {
   oldPath?: string
 }
 
+/** 某次提交涉及的一个文件（跨进程契约：主进程 git show --name-status 的解析结果） */
+export interface GitCommitFile {
+  /** 新路径（重命名/复制时是目标路径，上传也用它） */
+  path: string
+  /** 单字母状态：M / A / D / R / C / ?（重命名的相似度不在这里，见 score） */
+  status: string
+  /** 重命名/复制时的原路径 */
+  oldPath?: string
+  /** 重命名/复制的相似度百分比（git 的 R094 → 94） */
+  score?: number
+}
+
 /** 一次 Git 提交 */
 export interface GitCommitInfo {
   hash: string

@@ -142,6 +142,15 @@ export const useDeployStore = defineStore('deploy', () => {
 
       if (seq !== previewSeq) return // 已有更新的请求：丢弃本次结果
 
+      // 一个文件都没命中目录映射：不要弹一个「上传 0 个文件」的死弹窗（按钮还禁用的），
+      // 直接告诉用户原因——否则从界面看就是“点了快速上传没反应”
+      if (!tasks || tasks.length === 0) {
+        showConfirm.value = false
+        confirmFiles.value = []
+        toastError('没有匹配上传映射的文件，请检查该目标的目录映射')
+        return
+      }
+
       confirmFiles.value = (tasks || []).map((t: any) => ({
         localPath: t.localPath,
         remotePath: t.remotePath,
@@ -232,7 +241,9 @@ export const useDeployStore = defineStore('deploy', () => {
 
     showConfirm.value = false
     isUploading.value = true
-    uploadProgress.value = { current: 0, total: 0, file: '' }
+    // 总数先用待传列表预填：连接/握手阶段也能看到「0 / N」，
+    // 而不是 0/0 —— 后者看起来像“什么都没开始/卡住了”
+    uploadProgress.value = { current: 0, total: confirmFiles.value.filter(f => f.remotePath !== null).length, file: '' }
 
     try {
       // 直接用弹窗展示的任务列表（与预览一致）
@@ -261,9 +272,9 @@ export const useDeployStore = defineStore('deploy', () => {
         toastError(`上传已取消（已完成 ${result.succeeded} 个文件）`)
       } else if (result.failed > 0) {
         // 含失败文件不得用绿色成功提示上报（INV-9：失败不能伪装成成功）
-        toastError(`上传部分失败: ${result.succeeded} 成功, ${result.failed} 失败`)
+        toastError(`${result.succeeded} 个成功，${result.failed} 个失败`)
       } else {
-        toastSuccess(`上传完成: ${result.succeeded} 成功`)
+        toastSuccess(`已上传 ${result.succeeded} 个文件`)
       }
       return result
     } catch (err: any) {

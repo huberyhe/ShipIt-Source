@@ -8,20 +8,21 @@
  */
 const props = withDefaults(
   defineProps<{
-    label: string
+    /** 省略时只渲染控件（标签由外层控件组表达，如分段选择器） */
+    label?: string
     /** 与控件 id 对应，保证点击 label 能聚焦控件 */
     for?: string
     required?: boolean
     /** 控件下方的说明文字（错误提示请由调用方在控件上表达，不要混用） */
     hint?: string
   }>(),
-  { for: undefined, required: false, hint: '' }
+  { label: undefined, for: undefined, required: false, hint: '' }
 )
 </script>
 
 <template>
   <div class="form-field">
-    <label :for="props.for">{{ label }}<span v-if="required" class="req" aria-hidden="true">*</span></label>
+    <label v-if="props.label" :for="props.for">{{ props.label }}<span v-if="required" class="req" aria-hidden="true">*</span></label>
     <slot />
     <span v-if="hint" class="field-hint">{{ hint }}</span>
   </div>
