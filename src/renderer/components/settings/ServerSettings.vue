@@ -387,8 +387,8 @@ defineExpose({ save, discard, isDirty })
 .scope-control { flex-direction: column; align-items: stretch; gap: 4px; }
 .scope-note { font-size: 11px; color: var(--fg2); line-height: 1.5; }
 .scope-input { width: 100%; min-height: 60px; resize: vertical; box-sizing: border-box; padding: 8px; font-size: 12px; }
-/* 控件列 380px：证书指纹（64 位 + 分组空格）两行放得下，不必折三行 */
-.row-control.fixed { width: 380px; }
+/* 控件列 520px：64 位指纹（含分组空格）一行放得下；四行仍共用同一列宽，左右边缘对齐 */
+.row-control.fixed { width: 520px; }
 .value { width: 100%; flex-shrink: 1; min-width: 0; }
 .actions { flex: 1; min-width: 84px; display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
 
