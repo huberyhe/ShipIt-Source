@@ -275,7 +275,13 @@ function acquireImeSafeToggle(win: BrowserWindow): void {
   releaseImeSafeToggle()
   try {
     const ok = globalShortcut.register('Control+Space', () => {
-      if (!win.isDestroyed()) win.webContents.send(IpcChannels.EDITOR_TOGGLE_SELECTION)
+      // 窗口/渲染进程可能已经销毁（崩溃或关窗竞态）：热键回调里抛异常会打断主进程
+      if (win.isDestroyed() || win.webContents.isDestroyed()) return
+      try {
+        win.webContents.send(IpcChannels.EDITOR_TOGGLE_SELECTION)
+      } catch {
+        /* 窗口正在销毁，忽略 */
+      }
     })
     if (ok) imeToggleOwnerId = id
   } catch {

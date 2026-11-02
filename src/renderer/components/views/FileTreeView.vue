@@ -15,6 +15,7 @@ import ServerTargetMenu from '../common/ServerTargetMenu.vue'
 import { useDeployHotkeys } from '../../composables/useDeployHotkeys'
 import { isEscapeKey, isSelectAllKey, parentRowOf, rowPaths, visibleRows } from '../../utils/tree-keyboard'
 import { isOnRow, leaveZoneBackward, tabIntoZoneControls } from '../../utils/focus-zone'
+import { shouldCollapseOnSpace } from '../../utils/selection'
 import { useServerMenu } from '../../composables/useServerMenu'
 import { useContentKeyFallback } from '../../composables/useContentKeyFallback'
 
@@ -108,7 +109,8 @@ function onContentKeydown(event: KeyboardEvent): void {
       if (index < 0) { focusAt(0); return }
       // 空格：选中当前行；**已经是唯一选中项时再按一次 = 取消选中**。
       // Ctrl/Cmd+空格 仍是多选切换（Windows 输入法占用时由主进程抢注转发）。
-      if (filesStore.deploySelection.length === 1 && filesStore.isDeploySelected(path) && !event.ctrlKey && !event.metaKey) {
+      const selectedPaths = filesStore.deploySelection.map((item) => item.path)
+      if (!event.ctrlKey && !event.metaKey && shouldCollapseOnSpace(selectedPaths, path)) {
         filesStore.clearSelection()
         return
       }

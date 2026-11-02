@@ -77,7 +77,9 @@ function onContentKeydown(event: KeyboardEvent): void {
     // 空格 = 单击：选中当前提交并展开它的文件列表；已选中的再按一次 = 取消选中
     const hash = current.dataset.hash ?? ''
     if (hash && hash === selectedHash.value) {
+      // 取消选中时一并收起详情：否则行没有蓝底却仍展开着文件列表，状态自相矛盾
       selectedHash.value = ''
+      collapseCommit(hash)
       return
     }
     void selectCommit(current)
@@ -522,7 +524,10 @@ async function deployCommitFiles(targetId?: string) {
   outline: none;
   box-shadow: inset 0 1px 0 var(--fg2), inset 0 -1px 0 var(--fg2);
 }
-.commit-item.selected:focus { box-shadow: none; }
+/* 选中行也保留焦点提示（与列表行一致）：边用当前行文字色，在实色底上可见 */
+.commit-item.selected:focus {
+  box-shadow: inset 0 1px 0 var(--row-selected-fg), inset 0 -1px 0 var(--row-selected-fg);
+}
 .expand-icon { width: 14px; height: 14px; display: flex; align-items: center; color: var(--fg2); flex-shrink: 0; margin: 4px; }
 .commit-icon { margin: 4px; color: var(--fg2); flex-shrink: 0; }
 .commit-main { flex: 1; min-width: 0; }

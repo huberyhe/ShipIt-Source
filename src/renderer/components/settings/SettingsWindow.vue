@@ -255,13 +255,13 @@ onMounted(() => {
 }
 .nav-item:hover { background: var(--bg3); color: var(--fg); }
 .nav-item.active { background: var(--bg4); color: var(--fg); border-color: var(--border2); }
-.nav-item:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.nav-item:focus-visible { outline: 2px solid var(--status-bar); outline-offset: -2px; }
 .nav-label { flex: 1; }
 
 /* 内容列限宽居中：避免表单输入框横跨整屏、也让右侧留白不至于"没做完" */
 .content { flex: 1; min-width: 0; overflow: auto; padding: 16px; display: flex; flex-direction: column; align-items: center; }
 .content > * { width: 100%; max-width: 880px; }
-.content:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.content:focus-visible { outline: 2px solid var(--status-bar); outline-offset: -2px; }
 .content-hint { margin: 0 0 12px; font-size: 11px; color: var(--fg2); }
 
 

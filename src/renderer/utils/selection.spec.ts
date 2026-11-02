@@ -5,7 +5,7 @@
  * 区间右端、锚点是否被覆盖、Ctrl+Shift 优先级、锚点消失时的退化、去重键大小写。
  */
 import { describe, expect, it } from 'vitest'
-import { reduceSelection, resolveSelectionMode, selectionKey, type SelectionState } from './selection'
+import {reduceSelection, resolveSelectionMode, selectionKey, type SelectionState, shouldCollapseOnSpace} from './selection'
 
 const empty: SelectionState = { paths: [], anchor: null }
 const ORDER = ['A', 'B', 'C', 'D']
@@ -67,5 +67,20 @@ describe('selectionKey', () => {
     expect(selectionKey('D:\\Work\\App\\a.ts', 'win32')).toBe('d:/work/app/a.ts')
     expect(selectionKey('D:/Work/App/a.ts', 'win32')).toBe('d:/work/app/a.ts')
     expect(selectionKey('/srv/App/a.ts', 'linux')).toBe('/srv/App/a.ts')
+  })
+})
+
+describe('shouldCollapseOnSpace（空格再按一次取消选中）', () => {
+  it('当前行是唯一选中项 → 收起', () => {
+    expect(shouldCollapseOnSpace(['a.ts'], 'a.ts')).toBe(true)
+  })
+
+  it('多选状态下不收起（先收敛到当前行）', () => {
+    expect(shouldCollapseOnSpace(['a.ts', 'b.ts'], 'b.ts')).toBe(false)
+  })
+
+  it('当前行未选中时不收起', () => {
+    expect(shouldCollapseOnSpace(['a.ts'], 'b.ts')).toBe(false)
+    expect(shouldCollapseOnSpace([], 'a.ts')).toBe(false)
   })
 })

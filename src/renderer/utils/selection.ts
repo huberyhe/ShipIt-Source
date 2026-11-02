@@ -67,3 +67,14 @@ export function selectionKey(path: string, platform: string = typeof process !==
   const slashed = path.replace(/\\/g, '/')
   return platform === 'win32' ? slashed.toLowerCase() : slashed
 }
+
+/**
+ * 空格作用在当前行时，是否应当「取消选中」而不是重新选中。
+ *
+ * 规则：当前行已经是**唯一**选中项 —— 再按一次空格就把选区清空。
+ * 多选状态（A+B）下按空格仍然先收敛到当前行，再按一次才取消。
+ * 抽成纯函数是为了让两个树视图共用同一份判定（此前各写一份 if）。
+ */
+export function shouldCollapseOnSpace(selectedPaths: readonly string[], path: string): boolean {
+  return selectedPaths.length === 1 && selectedPaths[0] === path
+}

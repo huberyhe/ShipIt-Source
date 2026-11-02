@@ -4,7 +4,7 @@ import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { ChevronsUpDown, ChevronsDownUp, RefreshCw } from 'lucide-vue-next'
 import { useGitStore } from '../../stores/git'
 import { statusClassOf, statusShort } from '../../utils/change-status'
-import { reduceSelection } from '../../utils/selection'
+import { reduceSelection, shouldCollapseOnSpace } from '../../utils/selection'
 import { isEscapeKey, isSelectAllKey, parentRowOf, visibleRows } from '../../utils/tree-keyboard'
 import { isOnRow, leaveZoneBackward, tabIntoZoneControls } from '../../utils/focus-zone'
 import { useDeployStore } from '../../stores/deploy'
@@ -128,7 +128,7 @@ function onContentKeydown(event: KeyboardEvent): void {
       event.preventDefault()
       if (index < 0) { focusAt(0); return }
       // 空格：选中；已是唯一选中项时再按一次 = 取消（与文件树一致）
-      if (selectedPaths.value.length === 1 && selectedPaths.value[0] === path && !event.ctrlKey && !event.metaKey) {
+      if (!event.ctrlKey && !event.metaKey && shouldCollapseOnSpace(selectedPaths.value, path)) {
         clearSelection()
         return
       }

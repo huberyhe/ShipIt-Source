@@ -619,7 +619,7 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
 .test-result-text { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .test-result.testing { background: var(--blue-bg); color: var(--blue); }
 .test-result.success { background: var(--green-bg); color: var(--green); }
-.test-result.error { background: var(--red-bg); color: var(--red); }
+.test-result.error { background: var(--red-bg2); color: var(--red-text); }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 .spin { animation: spin 1s linear infinite; }
 
@@ -645,7 +645,7 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
 .footer-hint :deep(svg) { display: block; flex-shrink: 0; }
 .footer-hint-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .footer-hint.success { color: var(--green); }
-.footer-hint.error { color: var(--red); }
+.footer-hint.error { color: var(--red-text); }
 
 /* 分组 */
 /* 分区块只描边不填色：浅色主题里 --bg(白) 会显得"浮起"、深色主题里 --bg 又比容器更暗（凹陷），
@@ -705,9 +705,10 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
 .map-desc { color: var(--fg2); font-size: 11px; margin: auto; }
 .edit-mapping-add { margin: 4px; padding: 8px; border-top: 1px dashed var(--border); }
 .inline-form { display: flex; align-items: center; gap: 4px; }
-.inline-input { padding: 4px 8px; background: var(--input-bg); color: var(--fg); border: 1px solid var(--border); border-radius: 4px; font-size: 11px; outline: none; flex: 1; min-width: 0; }
+/* 视觉交给全局表单基座；这里只调紧凑尺寸与自适应宽度 */
+.inline-input { font-size: 11px; flex: 1; min-width: 0; }
 .inline-input.flex-remote { flex: 2; }
-.inline-input:focus { border-color: var(--status-bar); box-shadow: 0 0 0 2px var(--accent3); }
+/* 焦点环由全局 :focus-visible 提供（不再自绘一圈 accent3 阴影，避免双环） */
 /* 次要动作（表单内"添加映射"）：与列表里的 MappingEditor.add-btn 保持同一级别，
    主色实心只留给当前视图的终点动作（保存目标），避免同页多个"主按钮"让人误点 */
 .mini-add-btn { padding: 4px 12px; background: transparent; color: var(--accent-text); border: 1px solid var(--accent-text); border-radius: 4px; font-size: 11px; }

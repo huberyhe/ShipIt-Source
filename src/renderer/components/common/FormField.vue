@@ -34,15 +34,12 @@ const props = withDefaults(
 .req { color: var(--red); margin-left: 4px; }
 .field-hint { font-size: 11px; color: var(--fg2); opacity: 0.8; }
 
-/* 控件样式也收在这里：两个表单此前各自写一份（padding 8px vs 4px、focus 是否有 box-shadow）。
-   焦点态只用全局 2px 环 + 描边，不再 `outline: none`（否则键盘焦点看不见） */
+/*
+ * 控件的底色/描边/圆角/焦点环由 App.vue 的全局表单基座统一提供。
+ * 这里只补「同一行里 input 与 select 必须长得一样」：此前本地规则只命中 input/select 的
+ * 部分属性，导致名称 input 是 6px/--border2，协议 select 却是 4px/--border。
+ * 只调字号即可，不要再写 background / border / border-radius / outline。
+ */
 .form-field :deep(input),
-.form-field :deep(select) {
-  padding: 8px; background: var(--input-bg); color: var(--fg);
-  border: 1px solid var(--border); border-radius: 4px; font-size: 12px;
-  transition: border-color 0.15s ease;
-}
-.form-field :deep(input:focus-visible),
-.form-field :deep(select:focus-visible) { border-color: var(--status-bar); }
-.form-field :deep(input::placeholder) { color: var(--fg2); }
+.form-field :deep(select) { font-size: 12px; }
 </style>

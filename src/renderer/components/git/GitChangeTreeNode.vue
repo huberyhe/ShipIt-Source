@@ -284,9 +284,7 @@ function dirStatsTitle(n: ChangeTreeNode): string {
 .theme-dark .tree-row.selected .expand-icon,
 .theme-dark .tree-row.selected .dir-icon,
 .theme-dark .tree-row.selected .file-icon { color: var(--on-accent); }
-.status-modified { color: var(--yellow); }
-.status-added { color: var(--green); }
-.status-untracked { color: var(--green); }
+/* 颜色由 App.vue 的全局 .status-* 提供（此处不要再定义，否则会绕过 --yellow-text/--red-text） */
 
 .file-icon { color: var(--fg2); flex-shrink: 0; }
 

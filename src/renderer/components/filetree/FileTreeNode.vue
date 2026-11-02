@@ -203,7 +203,8 @@ async function deployThis(): Promise<void> {
 .ftn-spacer { flex: 1; }
 /* 悬浮显隐由 TreeRow 的 .row-actions 统一负责 */
 .ftn-deploy-btn { padding: 4px 8px; background: var(--accent); color: var(--on-accent); border-radius: 4px; font-size: 11px; white-space: nowrap; }
-.ftn-deploy-btn:hover { background: var(--accent2); }
+.ftn-deploy-btn:hover:not(:disabled) { background: var(--accent2); }
+.ftn-deploy-btn:disabled { opacity: 0.5; cursor: wait; }
 /* 深色主题选中行是实色底：按钮反色；浅色主题浅蓝底上正常显示即可 */
 .theme-dark .ftn-row.selected .ftn-deploy-btn { background: var(--on-accent); color: var(--accent); }
 .theme-dark .ftn-row.selected .ftn-deploy-btn:hover {

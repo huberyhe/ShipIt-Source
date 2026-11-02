@@ -48,11 +48,23 @@ const windowLimitHint = ref<{ count: number; limit: number } | null>(null)
  * 复用容器的事件处理：向当前行派发一次 ctrl+space，走同一套选择逻辑。
  */
 function toggleSelectionOfFocusedRow(): void {
+  // 与真实按键同一套守卫：弹窗、右键菜单、输入控件里都不接管
   if (document.querySelector('[role="dialog"][aria-modal="true"]')) return
+  if (document.querySelector('[role="menu"]')) return
   const active = document.activeElement as HTMLElement | null
-  const row = active?.closest?.<HTMLElement>('[data-path]')
+  if (active?.closest?.('input, textarea, select, [contenteditable="true"]')) return
+
+  let row = active?.closest?.<HTMLElement>('[data-path]') ?? null
+  if (!row) {
+    // 焦点可能已经不在行上（点过行内按钮被主动 blur、Ctrl+1/2/3 切视图后落在 body）：
+    // 先把焦点还给当前内容区（focusin 会恢复上次的行），再派发，避免按键被“吞掉”却毫无反应
+    document.querySelector<HTMLElement>('.filetree-view, .changes-view, .log-view')?.focus()
+    row = (document.activeElement as HTMLElement | null)?.closest?.<HTMLElement>('[data-path]') ?? null
+  }
   if (!row) return
-  row.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', ctrlKey: true, bubbles: true }))
+  row.dispatchEvent(
+    new KeyboardEvent('keydown', { key: ' ', code: 'Space', ctrlKey: true, bubbles: true, cancelable: true })
+  )
 }
 
 function openAppDialog(which: 'shortcuts' | 'about' | 'windowLimit'): void {
