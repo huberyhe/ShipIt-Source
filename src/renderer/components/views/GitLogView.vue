@@ -74,7 +74,12 @@ function onContentKeydown(event: KeyboardEvent): void {
     return
   }
   if (key === ' ' || key === 'Spacebar') {
-    // 空格 = 单击：选中当前提交并展开它的文件列表
+    // 空格 = 单击：选中当前提交并展开它的文件列表；已选中的再按一次 = 取消选中
+    const hash = current.dataset.hash ?? ''
+    if (hash && hash === selectedHash.value) {
+      selectedHash.value = ''
+      return
+    }
     void selectCommit(current)
     return
   }

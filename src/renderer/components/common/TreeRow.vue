@@ -73,7 +73,9 @@ withDefaults(
   outline: none;
   box-shadow: inset 0 1px 0 var(--fg2), inset 0 -1px 0 var(--fg2);
 }
+/* 选中行也能看出焦点：上下边改用当前行的文字色（浅色=深灰、深色=白），
+   在浅蓝/实色两种选中底上都够清楚 */
 .tree-row-base.selected:focus {
-  box-shadow: none;
+  box-shadow: inset 0 1px 0 var(--row-selected-fg), inset 0 -1px 0 var(--row-selected-fg);
 }
 </style>

@@ -127,6 +127,11 @@ function onContentKeydown(event: KeyboardEvent): void {
     case 'Spacebar':
       event.preventDefault()
       if (index < 0) { focusAt(0); return }
+      // 空格：选中；已是唯一选中项时再按一次 = 取消（与文件树一致）
+      if (selectedPaths.value.length === 1 && selectedPaths.value[0] === path && !event.ctrlKey && !event.metaKey) {
+        clearSelection()
+        return
+      }
       onSelectNode(nodeIndex.value.get(path)!, undefined, event.ctrlKey || event.metaKey ? 'toggle' : 'replace')
       return
     case 'Enter':
