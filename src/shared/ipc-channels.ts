@@ -97,6 +97,13 @@ export const IpcChannels = {
   MENU_SYNC_STATE: 'menu:sync-state',
   // 主进程 → 渲染进程：打开指定项目（自绘菜单栏的「最近项目」走这里）
   MENU_OPEN_PROJECT: 'menu:open-project',
+
+  /**
+   * 主进程 → 渲染进程：把 Ctrl+空格 的多选切换补发给当前行。
+   * 系统输入法把 Ctrl+空格 当切换输入法的热键吞掉，页面收不到这个按键；
+   * 窗口聚焦期间由主进程用 globalShortcut 抢下来再转发（失焦即释放）。
+   */
+  EDITOR_TOGGLE_SELECTION: 'editor:toggle-selection',
 } as const
 
 export type IpcChannel = (typeof IpcChannels)[keyof typeof IpcChannels]

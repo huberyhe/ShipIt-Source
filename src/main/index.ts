@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, Menu, nativeTheme } from 'electron'
+import { app, BrowserWindow, globalShortcut, ipcMain, dialog, Menu, nativeTheme } from 'electron'
 import { join, dirname } from 'path'
 import { networkInterfaces } from 'os'
 import { promises as fsPromises } from 'fs'
@@ -249,6 +249,40 @@ let serverHandlers: Partial<Handlers> = {}
  * 创建窗口。角色决定初始视图：主窗口 = 项目选择页；项目窗口直达该项目的工区。
  * 项目路径通过 `additionalArguments` 传给渲染进程（preload 读取，见 windowArguments）。
  */
+/**
+ * 输入法把 Ctrl+空格 当「切换输入法」的系统热键，按键在到达页面之前就被吞掉，
+ * 渲染层的多选快捷键因此失效。
+ *
+ * 处理：**项目窗口获得焦点期间**用 globalShortcut 把该组合抢过来，转成一次
+ * 「切换当前行选中」发给渲染进程；窗口失焦立即释放，系统和其它窗口的输入法切换不受影响。
+ * 抢注失败（被已注册的程序占用）时静默跳过 —— 仍有 Ctrl+Enter 这条路。
+ */
+let imeToggleOwnerId: number | null = null
+
+function releaseImeSafeToggle(): void {
+  if (imeToggleOwnerId === null) return
+  try {
+    globalShortcut.unregister('Control+Space')
+  } catch {
+    /* 已释放/未注册，忽略 */
+  }
+  imeToggleOwnerId = null
+}
+
+function acquireImeSafeToggle(win: BrowserWindow): void {
+  const id = win.webContents.id
+  if (imeToggleOwnerId === id) return
+  releaseImeSafeToggle()
+  try {
+    const ok = globalShortcut.register('Control+Space', () => {
+      if (!win.isDestroyed()) win.webContents.send(IpcChannels.EDITOR_TOGGLE_SELECTION)
+    })
+    if (ok) imeToggleOwnerId = id
+  } catch {
+    /* 注册失败：保持 Ctrl+Enter 作为替代 */
+  }
+}
+
 function createAppWindow(opts: {
   role: WindowRole
   projectPath?: string | null
@@ -319,6 +353,17 @@ function createAppWindow(opts: {
   win.on('focus', () => {
     focusedWindowId = win.webContents.id
     syncCurrentProject()
+    // 只有项目窗口里有可选行：设置窗口/主窗口不抢输入法的 Ctrl+空格。
+    // 角色要**现取**：主窗口打开项目后会就地变成项目窗口（创建时的 role 还是 main）。
+    const role = appWindows.get(id)?.role ?? opts.role
+    if (role === 'project') acquireImeSafeToggle(win)
+  })
+  // 失焦/关窗即把 Ctrl+空格 还给系统（否则会挡住别处的输入法切换）
+  win.on('blur', () => {
+    if (imeToggleOwnerId === id) releaseImeSafeToggle()
+  })
+  win.on('closed', () => {
+    if (imeToggleOwnerId === id) releaseImeSafeToggle()
   })
 
   // INV-7 / D-1：关窗不等于退出——托盘可用时所有窗口（含最后一个）都只隐藏
@@ -925,6 +970,12 @@ function registerIpcHandlers() {
       entry.role = projectPath ? 'project' : 'main'
       entry.title = windowTitle(entry.role, entry.projectPath)
       if (!entry.win.isDestroyed()) entry.win.setTitle(entry.title)
+      // 主窗口「就地」打开项目时角色从 main 变成 project，不会再触发 focus：
+      // 在这里补一次 Ctrl+空格 的抢注（退回主窗口时再还回去）
+      if (!entry.win.isDestroyed()) {
+        if (entry.role === 'project' && entry.win.isFocused()) acquireImeSafeToggle(entry.win)
+        else if (entry.role !== 'project' && imeToggleOwnerId === entry.win.webContents.id) releaseImeSafeToggle()
+      }
     }
     if (focusedWindowId === _event.sender.id) syncCurrentProject()
     trayHandle?.refresh()
@@ -1123,6 +1174,14 @@ let shutdownInProgress = false
 
 // 退出前先等上传任务收尾（有上限），再停止本地服务并删除连接信息文件，避免留下失效的连接信息。
 // 此前是「立即退出」：上传会被静默截断且无任何记录（INV-9：失败/中断不得伪装成成功）。
+app.on('will-quit', () => {
+  try {
+    globalShortcut.unregisterAll()
+  } catch {
+    /* 忽略 */
+  }
+})
+
 app.on('before-quit', (event) => {
   isQuitting = true
   if (shutdownInProgress) return // 收尾完成后由我们自己触发的再次 quit：放行

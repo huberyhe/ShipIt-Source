@@ -43,6 +43,18 @@ const windowLimitHint = ref<{ count: number; limit: number } | null>(null)
  * 为什么要互斥：三者各自 `v-if`，无互斥时两个对话框会**叠加**（视觉混乱 + 焦点争夺，
  * 且 Esc 关掉的是哪一个不确定）。这里由单一入口裁决，打开一个就关掉其它两个。
  */
+/**
+ * 切换当前行选中（供主进程转发的 Ctrl+空格 使用）。
+ * 复用容器的事件处理：向当前行派发一次 ctrl+space，走同一套选择逻辑。
+ */
+function toggleSelectionOfFocusedRow(): void {
+  if (document.querySelector('[role="dialog"][aria-modal="true"]')) return
+  const active = document.activeElement as HTMLElement | null
+  const row = active?.closest?.<HTMLElement>('[data-path]')
+  if (!row) return
+  row.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', ctrlKey: true, bubbles: true }))
+}
+
 function openAppDialog(which: 'shortcuts' | 'about' | 'windowLimit'): void {
   showShortcuts.value = which === 'shortcuts'
   showAbout.value = which === 'about'
@@ -141,7 +153,10 @@ onMounted(async () => {
 
   // 自绘菜单栏（AppMenuBar）经 window 事件打开弹窗
   window.addEventListener('close-project', closeProject)
-window.addEventListener('show-shortcuts', () => { openAppDialog('shortcuts') })
+// 输入法占用 Ctrl+空格：主进程在窗口聚焦期间抢注该组合并转发到这里，
+  // 转成一次「切换当前行选中」，与页面内 Ctrl+空格 的行为完全一致
+  window.deployApi.onToggleSelection(() => toggleSelectionOfFocusedRow())
+  window.addEventListener('show-shortcuts', () => { openAppDialog('shortcuts') })
   window.addEventListener('show-about', () => { openAppDialog('about') })
 
   // 全局快捷键（原生菜单已移除，统一在渲染进程处理）

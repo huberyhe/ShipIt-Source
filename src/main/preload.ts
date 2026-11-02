@@ -38,6 +38,9 @@ contextBridge.exposeInMainWorld('deployApi', {
   onDeployLogEntry: (callback: (entry: any) => void) => {
     ipcRenderer.on(IpcChannels.DEPLOY_LOG_ENTRY, (_event, entry) => callback(entry))
   },
+  onToggleSelection: (callback: () => void) => {
+    ipcRenderer.on(IpcChannels.EDITOR_TOGGLE_SELECTION, () => callback())
+  },
   onServerStatusChanged: (callback: (payload: any) => void) => {
     ipcRenderer.on(IpcChannels.SERVER_STATUS_CHANGED, (_event, payload) => callback(payload))
   },

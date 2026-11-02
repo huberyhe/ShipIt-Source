@@ -77,6 +77,8 @@ export interface DeployApi {
   /** 仅桌面窗口自己的上传会话（队列任务不推逐文件进度） */
   onDeployProgress: (callback: (data: { current: number; total: number; file: string }) => void) => void
   onDeployLogEntry: (callback: (entry: DeployLogEntry) => void) => void
+  /** 主进程把 Ctrl+空格 抢过来之后转发：切换当前行选中（输入法会吞掉原生的 Ctrl+空格） */
+  onToggleSelection: (callback: () => void) => void
   onServerStatusChanged: (callback: (payload: ServerStatusPayload) => void) => void
   openFileDialog: (options?: any) => Promise<string | null>
   onMenuEvent: (channel: string, callback: (...args: any[]) => void) => void
