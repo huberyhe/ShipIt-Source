@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Server } from 'lucide-vue-next'
 import { useDeployStore } from '../../stores/deploy'
+import IconButton from '../common/IconButton.vue'
 import { onMounted } from 'vue'
 const deployStore = useDeployStore()
 onMounted(async () => { await deployStore.loadTargets() })
@@ -12,15 +13,15 @@ function openTargetSettings(): void {
 </script>
 <template>
   <div class="target-selector">
-    <button
+    <IconButton
       class="server-icon-btn"
-      type="button"
-      aria-label="管理上传目标"
+      size="sm"
+      label="管理上传目标"
       title="管理上传目标（打开上传目标管理）"
       @click="openTargetSettings"
     >
       <Server :size="14" />
-    </button>
+    </IconButton>
     <select
       :value="deployStore.currentTargetId"
       class="target-select"
@@ -34,11 +35,6 @@ function openTargetSettings(): void {
 </template>
 <style scoped>
 .target-selector { display: flex; align-items: center; gap: 4px; }
-.server-icon-btn {
-  display: inline-flex; align-items: center; justify-content: center;
-  padding: 4px; background: transparent; color: var(--fg2);
-  border-radius: 4px; cursor: pointer;
-}
-.server-icon-btn:hover { background: var(--bg3); color: var(--fg); }
+/* 视觉由 IconButton 提供；.server-icon-btn 仅作钩子 */
 .target-select { font-size: 12px; min-width: 180px; }
 </style>

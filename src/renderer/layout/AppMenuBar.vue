@@ -8,6 +8,7 @@ import {
 import ContextMenu from '../components/common/ContextMenu.vue'
 import type { ContextMenuItem } from '../types/context-menu'
 import { shortenPath } from '../utils/path-display'
+import { shortcutLabel } from '../utils/shortcuts'
 import { useUiStore } from '../stores/ui'
 import { useProjectStore } from '../stores/project'
 
@@ -64,14 +65,14 @@ const menus = computed<Array<{ label: string; items: ContextMenuItem[] }>>(() =>
     {
       label: '文件',
       items: [
-        { label: '打开目录', icon: FolderOpen, shortcut: 'Ctrl+O', action: () => appAction('open-project') },
+        { label: '打开目录', icon: FolderOpen, shortcut: shortcutLabel('openProject'), action: () => appAction('open-project') },
         { label: 'separator' },
         { label: '最近打开的项目', icon: History, children: recentProjectItems() },
         { label: 'separator' },
-        { label: '关闭项目窗口', icon: XCircle, shortcut: 'Ctrl+W', disabled: !hasProject, action: requestCloseProject },
+        { label: '关闭项目窗口', icon: XCircle, shortcut: shortcutLabel('closeProject'), disabled: !hasProject, action: requestCloseProject },
         { label: 'separator' },
         // 全局配置（上传目标 + 本地服务）统一入口：设置窗口（单实例）
-        { label: '设置', icon: SettingsIcon, shortcut: 'Ctrl+,', action: () => void window.deployApi.openSettings('targets') },
+        { label: '设置', icon: SettingsIcon, shortcut: shortcutLabel('settings'), action: () => void window.deployApi.openSettings('targets') },
         { label: 'separator' },
         { label: '退出', icon: LogOut, shortcut: 'Alt+F4', action: () => appAction('quit') }
       ]
@@ -79,9 +80,9 @@ const menus = computed<Array<{ label: string; items: ContextMenuItem[] }>>(() =>
     {
       label: '视图',
       items: [
-        { label: '文件树', icon: FolderTree, shortcut: 'Ctrl+1', checked: uiStore.activeView === 'filetree', disabled: !hasProject, action: () => uiStore.switchView('filetree') },
-        { label: 'Git 变更', icon: GitCommit, shortcut: 'Ctrl+2', checked: uiStore.activeView === 'gitchanges', disabled: !hasProject || !uiStore.gitAvailable, action: () => uiStore.switchView('gitchanges') },
-        { label: 'Git 日志', icon: GitBranch, shortcut: 'Ctrl+3', checked: uiStore.activeView === 'gitlog', disabled: !hasProject || !uiStore.gitAvailable, action: () => uiStore.switchView('gitlog') },
+        { label: '文件树', icon: FolderTree, shortcut: shortcutLabel('viewFiletree'), checked: uiStore.activeView === 'filetree', disabled: !hasProject, action: () => uiStore.switchView('filetree') },
+        { label: 'Git 变更', icon: GitCommit, shortcut: shortcutLabel('viewChanges'), checked: uiStore.activeView === 'gitchanges', disabled: !hasProject || !uiStore.gitAvailable, action: () => uiStore.switchView('gitchanges') },
+        { label: 'Git 日志', icon: GitBranch, shortcut: shortcutLabel('viewLog'), checked: uiStore.activeView === 'gitlog', disabled: !hasProject || !uiStore.gitAvailable, action: () => uiStore.switchView('gitlog') },
         { label: 'separator' },
         { label: '主题', icon: Monitor, children: [
           { label: '自动', icon: Monitor, checked: uiStore.theme === 'auto', action: () => uiStore.setTheme('auto') },
@@ -97,7 +98,7 @@ const menus = computed<Array<{ label: string; items: ContextMenuItem[] }>>(() =>
     {
       label: '帮助',
       items: [
-        { label: '快捷键', icon: Keyboard, shortcut: 'F1', action: () => window.dispatchEvent(new CustomEvent('show-shortcuts')) },
+        { label: '快捷键', icon: Keyboard, shortcut: shortcutLabel('shortcutsHelp'), action: () => window.dispatchEvent(new CustomEvent('show-shortcuts')) },
         { label: 'separator' },
         { label: '关于 ShipIt', icon: Info, action: () => window.dispatchEvent(new CustomEvent('show-about')) }
       ]

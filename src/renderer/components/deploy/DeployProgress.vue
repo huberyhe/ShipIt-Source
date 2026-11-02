@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Kbd from '../../components/common/Kbd.vue'
 import { computed, onMounted, onUnmounted } from 'vue'
 import { Upload, X } from 'lucide-vue-next'
 import { useDeployStore } from '../../stores/deploy'
@@ -42,7 +43,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     <div class="progress-card">
       <!-- 与其他弹窗一致的右上角关闭样式：Esc 提示 + ✕（不做成常规按钮） -->
       <button class="cancel-btn" type="button" aria-label="取消上传" title="取消上传（Esc）" @click="deployStore.cancelUpload()">
-        <span class="close-hint">Esc</span><X :size="14" />
+        <Kbd keys="Esc" variant="hint" /><X :size="14" />
       </button>
       <div class="progress-header">
         <Upload :size="16" class="head-icon" />
@@ -81,7 +82,6 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 }
 .cancel-btn svg { display: block; }
 .cancel-btn:hover { background: var(--bg3); color: var(--fg); }
-.close-hint { font-size: 11px; line-height: 14px; }
 
 .progress-card {
   position: relative;

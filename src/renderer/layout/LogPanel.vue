@@ -27,6 +27,7 @@ import { ChevronDown, ChevronRight, Check, X, Trash } from 'lucide-vue-next'
 import { useUiStore } from '../stores/ui'
 import { useDeployStore } from '../stores/deploy'
 import EmptyState from '../components/common/EmptyState.vue'
+import IconButton from '../components/common/IconButton.vue'
 import { shortenPath } from '../utils/path-display'
 
 const uiStore = useUiStore()
@@ -143,14 +144,16 @@ function onLogListKeydown(event: KeyboardEvent): void {
       <component :is="uiStore.logPanelExpanded ? ChevronDown : ChevronRight" :size="14" />
       <span>上传日志</span>
       <span v-if="hasLogs" class="log-count">({{ deployStore.deployLogs.length }})</span>
-      <button
+      <IconButton
         v-if="hasLogs && uiStore.logPanelExpanded"
         class="clear-btn"
+        size="sm"
         tabindex="-1"
-        title="清空日志"
-        aria-label="清空日志"
+        label="清空日志"
         @click.stop="deployStore.clearLogs()"
-      ><Trash :size="14" /></button>
+      >
+        <Trash :size="14" />
+      </IconButton>
     </div>
     <div v-if="uiStore.logPanelExpanded" class="log-content" @keydown="onLogListKeydown">
       <EmptyState v-if="!hasLogs" text="暂无上传记录" size="inline" />
@@ -219,8 +222,8 @@ function onLogListKeydown(event: KeyboardEvent): void {
 .log-project { font-size: 11px; padding: 0 4px; border: 1px solid var(--bg4); border-radius: 4px; color: var(--fg2); }
 .log-origin.cli { color: var(--blue); border-color: var(--blue-bg); }
 .log-origin.mcp { color: var(--yellow); border-color: var(--yellow-bg); }
-.clear-btn { margin: 0 0 0 auto; padding: 4px; background: transparent; color: var(--fg2); border-radius: 4px; }
-.clear-btn:hover { background: var(--bg3); color: var(--fg); }
+/* 视觉由 IconButton 提供；.clear-btn 只负责贴右 */
+.clear-btn { margin-left: auto; }
 .log-content { max-height: 200px; overflow-y: auto; background: var(--bg); padding: 4px 12px; user-select: text; }
 .log-entry { display: flex; align-items: center; gap: 4px; padding: 4px 0; font-size: 12px; color: var(--fg); border-bottom: 1px solid var(--bg3); cursor: pointer; }
 .log-entry:active { background: var(--bg3); }

@@ -1,5 +1,8 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { Keyboard } from 'lucide-vue-next'
+import Kbd from './Kbd.vue'
+import { SHORTCUTS, shortcutKeys, type ShortcutId } from '../../utils/shortcuts'
 import BaseDialog from './BaseDialog.vue'
 
 defineEmits<{ close: [] }>()
@@ -9,35 +12,17 @@ defineEmits<{ close: [] }>()
  *
  * 列表内的空格/方向键属于常规键盘习惯，不在这里重复说明。
  */
-const groups: Array<{ title: string; items: Array<{ keys: string[]; desc: string }> }> = [
-  {
-    title: '定位',
-    items: [
-      { keys: ['Ctrl', 'O'], desc: '打开目录' },
-      { keys: ['Ctrl', '1'], desc: '文件树' },
-      { keys: ['Ctrl', '2'], desc: 'Git 变更' },
-      { keys: ['Ctrl', '3'], desc: 'Git 日志' },
-      { keys: ['Ctrl', ','], desc: '设置' },
-      { keys: ['Ctrl', 'W'], desc: '关闭项目窗口' },
-      { keys: ['F1'], desc: '打开本页（快捷键说明）' }
-    ]
-  },
-  {
-    title: '上传',
-    items: [
-      { keys: ['Ctrl', 'X'], desc: '上传选中的全部文件' },
-      { keys: ['Ctrl', 'Shift', 'X'], desc: '选择服务器后再上传' }
-    ]
-  },
-  {
-    title: '视图',
-    items: [
-      { keys: ['Ctrl', 'Shift', '='], desc: '全部展开（= 键；小键盘 + 同效）' },
-      { keys: ['Ctrl', 'Shift', '-'], desc: '全部收起（小键盘 - 同效）' },
-      { keys: ['F5'], desc: '刷新当前视图' }
-    ]
-  }
-]
+const GROUPS = ['定位', '上传', '视图'] as const
+
+/** 分组展示：数据只有一份（utils/shortcuts.ts），这里只负责按组聚合 */
+const groups = computed(() =>
+  GROUPS.map((title) => ({
+    title,
+    items: (Object.keys(SHORTCUTS) as ShortcutId[])
+      .filter((id) => SHORTCUTS[id].group === title)
+      .map((id) => ({ keys: shortcutKeys(id), desc: SHORTCUTS[id].label }))
+  }))
+)
 </script>
 
 <template>
@@ -47,7 +32,7 @@ const groups: Array<{ title: string; items: Array<{ keys: string[]; desc: string
         <div class="group-title">{{ group.title }}</div>
         <div v-for="s in group.items" :key="group.title + s.keys.join('+')" class="shortcut-row">
           <div class="keys">
-            <kbd v-for="k in s.keys" :key="k">{{ k }}</kbd>
+            <Kbd :keys="s.keys" />
           </div>
           <span class="desc">{{ s.desc }}</span>
         </div>
@@ -74,12 +59,5 @@ const groups: Array<{ title: string; items: Array<{ keys: string[]; desc: string
 }
 .shortcut-row:last-child { border-bottom: none; }
 .keys { display: flex; gap: 4px; flex-wrap: wrap; }
-kbd {
-  padding: 4px 8px;
-  background: var(--bg5); color: var(--fg);
-  border: 1px solid var(--border2); border-bottom-width: 2px;
-  border-radius: 4px;
-  font-family: inherit; font-size: 11px; line-height: 1.4;
-}
 .desc { color: var(--fg); font-size: 12px; }
 </style>

@@ -9,6 +9,7 @@ import ContextMenu from '../common/ContextMenu.vue'
 import ServerTargetMenu from '../common/ServerTargetMenu.vue'
 import EmptyState from '../common/EmptyState.vue'
 import ViewHeader from '../common/ViewHeader.vue'
+import IconButton from '../common/IconButton.vue'
 import StatusBadge from '../common/StatusBadge.vue'
 import { useDeployHotkeys } from '../../composables/useDeployHotkeys'
 import { useServerMenu } from '../../composables/useServerMenu'
@@ -408,9 +409,9 @@ async function deployCommitFiles(targetId?: string) {
         <span class="result-count" v-if="gitStore.commits.length">已加载 {{ gitStore.commits.length }} 条</span>
       </template>
       <template #actions>
-        <button class="refresh-btn" tabindex="-1" title="刷新" aria-label="刷新提交历史" @click="refresh">
+        <IconButton class="refresh-btn" size="sm" tabindex="-1" label="刷新提交历史" title="刷新" @click="refresh">
           <RefreshCw :size="14" />
-        </button>
+        </IconButton>
       </template>
     </ViewHeader>
     <div class="filter-bar">
@@ -493,14 +494,7 @@ async function deployCommitFiles(targetId?: string) {
 .log-view:focus-visible { outline: none; }
 .log-view { display: flex; flex-direction: column; height: 100%; }
 .result-count { color: var(--fg2); }
-.refresh-btn {
-  display: inline-flex; align-items: center; justify-content: center;
-  margin-left: auto;  /* 贴到行尾（此前是 margin: auto，被居中） */
-  width: 24px; height: 24px; padding: 0;
-  background: transparent; color: var(--fg2);
-  border: 1px solid transparent; border-radius: 4px;
-}
-.refresh-btn:hover { background: var(--bg3); color: var(--fg); }
+/* 视觉由 IconButton 提供；.refresh-btn 仅作钩子 */
 .filter-bar { display: flex; gap: 16px; padding: 8px 12px; background: var(--bg3); border-bottom: 1px solid var(--border); }
 .filter-item { display: flex; align-items: center; gap: 4px; }
 .filter-item:hover { background: var(--bg3); color: var(--fg); }

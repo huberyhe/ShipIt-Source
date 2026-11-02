@@ -8,6 +8,7 @@ import StatusBadge from '../common/StatusBadge.vue'
 import type { ContextMenuItem } from '../../types/context-menu'
 import type { ChangeTreeNode } from '../../types/git'
 import { useServerMenu } from '../../composables/useServerMenu'
+import { shortcutLabel } from '../../utils/shortcuts'
 import { resolveSelectionMode } from '../../utils/selection'
 
 export type { ChangeTreeNode }
@@ -73,26 +74,26 @@ function onContextMenu(e: MouseEvent) {
     items.push({
       label: '快速上传',
       icon: Wrench,
-      shortcut: 'Ctrl+X',
+      shortcut: shortcutLabel('uploadSelection'),
       action: () => emit('quickDeploy', props.node)
     })
     items.push({
       label: '上传到',
       icon: Server,
-      shortcut: 'Ctrl+Shift+X',
+      shortcut: shortcutLabel('uploadTo'),
       action: () => openServerMenu(x, y)
     })
   } else if (props.node.change) {
     items.push({
       label: '快速上传',
       icon: Wrench,
-      shortcut: 'Ctrl+X',
+      shortcut: shortcutLabel('uploadSelection'),
       action: () => emit('quickDeploy', props.node)
     })
     items.push({
       label: '上传到',
       icon: Server,
-      shortcut: 'Ctrl+Shift+X',
+      shortcut: shortcutLabel('uploadTo'),
       action: () => openServerMenu(x, y)
     })
     if (props.node.change.status !== 'deleted') {

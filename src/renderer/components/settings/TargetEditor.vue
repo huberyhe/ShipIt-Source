@@ -8,6 +8,7 @@ import { useDeployStore } from '../../stores/deploy'
 import MappingEditor from './MappingEditor.vue'
 import BaseDialog from '../common/BaseDialog.vue'
 import BaseButton from '../common/BaseButton.vue'
+import SectionHeader from '../common/SectionHeader.vue'
 import ConfirmDialog from '../common/ConfirmDialog.vue'
 import FormField from '../common/FormField.vue'
 import EmptyState from '../common/EmptyState.vue'
@@ -378,10 +379,11 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
          注意：包裹用的 template **必须带指令**（v-if）：Vue 只在带 v-if/v-for/v-slot 时才展开它，
          否则会作为真实 HTML 元素渲染，内部内容进入 content 片段而不显示（曾导致列表整块消失）。 -->
     <template v-if="editingId === undefined">
-    <div class="section-header">
-        <h3>上传目标</h3>
+    <SectionHeader title="上传目标">
+      <template #actions>
         <BaseButton variant="primary" size="sm" class="add-btn" @click="startAdd"><Plus :size="14" /> 添加目标</BaseButton>
-      </div>
+      </template>
+    </SectionHeader>
 
       <EmptyState v-if="draftTargets.length === 0" text="暂无上传目标，请添加一个" size="page" bordered />
 
@@ -605,8 +607,6 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
 :deep(.base-dialog) { max-height: 94vh; }
 
 .target-editor { color: var(--fg); }
-.section-header { display: flex; align-items: center; justify-content: space-between; margin: 12px; }
-.section-header h3 { font-size: 13px; font-weight: normal; }
 .target-card { background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin: 12px; }
 .target-info { display: flex; align-items: center; justify-content: space-between; }
 .target-primary { display: flex; align-items: center; gap: 8px; min-width: 0; }

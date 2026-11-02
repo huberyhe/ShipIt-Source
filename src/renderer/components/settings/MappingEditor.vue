@@ -5,6 +5,7 @@ import { ref } from 'vue'
 import { Plus, Trash2, ArrowRight } from 'lucide-vue-next'
 import { useDeployStore } from '../../stores/deploy'
 import BaseButton from '../common/BaseButton.vue'
+import SectionHeader from '../common/SectionHeader.vue'
 import ConfirmDialog from '../common/ConfirmDialog.vue'
 import FormField from '../common/FormField.vue'
 import EmptyState from '../common/EmptyState.vue'
@@ -80,10 +81,11 @@ async function doRemove() {
 
 <template>
   <div class="mapping-editor">
-    <div class="mapping-header">
-      <h4>目录映射</h4>
-      <BaseButton v-if="!isAdding" variant="outline" size="sm" class="add-btn" @click="startAdd"><Plus :size="12" /> 添加映射</BaseButton>
-    </div>
+    <SectionHeader class="mapping-header" size="sub" tag="h4" title="目录映射">
+      <template #actions>
+        <BaseButton v-if="!isAdding" variant="outline" size="sm" class="add-btn" @click="startAdd"><Plus :size="12" /> 添加映射</BaseButton>
+      </template>
+    </SectionHeader>
 
     <div v-for="mapping in mappings" :key="mapping.id" class="mapping-item has-row-actions">
       <div class="mapping-row">
@@ -142,8 +144,6 @@ async function doRemove() {
 
 <style scoped>
 .mapping-editor { margin: 8px; border-top: 1px solid var(--border); padding: 8px; }
-.mapping-header { display: flex; align-items: center; justify-content: space-between; margin: 4px; }
-.mapping-header h4 { font-size: 12px; color: var(--fg2); font-weight: normal; }
 .mapping-item { padding: 4px 0; }
 .mapping-row { display: flex; align-items: center; gap: 4px; font-size: 12px; }
 code.local-path { padding: 1px 4px; background: var(--green-bg); color: var(--green); border-radius: 4px; font-size: 11px; }

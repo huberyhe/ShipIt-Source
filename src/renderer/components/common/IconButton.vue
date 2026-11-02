@@ -10,13 +10,15 @@
 withDefaults(
   defineProps<{
     label: string
+    /** 鼠标悬浮提示；缺省等于 label（需要“title 短、aria-label 长”时显式传） */
+    title?: string
     size?: 'xs' | 'sm' | 'md'
     tone?: 'default' | 'danger'
     disabled?: boolean
     /** 对应 aria-pressed：用于「展开/收起」这类可切换按钮 */
     active?: boolean
   }>(),
-  { size: 'sm', tone: 'default', disabled: false, active: false }
+  { title: '', size: 'sm', tone: 'default', disabled: false, active: false }
 )
 </script>
 
@@ -26,7 +28,7 @@ withDefaults(
     class="icon-btn-base"
     :class="[`i-${size}`, `t-${tone}`, { active }]"
     :aria-label="label"
-    :title="label"
+    :title="title || label"
     :aria-pressed="active || undefined"
     :disabled="disabled"
   >

@@ -10,6 +10,7 @@ import { useProjectStore } from '../../stores/project'
 import FileTreeNode from '../filetree/FileTreeNode.vue'
 import EmptyState from '../common/EmptyState.vue'
 import ViewHeader from '../common/ViewHeader.vue'
+import IconButton from '../common/IconButton.vue'
 import ContextMenu from '../common/ContextMenu.vue'
 import ServerTargetMenu from '../common/ServerTargetMenu.vue'
 import { useDeployHotkeys } from '../../composables/useDeployHotkeys'
@@ -219,12 +220,12 @@ function countFiles(entries: any[]): number {
         <span class="file-count" v-if="filesStore.fileTree" :title="`已加载 ${loadedFiles} 个文件、${loadedDirs} 个目录`">{{ loadedFiles }} 文件 · {{ loadedDirs }} 目录</span>
       </template>
       <template #actions>
-        <button class="icon-btn" tabindex="-1" title="全部展开" aria-label="全部展开" @click="handleExpandAll">
+        <IconButton class="icon-btn" size="sm" tabindex="-1" label="全部展开" @click="handleExpandAll">
           <ChevronsUpDown :size="14" />
-        </button>
-        <button class="icon-btn" tabindex="-1" title="全部收起" aria-label="全部收起" @click="handleCollapseAll">
+        </IconButton>
+        <IconButton class="icon-btn" size="sm" tabindex="-1" label="全部收起" @click="handleCollapseAll">
           <ChevronsDownUp :size="14" />
-        </button>
+        </IconButton>
       </template>
     </ViewHeader>
     <div class="file-list">
@@ -241,7 +242,6 @@ function countFiles(entries: any[]): number {
 .filetree-view:focus-visible { outline: none; }
 .filetree-view { display: flex; flex-direction: column; height: 100%; }
 .file-count { color: var(--fg2); font-size: 11px; }
-.icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; background: transparent; border: 1px solid transparent; border-radius: 4px; color: var(--fg2); }
-.icon-btn:hover { background: var(--bg3); color: var(--fg); }
+/* 尺寸/悬浮/禁用由 IconButton 提供；.icon-btn 仅保留为定位/测试钩子 */
 .file-list { flex: 1; overflow-y: auto; padding: 4px 0; }
 </style>

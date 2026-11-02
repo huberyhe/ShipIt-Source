@@ -14,6 +14,7 @@ import type { ContextMenuItem } from '../../types/context-menu'
 import { useServerMenu } from '../../composables/useServerMenu'
 import { useSelectionDeploy } from '../../composables/useSelectionDeploy'
 import { resolveSelectionMode } from '../../utils/selection'
+import { shortcutLabel } from '../../utils/shortcuts'
 
 const props = defineProps<{
   entry: FileEntry; depth: number
@@ -79,10 +80,10 @@ function onContextMenu(e: MouseEvent) {
     filesStore.selectDeployEntry(props.entry)
   }
   const items: ContextMenuItem[] = [{
-    label: '快速上传', icon: Wrench, shortcut: 'Ctrl+X',
+    label: '快速上传', icon: Wrench, shortcut: shortcutLabel('uploadSelection'),
     action: () => doDeploy()
   }, {
-    label: '上传到', icon: Server, shortcut: 'Ctrl+Shift+X',
+    label: '上传到', icon: Server, shortcut: shortcutLabel('uploadTo'),
     action: () => openServerMenu(x, y)
   }]
   ctxMenu.value = { x, y, items }

@@ -13,6 +13,7 @@ import DiffPreview from '../git/DiffPreview.vue'
 import GitChangeTreeNode from '../git/GitChangeTreeNode.vue'
 import EmptyState from '../common/EmptyState.vue'
 import ViewHeader from '../common/ViewHeader.vue'
+import IconButton from '../common/IconButton.vue'
 import type { ChangeTreeNode } from '../../types/git'
 import ContextMenu from '../common/ContextMenu.vue'
 import ServerTargetMenu from '../common/ServerTargetMenu.vue'
@@ -471,15 +472,15 @@ async function handleDeployDir(node: ChangeTreeNode, targetId?: string) {
   <div ref="zoneEl" class="changes-view" data-focus-zone tabindex="0" @keydown="onContentKeydown" @focusin="onContentFocus">
     <ViewHeader :title="`Git 未提交的变更 (${gitStore.changes.length})`">
       <template #actions>
-        <button class="icon-btn" tabindex="-1" title="刷新" aria-label="刷新 Git 变更" @click="refresh">
+        <IconButton class="icon-btn" size="sm" tabindex="-1" label="刷新 Git 变更" title="刷新" @click="refresh">
           <RefreshCw :size="14" />
-        </button>
-        <button class="icon-btn" tabindex="-1" title="全部展开" aria-label="全部展开" @click="expandAll">
+        </IconButton>
+        <IconButton class="icon-btn" size="sm" tabindex="-1" label="全部展开" @click="expandAll">
           <ChevronsUpDown :size="14" />
-        </button>
-        <button class="icon-btn" tabindex="-1" title="全部收起" aria-label="全部收起" @click="expandedDirs.clear()">
+        </IconButton>
+        <IconButton class="icon-btn" size="sm" tabindex="-1" label="全部收起" @click="expandedDirs.clear()">
           <ChevronsDownUp :size="14" />
-        </button>
+        </IconButton>
       </template>
     </ViewHeader>
 
@@ -538,8 +539,7 @@ async function handleDeployDir(node: ChangeTreeNode, targetId?: string) {
 }
 
 .header-actions { display: flex; align-items: center; gap: 4px; margin-left: auto; }
-.icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; background: transparent; border: 1px solid transparent; border-radius: 4px; color: var(--fg2); }
-.icon-btn:hover { background: var(--bg3); color: var(--fg); }
+/* 尺寸/悬浮由 IconButton 提供；.icon-btn 仅作钩子 */
 .refresh-btn { display: flex; align-items: center; gap: 4px; }
 
 .changes-list {

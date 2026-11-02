@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Kbd from './Kbd.vue'
 import { X } from 'lucide-vue-next'
 import { getCurrentInstance, onMounted, onUnmounted, ref } from 'vue'
 import type { Component } from 'vue'
@@ -107,7 +108,7 @@ onUnmounted(() => {
         <span v-if="badge" class="base-dialog-badge">{{ badge }}</span>
         <slot name="header-extras" />
         <button class="base-dialog-close" aria-label="关闭" @click="emit('close')">
-          <span class="close-hint">Esc</span><X :size="14" />
+          <Kbd keys="Esc" variant="hint" /><X :size="14" />
         </button>
       </div>
       <div class="base-dialog-body">
@@ -158,7 +159,6 @@ onUnmounted(() => {
   background: transparent; color: var(--fg2);
   border-radius: 4px;
 }
-.close-hint { font-size: 11px; line-height: 14px; }
 .base-dialog-close svg { display: block; }
 .base-dialog-close:hover { background: var(--bg3); color: var(--fg); }
 .base-dialog-body { flex: 1; overflow-y: auto; }
