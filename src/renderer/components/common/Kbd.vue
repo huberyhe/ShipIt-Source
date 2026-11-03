@@ -9,24 +9,14 @@ withDefaults(
   defineProps<{
     keys: string | string[]
     variant?: 'chip' | 'hint'
-    /**
-     * `muted`（默认）：用 `--fg2`，坐在普通底色上。
-     * `inherit`：跟随所在按钮/容器自己的前景色 —— 放在**实色主按钮**里时用它，
-     * 否则 `--fg2` 压在 accent 底上过不了 AA（审计 contrast/aa 会报）。
-     */
-    tone?: 'muted' | 'inherit'
   }>(),
-  { variant: 'chip', tone: 'muted' }
+  { variant: 'chip' }
 )
 </script>
 
 <template>
   <span class="kbd-group" :class="variant">
-    <kbd
-      v-for="k in (Array.isArray(keys) ? keys : [keys])"
-      :key="k"
-      :class="[variant, tone === 'inherit' ? 'tone-inherit' : '']"
-    >{{ k }}</kbd>
+    <kbd v-for="k in (Array.isArray(keys) ? keys : [keys])" :key="k" :class="variant">{{ k }}</kbd>
   </span>
 </template>
 
@@ -59,10 +49,5 @@ kbd.hint {
   border: 0;
   background: transparent;
 }
-/* 放在按钮里：颜色跟按钮走（主按钮白字、次按钮正文色），既贴住控件又保住对比度 */
-kbd.tone-inherit { color: inherit; }
-kbd.chip.tone-inherit {
-  background: transparent;
-  border-color: color-mix(in srgb, currentColor 45%, transparent);
-}
+
 </style>
