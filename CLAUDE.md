@@ -24,7 +24,7 @@ npm run gen:icon       # 换图标后重新生成 build/icon.ico
 1. **类型**：领域类型（DeployTarget/DeployResult/GitCommitInfo 等）只改 `src/shared/types.ts`，主进程服务和渲染进程 store 都从那里导入，禁止在别处重复定义。
 2. **IPC**：新增/改动通道必须先在 `src/shared/ipc-channels.ts` 声明常量，主进程 `index.ts` 注册 handler、`preload.ts` 暴露 API，三处用同一个常量。
 3. **主题**：颜色一律用 `var(--*)`（定义在 `App.vue`），禁止硬编码 hex；涉及状态色用 `--green/--yellow/--red/--blue`。
-4. **无障碍**：可点击元素用 `<button>` 且带 `aria-label`/`aria-expanded`；弹窗复用 `BaseDialog`（自带 role/aria-modal/Esc 关闭）；表单 `label for` 关联。
+4. **无障碍**：可点击元素优先 `<button>` 且带 `aria-label`（目录展开按钮带 `aria-expanded`）；**例外**：树/列表行是 `div[role="treeitem"]` + 容器 `tabindex=0` 单停靠点（`TreeRow.vue`），行本身不进 Tab 序列。已补齐树语义：容器 `role="tree"`（文件树带 `aria-multiselectable`）+ 子层 `role="group"` + 行 `aria-selected`；行获得焦点时显示行内操作区（`opacity` 切换，不占布局）；「上传本行」的键盘路径是 `Alt+Enter`（与 `Ctrl+X` 的“整个选区”区分）。弹窗复用 `BaseDialog`（自带 role/aria-modal/Esc 关闭）；表单 `label for` 关联。
 5. **菜单与快捷键**：Electron 原生菜单已移除，菜单栏为渲染进程自绘（`layout/AppMenuBar.vue`）；新增主进程动作走 `app:action` IPC 分发；全局快捷键统一在 `App.vue` 处理（输入控件聚焦时不拦截）。F5 = 刷新当前视图（键盘专用，不在按钮/快捷键弹窗展示）：`App.vue` 统一监听后派发 `refresh-view` 事件，各视图只在自己挂载期间响应；弹窗打开时不分发。
 6. **版本号**：唯一来源是 `package.json.version`；界面展示经主进程 `app.getVersion()` 读取（见 `AboutDialog.vue`），禁止在组件里硬编码版本号。
 7. **行尾**：文本文件统一 LF（`.gitattributes` 已声明 `* text=auto eol=lf`），二进制文件已声明 `binary` 不转换；工具/编辑器写入 CRLF 时 git 会自动归一，无需手工转换。
@@ -33,7 +33,7 @@ npm run gen:icon       # 换图标后重新生成 build/icon.ico
    - 状态条/提示条 → 内联到已有行（参考 `TargetEditor` 的 `.test-result` 内联徐标：不占额外行高、天然无抖动）；确实需要独立行时用固定高度占位槽
    - 徐标/临时标记 → 绝对定位或 `opacity` 切换（参考 `ViewSwitcher` 的 badge、行内“快速上传”按钮）
    - 整块状态切换（空状态 ↔ 列表）可接受；按钮文案变化（“测试” ↔ “测试中”）注意宽度抖动
-9. **部署流程**：预览与上传共用同一批任务列表 —— `deploy:preview`（主进程 `buildUploadTasks` 计算）→ 确认 → `deploy:upload` 原样上传 `confirmFiles`，弹窗展示数量必须等于实际上传数量。
+9. **部署流程**：预览与上传共用同一批任务列表 —— `deploy:preview`（主进程 `buildUploadPlan` 一趟遍历同时算出 `tasks` 与 `skipped`）→ 确认 → `deploy:upload` 原样上传 `confirmFiles`，弹窗展示数量必须等于实际上传数量。`skipped` 必须过 IPC 并在弹窗里逐条显示**真实原因**（`missing` / `no-mapping`），不要用差集猜、也不要给兜底文案；`buildUploadTasks` 仅为薄封装（返回 `tasks`），CLI `plan` 依赖它，别删。
 
 ## 常见改法
 
@@ -74,14 +74,15 @@ npm run gen:icon       # 换图标后重新生成 build/icon.ico
 - **弹窗 footer 的"就近反馈"**：状态类文案（如测试连接结果）要**紧贴它所解释的那个按钮**左侧，不要用 `margin-right: auto` 推到容器最左端（视线要横跨整个 footer）；文案可能很长时用 `max-width` + 省略号 + `title` 保证按钮不被挤走
 - **跨进程共享模块（`shared/`）绝不能用 Node 全局**：渲染层没有 `process`（contextIsolation）。曾因 `platform = process.platform` 默认参数导致设置页「点确定毫无反应、未保存提示不消失」——报错被 `confirm()` 的 finally 吞掉，只表现为"没反应"。必须用 `typeof process` 守卫（`shared/allowed-roots.ts` 是范本），并有 `shared/cross-process.guard.spec.ts` 静态守卫
 - **提示不要用"插入式"元素**：`<p>`/确认条插入会顶下内容造成抖动；表头用**固定高度**（`height: 44px`），状态提示用 **toast** 或表头内的 chip（右上方）
-- **设置页保存语义**：`确定` = 保存并**关闭页面**（保存未成功/服务起不来则保持打开并 toast 说明）；`取消` = **两段式**（有未保存改动时第一次只提示，第二次才丢弃并关闭）；目标编辑弹窗的 `取消` 同样两段式，`Esc/✕` 保持一步关闭
+- **「不执行」不是忘掉配置**：目标上 `postUpload: null` 表示本次不执行，但已填的脚本/命令必须存进 `postUploadStash`（永不执行，仅供下次编辑回填）；纯逻辑在 `utils/target-form.ts` 的 `postUploadFields()`，不要把它搬回组件里重写一遍
+- **设置页保存语义**：页脚 `保存` = 落盘并**关闭页面**（保存未成功/服务起不来则保持打开并 toast 说明）；`取消` = **两段式**（有未保存改动时按钮先变成「确认放弃」，再点一次才丢弃并关闭）；目标编辑弹窗的 `取消` 同样两段式，`Esc/✕` 保持一步关闭。**两个分区用 `v-show` 常驻**（不卸载）：切分区不得丢失草稿或脏标；关窗时按分区逐个提交所有脏分区，任一失败就保持打开
 - **`keep_stdin_open` 与本项目无关**
 - **TLS 客户端必须关掉会话复用**（`maxCachedSessions: 0`）：服务端关掉空闲连接后，新连接会走 session resumption → **不再下发证书** → `getPeerCertificate()` 为空 → 指纹算成 `''`。修复前这被误判成 `TLS_MISMATCH`，表现为"空闲后第一次调用必失败、紧接着重试成功"（实测在真机上约一半调用失败）。同时**空证书 ≠ 指纹不一致**：前者换新 socket 重试一次，仍取不到才报 `BACKEND_UNAVAILABLE`；`TLS_MISMATCH` 只用于"确实看到了另一张证书"。回归用例 `src/cli/client.resume.spec.ts`（含反向验证：改回会话缓存即失败）
 - **连接信息文件必须与"是否真的在监听"一致**：桌面版监听失败（`PORT_IN_USE`）时会清理**残留**文件（文件里的 `pid` 已不存在 = 被强杀留下的），但**不删存活实例的**；否则客户端会 pin 一个永不被服务的指纹，报出误导性的 `TLS_MISMATCH`（真实原因是"服务没开/端口被别人占"）。`TLS_MISMATCH` 的提示必须给出**指纹来源**（连接串 / 已保存配置 / 连接信息文件路径）+ 端口 + 两侧指纹前 8 位 + 分来源的下一步 —— 用户不看到来源就不知道该改哪里
 - **「加载更多」类按钮要与"是否还有更多"绑定**：Git 日志以「返回条数 < 请求上限」判定取完（`gitStore.logExhausted`），取完后隐藏按钮并显示「（已全部加载）」——按钮留着点了也不变，会让人以为还有更多。审计 `git-log` 步骤有对应断言
 - **自动化界面检查（`npm run audit:ui`）**：30 步 × 浅/深双主题；**采样前必须等动画结束**（`waitForAnimations`：忽略无限动画、要求有限动画连续两次归零）——曾在淡入过渡中途采样，把视图切换标签记成对比度 2.08（稳定态 4.55），造成间歇性假问题；步骤 teardown **不得关闭窗口**（页面销毁后页面内 await 永不返回 → 30s "Runtime.evaluate 超时"），确需关闭时用 `closesWindow: true`（不等应答 + Node 侧确认窗口消失）
 - **CLI 帮助分两级**：顶层 `--help` 只列**命令名 + 常用参数**（按用途分类：上传流程/查询/集成）；**完整参数在各命令自己的帮助里** —— `shipit help <命令>` 与 `shipit <命令> --help` 等价，内容来自 `args.ts` 的 `COMMAND_HELP`（新增命令/参数时同一处维护，`helpText(cmd)` 是渲染入口）
-- **设置页保存语义（最终）**：目标编辑=**虚拟弹窗**，弹窗内「确定」只把改动**暂存**到草稿并关弹窗（**不写配置**）；设置窗口底部统一「取消 / 保存」——`保存` 按当前分区落盘（目标=差异写回：新增/修改/删除）成功后关闭页面，`取消` 两段式（有未保存改动时第一次只把按钮变成红的「确认放弃」）。**未保存提示只在设置窗口右上角**（弹窗内不重复提示），且表头固定 44px、提示用"黄点+可读文字"（不用边框/底色，避免像按钮）
+- **设置页保存语义（最终）**：目标编辑=**虚拟弹窗**，弹窗内「加入待保存」只把改动**暂存**到草稿并关弹窗（**不写配置**）——**不要再叫「确定」**，否则用户会以为已落盘；设置窗口底部统一「取消 / 保存」——`保存` 按当前分区落盘（目标=差异写回：新增/修改/删除）成功后关闭页面，`取消` 两段式（有未保存改动时第一次只把按钮变成红的「确认放弃」）。**未保存提示只在设置窗口右上角**（弹窗内不重复提示），且表头固定 44px、提示用"黄点+可读文字"（不用边框/底色，避免像按钮）
 - **类型不要从 `.vue` 导出**：`vue-tsc` 能解析 `.vue` 的导出，但**纯 `npx tsc --noEmit` 不能**（未声明 `*.vue` 模块 → TS2614）。共享类型放 `src/renderer/types/*.ts`（如 `ContextMenuItem`），组件与 composable 都从那里导入；CI 同时跑 `vue-tsc` 与 `tsc --noEmit` 两套口径
 - **`type-check` 通过 ≠ 能构建**：SFC 级错误（如 `duplicate defineExpose()`、模板语法）只会在 `vite build` 暴露；
   改完 .vue 必须跑 `npm run build` 并检查退出码（本仓库曾因此让 ui-audit 长期审计**旧构建**，得出"0 findings"的假结论）
