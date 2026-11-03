@@ -137,7 +137,7 @@ async function doRemove() {
       @cancel="confirmRemove = null"
     >
       确定删除映射 <code>{{ confirmRemove.localPrefix }}</code> → <code>{{ confirmRemove.remotePath }}</code>？<br />
-      此操作不可撤销。
+      它尚未写入配置：页面底部还有「保存」之前，点「取消」可以整体回滚。
     </ConfirmDialog>
   </div>
 </template>

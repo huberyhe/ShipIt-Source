@@ -635,10 +635,11 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
       confirm-text="删除"
       danger
       width="400px"
+      confirm-on-enter
       @confirm="doDelete"
       @cancel="confirmDelete = null"
     >
-      确定删除上传目标 <strong>{{ confirmDelete.name }}</strong>？<br />此操作不可撤销。
+      确定从待保存列表移除 <strong>{{ confirmDelete.name }}</strong>？<br />它尚未写入配置：页面底部还有「保存」之前，点「取消」可以整体回滚。
     </ConfirmDialog>
   </div>
 </template>

@@ -363,7 +363,7 @@ defineExpose({ save, discard, isDirty })
   <ConfirmDialog
     v-if="confirmingRegenerate"
     title="重新生成令牌？"
-    message="已连接的 CLI / MCP 客户端和脚本会立即失效，需更新令牌后才能继续上传。"
+    message="点「重新生成」只是把新令牌放进待保存修改；点页面底部「保存」后它才会生效，已连接的 CLI / MCP 与脚本届时会失效，需更新令牌才能继续上传。"
     confirm-text="重新生成"
     danger
     @confirm="doRegenerateToken"
