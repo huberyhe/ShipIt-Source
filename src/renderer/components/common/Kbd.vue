@@ -21,7 +21,7 @@ withDefaults(
 </script>
 
 <template>
-  <span class="kbd-group">
+  <span class="kbd-group" :class="variant">
     <kbd
       v-for="k in (Array.isArray(keys) ? keys : [keys])"
       :key="k"
@@ -32,6 +32,12 @@ withDefaults(
 
 <style scoped>
 .kbd-group { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+/*
+ * hint 形态跟正文并排（按钮里、对话框角）：必须按**基线**对齐。
+ * 默认的 center 会让 inline-flex 盒子按自身底部去对齐行内基线，
+ * 11px 的 Esc 就会比 12px 的中文看起来高一截。
+ */
+.kbd-group.hint { align-items: baseline; }
 kbd {
   font-family: inherit;
   line-height: 1.4;
@@ -48,6 +54,8 @@ kbd.hint {
   padding: 0;
   color: var(--fg2);
   font-size: 11px;
+  /* line-height:1 让盒子贴紧文字，基线对齐时不会多出一圈行高 */
+  line-height: 1;
   border: 0;
   background: transparent;
 }
