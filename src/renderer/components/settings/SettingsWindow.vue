@@ -54,6 +54,15 @@ const hintOf = (id: Section): string => sections.value.find((s) => s.id === id)?
  * 顶部的未保存提示和关窗守门会一起失效）。
  */
 const serverDirty = computed(() => serverRef.value?.isDirty === true)
+
+/**
+ * 切回「本地服务」时刷新一次只读的运行状态（端口/指纹/队列）。
+ * v-show 保活后组件不再重新挂载，不刷新就会一直停在打开设置窗口那一刻的状态；
+ * 刷新只换 status，不碰草稿，所以不会把未保存修改冲掉。
+ */
+watch(section, (next, prev) => {
+  if (next === 'server' && prev !== 'server') void serverRef.value?.refreshStatus()
+})
 /**
  * 是否有未保存改动（两个分区统一口径）：顶部右侧提示与关窗守门都用它，
  * 避免"改好了却不知道没保存"或"关窗才发现丢了"。

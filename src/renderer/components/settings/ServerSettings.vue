@@ -6,6 +6,7 @@ import type { ServerConfig } from '../../../shared/types'
 import { normalizeAllowedRoots } from '../../../shared/allowed-roots'
 import type { ServerRuntimeStatus } from '../../types'
 import IconButton from '../common/IconButton.vue'
+import { warnOnly } from '../../utils/report-error'
 
 const MIN_TOKEN_LENGTH = 16
 
@@ -121,6 +122,19 @@ async function load(): Promise<void> {
   status.value = await window.deployApi.getServerStatus()
 }
 
+/**
+ * 切回本分区时的轻量刷新：只拉**只读的运行状态**（端口/指纹/队列）。
+ * 不重拉配置，因此不会覆盖用户尚未保存的草稿。
+ * 分区用 v-show 常驻后不再重新挂载，否则窗口开久了这里会一直显示旧状态。
+ */
+async function refreshStatus(): Promise<void> {
+  try {
+    status.value = await window.deployApi.getServerStatus()
+  } catch (error) {
+    warnOnly('刷新服务状态失败', error)
+  }
+}
+
 onMounted(load)
 
 async function copy(text: string, okMessage: string): Promise<void> {
@@ -231,7 +245,7 @@ async function save(): Promise<boolean> {
  * 本组件不负责关窗：`save()` 只返回结果（是否可关闭由设置页的「保存」决定），
  * 「取消」路径只还原草稿。这里刻意不 emit `close`，避免"代码意图（关闭）与真实行为（不关）"分叉。
  */
-defineExpose({ save, discard, isDirty })
+defineExpose({ save, discard, isDirty, refreshStatus })
 </script>
 
 <template>
