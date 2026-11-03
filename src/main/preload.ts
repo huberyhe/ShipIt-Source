@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IpcChannels } from '../shared/ipc-channels'
+import type { UploadPreview } from '../shared/types'
 import { parseWindowArgs } from './window-manager'
 
 contextBridge.exposeInMainWorld('deployApi', {
@@ -26,7 +27,7 @@ contextBridge.exposeInMainWorld('deployApi', {
 
   // --- 部署 ---
   testConnection: (target: any) => ipcRenderer.invoke(IpcChannels.DEPLOY_TEST_CONN, target),
-  previewDeployFiles: (files: string[], projectRoot: string, target: any) =>
+  previewDeployFiles: (files: string[], projectRoot: string, target: any): Promise<UploadPreview> =>
     ipcRenderer.invoke(IpcChannels.DEPLOY_PREVIEW, files, projectRoot, target),
   deployFiles: (tasks: any[], target: any, projectRoot?: string) =>
     ipcRenderer.invoke(IpcChannels.DEPLOY_UPLOAD, tasks, target, projectRoot),

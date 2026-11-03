@@ -49,6 +49,12 @@ describe('post-upload-script', () => {
       postUploadOf({ postUpload: { kind: 'command', value: 'systemctl restart app' }, postUploadScript: '/tmp/a.sh' } as any)
     ).toEqual({ kind: 'command', value: 'systemctl restart app' })
   })
+
+  it('postUpload 显式为 null（用户选「不执行」）时不得回退到旧字段', () => {
+    // 回归：此前会读成旧脚本 → “改成不执行、保存后仍然执行”
+    expect(postUploadOf({ postUpload: null, postUploadScript: '/tmp/a.sh' } as any)).toBeNull()
+    expect(postUploadOf({ postUpload: null } as any)).toBeNull()
+  })
 })
 
 /**

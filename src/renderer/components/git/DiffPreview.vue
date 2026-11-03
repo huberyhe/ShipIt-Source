@@ -4,6 +4,8 @@ import { FileCode } from 'lucide-vue-next'
 import { useGitStore } from '../../stores/git'
 import { useProjectStore } from '../../stores/project'
 import BaseDialog from '../common/BaseDialog.vue'
+import BaseButton from '../common/BaseButton.vue'
+import EmptyState from '../common/EmptyState.vue'
 
 const props = defineProps<{ filePath: string }>()
 const emit = defineEmits<{ close: [] }>()
@@ -11,13 +13,25 @@ const emit = defineEmits<{ close: [] }>()
 const gitStore = useGitStore()
 const projectStore = useProjectStore()
 const diffContent = ref('')
+const errorMessage = ref('')
 const isLoading = ref(false)
 
+/**
+ * 加载差异：三态（加载中 / 失败 / 成功）。
+ * 失败必须与「无变更」分开——“读取失败却显示文件无变更”是最坏的一种误导。
+ */
 async function loadDiff() {
   if (!projectStore.projectPath) return
   isLoading.value = true
+  errorMessage.value = ''
   try {
-    diffContent.value = await gitStore.getFileDiff(projectStore.projectPath, props.filePath)
+    const result = await gitStore.getFileDiff(projectStore.projectPath, props.filePath)
+    if (result.ok) {
+      diffContent.value = result.diff
+    } else {
+      diffContent.value = ''
+      errorMessage.value = result.message || '未知错误'
+    }
   } finally {
     isLoading.value = false
   }
@@ -42,6 +56,11 @@ function lineClass(line: string): string {
 
     <div class="diff-content">
       <div v-if="isLoading" class="diff-loading">加载中...</div>
+      <!-- 失败态：标题 + 原因 + 重试。原因用正文色（无 opacity）保证两套主题都过 AA -->
+      <EmptyState v-else-if="errorMessage" size="block" text="差异加载失败" role="alert">
+        <div class="diff-error-msg" :title="errorMessage">{{ errorMessage }}</div>
+        <BaseButton variant="secondary" size="xs" class="retry-btn" aria-label="重新加载差异" @click="loadDiff">重试</BaseButton>
+      </EmptyState>
       <div v-else-if="!diffContent.trim()" class="diff-empty">文件无变更</div>
       <div v-else class="diff-body">
         <div
@@ -59,6 +78,10 @@ function lineClass(line: string): string {
 .diff-file { color: var(--blue); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 400px; }
 .diff-content { background: var(--bg); }
 .diff-loading, .diff-empty { padding: 32px; text-align: center; color: var(--fg2); }
+/* 失败原因：与 EmptyState 文案同列居中，长错误可换行 */
+.diff-error-msg { margin-top: 4px; font-size: 12px; color: var(--fg2); word-break: break-word; }
+/* 失败态的“重试”跟随 EmptyState 居中，与上方文案同一列 */
+.retry-btn { margin-top: 8px; }
 .diff-body { padding: 4px 0; }
 .diff-line {
   font-family: 'Cascadia Code','Fira Code',Consolas,monospace;

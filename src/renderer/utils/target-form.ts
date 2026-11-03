@@ -62,6 +62,40 @@ export function validationMessage(missing: MissingField[]): string | null {
   return `请填写必填项：${labels.join('、')}`
 }
 
+export type PostUploadValue = { kind: 'script' | 'command'; value: string }
+
+/**
+ * 表单 → 「上传后执行」三个字段（`postUpload` / `postUploadStash` / 旧字段）。
+ *
+ * 关键约定：选「不执行」时**不能丢掉已经填过的脚本/命令**——
+ * `postUpload: null`（不执行） + `postUploadStash`（保留内容，永不执行）。
+ * 下一个编辑周期把 stash 回填到对应输入框，用户就不用重敲。
+ */
+export function postUploadFields(
+  form: TargetFormInput,
+  lastActive: PostUploadValue | null,
+  originalStash: PostUploadValue | null
+): { postUpload: PostUploadValue | null; postUploadStash: PostUploadValue | null; postUploadScript: string } {
+  const kind = form.postUploadKind
+  if (kind === 'none') {
+    const remembered = lastActive ?? originalStash
+    return {
+      postUpload: null,
+      postUploadStash: remembered && remembered.value.trim() ? { kind: remembered.kind, value: remembered.value.trim() } : null,
+      // 旧字段一并清空：它能活过浅合并，留着会被误当“仍要执行”
+      postUploadScript: ''
+    }
+  }
+  return {
+    postUpload: {
+      kind,
+      value: (kind === 'script' ? form.postUploadScript : form.postUploadCommand).trim()
+    },
+    postUploadStash: null,
+    postUploadScript: ''
+  }
+}
+
 export interface FooterHint {
   tone: 'success' | 'error'
   text: string

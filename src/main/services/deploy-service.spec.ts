@@ -175,6 +175,77 @@ describe('上传串行化（INV-6 / AC-019）', () => {
   })
 })
 
+/**
+ * 预览跳过项：`deploy:preview` 必须回传每个被跳过文件的 relativePath 与**真实原因**。
+ *
+ * 背景：渲染层此前用「所选 − 可上传」求差集猜原因，永远只能是兜底文案
+ * → 已删除的 Git 变更文件被说成「未匹配目录映射」，排障方向被带偏（PRODUCT 原则 4）。
+ */
+describe('预览计划：跳过项带真实原因', () => {
+  const planTarget = (): DeployTarget => ({
+    id: 't1',
+    name: 'local-target',
+    protocol: 'local',
+    host: destRoot,
+    port: 0,
+    username: '',
+    mappings: [{ id: 'm1', localPrefix: 'dist/', remotePath: '/out' }]
+  })
+
+  function project(): string {
+    const root = join(dir, 'proj')
+    mkdirSync(join(root, 'dist'), { recursive: true })
+    mkdirSync(join(root, 'docs', 'sub'), { recursive: true })
+    writeFileSync(join(root, 'dist', 'a.js'), 'aa')
+    writeFileSync(join(root, 'README.md'), 'r')
+    writeFileSync(join(root, 'docs', 'x.md'), 'x')
+    writeFileSync(join(root, 'docs', 'sub', 'y.md'), 'y')
+    return root
+  }
+
+  it('已不存在（已删除/未提交）报 missing，存在但未命中映射报 no-mapping', async () => {
+    const service = new DeployService()
+    const root = project()
+
+    const plan = await service.buildUploadPlan(
+      [join(root, 'dist', 'a.js'), join(root, 'README.md'), join(root, 'dist', 'gone.js')],
+      root,
+      planTarget()
+    )
+
+    expect(plan.tasks.map((t) => t.relativePath)).toEqual([join('dist', 'a.js')])
+    expect(plan.skipped).toEqual([
+      { relativePath: 'README.md', reason: 'no-mapping' },
+      { relativePath: 'dist/gone.js', reason: 'missing' }
+    ])
+  })
+
+  it('目录选择只对枚举出的文件判定：无映射的文件逐条报 no-mapping', async () => {
+    const service = new DeployService()
+    const root = project()
+
+    const plan = await service.buildUploadPlan([join(root, 'docs')], root, planTarget())
+
+    expect(plan.tasks).toEqual([])
+    expect([...plan.skipped].sort((a, b) => a.relativePath.localeCompare(b.relativePath))).toEqual([
+      { relativePath: 'docs/sub/y.md', reason: 'no-mapping' },
+      { relativePath: 'docs/x.md', reason: 'no-mapping' }
+    ])
+  })
+
+  it('buildUploadTasks 仍只回任务列表（CLI/MCP 的 /plan 契约不变）', async () => {
+    const service = new DeployService()
+    const root = project()
+    const selected = [join(root, 'dist', 'a.js'), join(root, 'README.md')]
+
+    const plan = await service.buildUploadPlan(selected, root, planTarget())
+    const tasks = await service.buildUploadTasks(selected, root, planTarget())
+
+    expect(tasks).toEqual(plan.tasks)
+    expect(tasks.length).toBe(1)
+  })
+})
+
 describe('P1-8 桌面直连会话的可观测性（退出收尾要用）', () => {
   it('执行中暴露会话（owner/target），结束后清空', async () => {
     const service = new DeployService()

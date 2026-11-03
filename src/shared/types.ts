@@ -53,6 +53,12 @@ export interface DeployTarget {
    * 仅 SFTP / 本地目录生效；FTP 系列没有 exec 能力，配置了也会被跳过。
    */
   postUpload?: PostUploadConfig | null
+  /**
+   * 「不执行」时仍保留的上一份配置（脚本路径 / 命令文本）。
+   * 它**永远不会被执行**（`postUploadOf` 只看 `postUpload`），只在再次编辑时回填输入框，
+   * 避免“切到不执行 → 再切回来还要重新敲”的丢失。
+   */
+  postUploadStash?: PostUploadConfig | null
   /** @deprecated 旧字段（仅脚本文件）；读取时自动迁移到 postUpload */
   postUploadScript?: string
   mappings: DirectoryMapping[]
@@ -237,6 +243,18 @@ export interface UploadTask {
   remotePath: string
   relativePath: string
   size: number
+}
+
+/**
+ * 预览结果（`deploy:preview` 的返回）：会上传的任务 + 被跳过的条目。
+ *
+ * `skipped` 与真正执行的筛选条件出自**同一趟遍历**，所以每条原因都是主进程的真实判定；
+ * 渲染层直接展示，不得再用「所选 − 可上传」的差集猜原因 —— 差集猜出来的原因永远只能是兜底文案，
+ * 曾把「已删除的 Git 变更文件」说成「未匹配目录映射」，把排障方向带偏（PRODUCT 原则 4）。
+ */
+export interface UploadPreview {
+  tasks: UploadTask[]
+  skipped: PlanSkip[]
 }
 
 /** 单个文件部署结果明细 */

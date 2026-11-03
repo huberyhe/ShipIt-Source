@@ -48,8 +48,15 @@ export interface RunScriptOptions {
   timeoutMs?: number
 }
 
-/** 读取配置（兼容旧的 postUploadScript 字段） */
+/**
+ * 读取配置（兼容旧的 postUploadScript 字段）。
+ *
+ * ** `postUpload === null` 是用户的显式选择「不执行」**，此时绝不回退到旧字段：
+ * 之前先看 `current`（null 时跳过）再看 legacy，于是把“不执行”又读成了旧脚本，
+ * 表现为“在设置里改成不执行、保存后依旧执行”。
+ */
 export function postUploadOf(target: DeployTarget): { kind: 'script' | 'command'; value: string } | null {
+  if (target.postUpload === null) return null
   const current = target.postUpload
   if (current && current.value.trim()) return { kind: current.kind, value: current.value.trim() }
   const legacy = target.postUploadScript?.trim()

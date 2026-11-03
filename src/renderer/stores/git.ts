@@ -1,7 +1,12 @@
 import { defineStore } from 'pinia'
-import { reportError } from '../utils/report-error'
+import { reportError, warnOnly } from '../utils/report-error'
 import { ref } from 'vue'
 import type { GitBranchInfo, GitChangeInfo, GitCommitInfo } from '../../shared/types'
+
+/** 文件差异的读取结果：失败是**一个状态**，不是一个空字符串 */
+export type FileDiffResult =
+  | { ok: true; diff: string }
+  | { ok: false; message: string }
 
 export const useGitStore = defineStore('git', () => {
   const hasGit = ref(false)
@@ -132,6 +137,9 @@ export const useGitStore = defineStore('git', () => {
       if (seq !== logSeq) return // 已有更新的请求，丢弃本次响应
       commits.value = list
       logExhausted.value = list.length < maxCount
+    } catch (error) {
+      // 失败必须可见；**保留已有列表**（「加载更多」失败时清空会被读成「没有提交」）
+      if (seq === logSeq) reportError('加载提交历史失败', error)
     } finally {
       logInFlight.delete(dir)
       if (!silent) {
@@ -141,11 +149,20 @@ export const useGitStore = defineStore('git', () => {
     }
   }
 
-  async function getFileDiff(dir: string, filePath: string): Promise<string> {
+  /**
+   * 读文件差异。
+   *
+   * 结果必须可区分「没有变更」与「读取失败」：曾经 catch 后返回 ''，空串又被界面
+   * 渲染成「文件无变更」—— 真实失败被读成了「这文件没改动」，用户与排查者都会被误导。
+   */
+  async function getFileDiff(dir: string, filePath: string): Promise<FileDiffResult> {
     try {
-      return await window.deployApi.getGitDiff(dir, filePath)
-    } catch {
-      return ''
+      const diff = await window.deployApi.getGitDiff(dir, filePath)
+      return { ok: true, diff: typeof diff === 'string' ? diff : '' }
+    } catch (error) {
+      // 失败由调用方就地呈现（失败态 + 重试）；这里只留痕，不再额外弹 toast 避免双重提示
+      warnOnly('加载文件差异失败', error)
+      return { ok: false, message: error instanceof Error ? error.message : String(error) }
     }
   }
 

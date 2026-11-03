@@ -819,8 +819,11 @@ function registerIpcHandlers() {
     return fileService.expandDirectory(dirPath)
   })
 
+  // 上传取文件：**必须**用 collectFilesForUpload。
+  // 它只跳 `.git` / `node_modules`，保留 dist/build/target/vendor 等构建产物；
+  // 曾误用浏览用的 collectAllFiles → 选目录发 dist 时一个文件都不会上传，且不报错。
   ipcMain.handle(IpcChannels.FILE_COLLECT_FILES, async (_event, dirPath: string) => {
-    return fileService.collectAllFiles(dirPath)
+    return fileService.collectFilesForUpload(dirPath)
   })
 
   // ========== Git 状态 ==========
@@ -864,9 +867,9 @@ function registerIpcHandlers() {
     return deployService.testConnection(target)
   })
 
-  // 预览：主进程计算实际要上传的任务列表（供弹窗展示，保证与实际一致）
+  // 预览：主进程计算实际要上传的任务列表 + 被跳过的条目（含真实原因），供弹窗展示，保证与实际一致
   ipcMain.handle(IpcChannels.DEPLOY_PREVIEW, async (_event, files: string[], projectRoot: string, target: any) => {
-    return deployService.buildUploadTasks(files, projectRoot, target)
+    return deployService.buildUploadPlan(files, projectRoot, target)
   })
 
   // 执行：直接上传已确认的任务列表（与预览完全一致）

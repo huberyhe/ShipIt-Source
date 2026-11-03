@@ -3,10 +3,31 @@ import Kbd from '../../components/common/Kbd.vue'
 import { computed, onMounted, onUnmounted } from 'vue'
 import { Upload, X } from 'lucide-vue-next'
 import { useDeployStore } from '../../stores/deploy'
+import { useProjectStore } from '../../stores/project'
 
 import ProgressBar from '../common/ProgressBar.vue'
 
 const deployStore = useDeployStore()
+const projectStore = useProjectStore()
+
+/** 项目名：进度卡必须回答「哪个项目的文件发到哪」，而不是只给一个百分比 */
+const projectName = computed(() => {
+  const path = projectStore.projectPath
+  if (!path) return '(未打开项目)'
+  const parts = path.replace(/\\/g, '/').split('/').filter(Boolean)
+  return parts[parts.length - 1] || path
+})
+
+const uploadTarget = computed(() => deployStore.uploadTarget)
+const targetName = computed(() => uploadTarget.value?.name ?? '未知目标')
+/** 协议 + 主机（本地目录目标没有端口语义，不补 `:0`） */
+const targetMeta = computed(() => {
+  const t = uploadTarget.value
+  if (!t) return ''
+  const addr = t.protocol === 'local' ? t.host : `${t.host}${t.port ? ':' + t.port : ''}`
+  return `${t.protocol.toUpperCase()} ${addr} · ${t.mappingCount} 条目录映射`
+})
+const targetTitle = computed(() => `${projectName.value} → ${targetName.value}\n${targetMeta.value}`)
 
 const progressPercent = computed(() => {
   if (deployStore.uploadProgress.total === 0) return 0
@@ -18,9 +39,9 @@ const progressPercent = computed(() => {
  *
  * 上传路径的前缀通常都一样（`dist/assets/...`），真正区分文件的是
  * 尾部（文件名/末级目录）；末尾省略会把最关键的信息先丢掉。
- * 卡片宽度固定（320 - 2×16 = 288px），11px 字号约容纳 52 个字符，留 1 位给 `…`。
+ * 卡片宽度固定（400 - 2×16 = 368px），11px 字号约容纳 66 个字符，留 1 位给 `…`。
  */
-const MAX_FILE_CHARS = 52
+const MAX_FILE_CHARS = 66
 const currentFile = computed(() => {
   const file = deployStore.uploadProgress.file
   if (!file) return ''
@@ -48,6 +69,16 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
       <div class="progress-header">
         <Upload :size="16" class="head-icon" />
         <span>正在上传…</span>
+      </div>
+
+      <!-- 发到哪：项目 → 目标；第二行给协议+地址与映射条数（不逐条铺开） -->
+      <div class="progress-dest" :title="targetTitle">
+        <span class="dest-line">
+          <span class="dest-project">{{ projectName }}</span>
+          <span class="dest-arrow" aria-hidden="true">→</span>
+          <span class="dest-target">{{ targetName }}</span>
+        </span>
+        <span class="dest-meta">{{ targetMeta }}</span>
       </div>
 
       <ProgressBar :value="progressPercent" label="上传进度" />
@@ -85,7 +116,13 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 
 .progress-card {
   position: relative;
-  width: 320px;
+  /*
+   * 400px：原 320px 只能放下 52 个字符，`…ication\modules\asset\logic\RiskValue….php` 这种
+   * 深层路径会把“究竟是哪个文件”截掉。400px 可多看 14 个字符，又不至于盖住内容区；
+   * max-width 保证窄窗口下不越界（右侧与底部各留 12/40px 定位）。
+   */
+  width: 400px;
+  max-width: calc(100vw - 32px);
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -114,11 +151,25 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   font-variant-numeric: tabular-nums; /* 数字变化时宽度不跳 */
 }
 .head-icon { color: var(--accent-text); flex-shrink: 0; }
+/* 发到哪：两行固定结构（第一行项目/目标，第二行协议+地址与映射条数），不随进度变化 */
+.progress-dest { margin: 0 0 12px; font-size: 12px; color: var(--fg2); }
+.dest-line { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.dest-project { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg2); }
+.dest-arrow { flex-shrink: 0; color: var(--fg2); }
+.dest-target { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); font-weight: 500; }
+.dest-meta { display: block; margin-top: 4px; font-size: 11px; color: var(--fg2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .percent { font-weight: 500; color: var(--fg); }
 .current-file {
   margin: 12px 0 0; padding-top: 8px;
   border-top: 1px solid var(--bg3);
-  min-height: 16px; /* 预留一行：与 .current-file-text 的 line-height 一致 */
+  /*
+   * 固定高度（**不是 min-height**）：全局是 box-sizing: border-box，
+   * min-height:16 会被 1px 边框 + 8px 内边距吃掉，内容区只剩 7px；
+   * 文件名一出现就把行盒（16px）撑开 → 卡片长高 9px；而卡片是 `bottom` 锚定的，
+   * 长高就表现成“窗口整体往上跳”。
+   * 这里先算好 1(边框) + 8(内边距) + 16(行高) = 25px，空态与有文件名态完全等高。
+   */
+  height: 25px;
 }
 /* 截断由 currentFile 负责（保留末尾）；这里的 ellipsis 只是兜底，避免极端窄窗时溢出 */
 .current-file-text { font-size: 11px; color: var(--fg2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; line-height: 16px; }

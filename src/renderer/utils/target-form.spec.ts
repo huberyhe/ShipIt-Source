@@ -5,7 +5,7 @@
  * 提示文案去重、测试结果回退文案。
  */
 import { describe, expect, it } from 'vitest'
-import { invalidFrom, missingFields, testResultHint, validationMessage, type TargetFormInput } from './target-form'
+import { invalidFrom, missingFields, postUploadFields, testResultHint, validationMessage, type TargetFormInput } from './target-form'
 
 const base = (over: Partial<TargetFormInput> = {}): TargetFormInput => ({
   name: 'dev',
@@ -87,5 +87,37 @@ describe('testResultHint', () => {
       text: '连接被拒绝',
       title: '连接被拒绝'
     })
+  })
+})
+
+describe('上传后执行：切到「不执行」不丢内容（postUploadFields）', () => {
+  it('执行脚本 → 不执行：内容进 stash，postUpload 置 null，旧字段清空', () => {
+    const out = postUploadFields(base({ postUploadKind: 'none', postUploadScript: 'scripts/reload.sh' }), { kind: 'script', value: 'scripts/reload.sh' }, null)
+    expect(out.postUpload).toBeNull()
+    expect(out.postUploadStash).toEqual({ kind: 'script', value: 'scripts/reload.sh' })
+    expect(out.postUploadScript).toBe('')
+  })
+
+  it('执行命令 → 不执行：命令文本同样被保留', () => {
+    const out = postUploadFields(base({ postUploadKind: 'none', postUploadCommand: 'systemctl reload nginx' }), { kind: 'command', value: 'systemctl reload nginx' }, null)
+    expect(out.postUpload).toBeNull()
+    expect(out.postUploadStash).toEqual({ kind: 'command', value: 'systemctl reload nginx' })
+  })
+
+  it('本次没动过执行方式：沿用目标上已有的 stash（原样写回）', () => {
+    const out = postUploadFields(base({ postUploadKind: 'none' }), null, { kind: 'script', value: 'old.sh' })
+    expect(out.postUploadStash).toEqual({ kind: 'script', value: 'old.sh' })
+  })
+
+  it('从来没有配置过：不产生空 stash', () => {
+    const out = postUploadFields(base({ postUploadKind: 'none' }), null, null)
+    expect(out.postUpload).toBeNull()
+    expect(out.postUploadStash).toBeNull()
+  })
+
+  it('执行脚本：写 postUpload、清空 stash，值去掉首尾空白', () => {
+    const out = postUploadFields(base({ postUploadKind: 'script', postUploadScript: '  scripts/a.sh  ' }), null, { kind: 'command', value: 'x' })
+    expect(out.postUpload).toEqual({ kind: 'script', value: 'scripts/a.sh' })
+    expect(out.postUploadStash).toBeNull()
   })
 })

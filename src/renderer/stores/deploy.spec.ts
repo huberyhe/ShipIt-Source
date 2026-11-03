@@ -5,7 +5,7 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { DeployLogEntry } from '../../shared/types'
-import { useDeployStore } from './deploy'
+import { skipReasonText, summarizeSkips, useDeployStore } from './deploy'
 
 let deliver: ((entry: DeployLogEntry) => void) | null = null
 
@@ -35,6 +35,83 @@ beforeEach(() => {
       dispatchEvent: () => true
     }
   }
+})
+
+/**
+ * 预览→确认链路：跳过项必须直接取主进程的判定结果（含真实原因）。
+ *
+ * 背景：此前用「所选 − 可上传」求差集，原因永远是 null → 已删除的 Git 变更文件
+ * 被 UI 说成「未匹配目录映射」（假原因，PRODUCT 原则 4 不允许）。
+ */
+describe('deploy store：预览采用服务端 skipped', () => {
+  const root = 'D:/work/app'
+  const targetStub = {
+    id: 't1',
+    name: 'dev',
+    protocol: 'local',
+    host: 'D:/dest',
+    port: 0,
+    username: '',
+    mappings: [{ id: 'm1', localPrefix: 'dist/', remotePath: '/out' }]
+  }
+
+  function stubPreview(previewDeployFiles: (files: string[], projectRoot: string, target: unknown) => Promise<unknown>) {
+    ;(globalThis as unknown as { window: unknown }).window = {
+      deployApi: {
+        getTargetList: async () => [targetStub],
+        loadConfig: async () => ({}),
+        previewDeployFiles,
+        onDeployLogEntry: () => undefined,
+        onDeployProgress: () => undefined,
+        dispatchEvent: () => true
+      }
+    }
+  }
+
+  it('服务端给出的 relativePath + reason 原样落到 confirmSkipped（不再差集猜测）', async () => {
+    stubPreview(async () => ({
+      tasks: [{ localPath: `${root}/dist/a.js`, remotePath: '/out/a.js', relativePath: 'dist/a.js', size: 2 }],
+      skipped: [
+        { relativePath: 'dist/gone.js', reason: 'missing' },
+        { relativePath: 'README.md', reason: 'no-mapping' }
+      ]
+    }))
+
+    const store = useDeployStore()
+    await store.loadTargets()
+    await store.previewDeploy([`${root}/dist/a.js`, `${root}/dist/gone.js`, `${root}/README.md`], root)
+
+    expect(store.confirmFiles.map((f) => f.relativePath)).toEqual(['dist/a.js'])
+    expect(store.confirmSkipped).toEqual([
+      { relativePath: 'dist/gone.js', reason: 'missing' },
+      { relativePath: 'README.md', reason: 'no-mapping' }
+    ])
+  })
+
+  it('原因文案能区分「无映射」与「文件不存在」（UI 逐条展示与 0 文件说明同源）', () => {
+    expect(skipReasonText('missing')).toBe('文件不存在（已删除或未提交）')
+    expect(skipReasonText('no-mapping')).toBe('未匹配目录映射')
+    expect(skipReasonText(null)).toBe('原因未知')
+    expect(summarizeSkips([
+      { relativePath: 'a', reason: 'missing' },
+      { relativePath: 'b', reason: 'no-mapping' },
+      { relativePath: 'c', reason: 'no-mapping' }
+    ])).toBe('2 个未匹配目录映射，1 个文件不存在（已删除或未提交）')
+    expect(summarizeSkips([])).toBe('')
+  })
+
+  it('兼容旧版返回（只回 UploadTask[]）：不崩，也不编造跳过原因', async () => {
+    stubPreview(async () => [
+      { localPath: `${root}/dist/a.js`, remotePath: '/out/a.js', relativePath: 'dist/a.js', size: 2 }
+    ])
+
+    const store = useDeployStore()
+    await store.loadTargets()
+    await store.previewDeploy([`${root}/dist/a.js`, `${root}/README.md`], root)
+
+    expect(store.confirmFiles).toHaveLength(1)
+    expect(store.confirmSkipped).toEqual([])
+  })
 })
 
 describe('deploy store（P3 回归）', () => {

@@ -2,11 +2,20 @@ import SftpClient from 'ssh2-sftp-client'
 import { Client } from 'basic-ftp'
 import { promises as fsPromises, readFileSync, constants } from 'fs'
 import { join, relative, posix, dirname } from 'path'
-import type { DeployTarget, DirectoryMapping, UploadTask, DeployResult, DeployDetail } from '../../shared/types'
+import type {
+  DeployTarget,
+  DirectoryMapping,
+  UploadTask,
+  DeployResult,
+  DeployDetail,
+  PlanSkip,
+  UploadPreview
+} from '../../shared/types'
+import { toSlashes } from '../../shared/paths'
 import { UPLOAD_SKIP_DIRS } from './ignore-dirs'
 import { postUploadOf, runPostUploadScript } from './post-upload-script'
 
-export type { DeployTarget, DirectoryMapping, UploadTask, DeployResult, DeployDetail }
+export type { DeployTarget, DirectoryMapping, UploadTask, DeployResult, DeployDetail, PlanSkip, UploadPreview }
 
 /** 上传来源：桌面界面 / CLI·MCP 队列。用于「取消只影响自己的会话」 */
 export type DeployOwner = 'desktop' | 'queue'
@@ -150,25 +159,37 @@ export class DeployService {
     return null
   }
 
-  /** 异步计算上传任务：避免同步 I/O 阻塞主进程（文件多时 UI 会卡顿） */
-  async buildUploadTasks(
+  /**
+   * 异步计算上传计划：会上传的任务 + 被跳过的条目（**含真实原因**）。
+   *
+   * 跳过判定与真正执行的筛选条件出自同一趟遍历，原因因此不需要下游再猜：
+   * - `missing`：选中路径不存在/取不到 stat（已删除 / 未提交 / 路径不在项目内）
+   * - `no-mapping`：文件存在但未命中任何目录映射
+   *
+   * 目录选择只对它**枚举出的文件**判定（目录本身不是上传单位）：无法 readdir 的目录目前
+   * 不产出跳过项 —— 它既不是「不存在」也不是「无映射」，宁可不报也不编一个错原因。
+   */
+  async buildUploadPlan(
     selectedFiles: string[],
     projectRoot: string,
     target: DeployTarget
-  ): Promise<UploadTask[]> {
+  ): Promise<UploadPreview> {
     const tasks: UploadTask[] = []
+    const skipped: PlanSkip[] = []
 
     for (const filePath of selectedFiles) {
       let stats
       try {
         stats = await fsPromises.stat(filePath)
       } catch {
-        continue // 文件不存在/不可访问：跳过
+        // 已删除的 Git 变更文件就走这一支：必须报 missing，不能落到「无映射」兜底
+        skipped.push({ relativePath: toSlashes(relative(projectRoot, filePath)), reason: 'missing' })
+        continue
       }
 
       if (stats.isDirectory()) {
         // 递归收集目录下所有文件
-        await this.collectDirFiles(filePath, projectRoot, target.mappings, tasks)
+        await this.collectDirFiles(filePath, projectRoot, target.mappings, tasks, skipped)
       } else {
         const remotePath = this.resolveRemotePath(filePath, projectRoot, target.mappings)
         if (remotePath) {
@@ -178,11 +199,25 @@ export class DeployService {
             relativePath: relative(projectRoot, filePath),
             size: stats.size
           })
+        } else {
+          skipped.push({ relativePath: toSlashes(relative(projectRoot, filePath)), reason: 'no-mapping' })
         }
       }
     }
 
-    return tasks
+    return { tasks, skipped }
+  }
+
+  /**
+   * 只要任务列表（CLI / MCP 的 `plan`、`deploy` 走这条；跳过项由服务端 `toPlanSkips` 另算）。
+   * 保留该入口是为了不改动服务端 handler 与其契约。
+   */
+  async buildUploadTasks(
+    selectedFiles: string[],
+    projectRoot: string,
+    target: DeployTarget
+  ): Promise<UploadTask[]> {
+    return (await this.buildUploadPlan(selectedFiles, projectRoot, target)).tasks
   }
 
   async deploy(
@@ -321,13 +356,15 @@ export class DeployService {
     dirPath: string,
     projectRoot: string,
     mappings: DirectoryMapping[],
-    tasks: UploadTask[]
+    tasks: UploadTask[],
+    skipped?: PlanSkip[]
   ): Promise<void> {
     let entries
     try {
       entries = await fsPromises.readdir(dirPath, { withFileTypes: true })
     } catch {
-      return // 跳过无法访问的目录
+      // 目录不可访问：不产出跳过项（既非「不存在」也非「无映射」，不编原因）
+      return
     }
 
     const subDirs: string[] = []
@@ -346,7 +383,11 @@ export class DeployService {
     const stats = await Promise.all(files.map(f => fsPromises.stat(f).catch(() => null)))
     files.forEach((fullPath, i) => {
       const st = stats[i]
-      if (!st) return
+      if (!st) {
+        // 列举到却取不到 stat：文件在遍历间隙消失（已删除）
+        skipped?.push({ relativePath: toSlashes(relative(projectRoot, fullPath)), reason: 'missing' })
+        return
+      }
       const remotePath = this.resolveRemotePath(fullPath, projectRoot, mappings)
       if (remotePath) {
         tasks.push({
@@ -355,11 +396,13 @@ export class DeployService {
           relativePath: relative(projectRoot, fullPath),
           size: st.size
         })
+      } else {
+        skipped?.push({ relativePath: toSlashes(relative(projectRoot, fullPath)), reason: 'no-mapping' })
       }
     })
 
     // 子目录并行递归
-    await Promise.all(subDirs.map(d => this.collectDirFiles(d, projectRoot, mappings, tasks)))
+    await Promise.all(subDirs.map(d => this.collectDirFiles(d, projectRoot, mappings, tasks, skipped)))
   }
 
   private buildSftpOptions(target: DeployTarget): any {

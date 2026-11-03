@@ -1,7 +1,15 @@
-import type { DeployLogEntry, GitBranchInfo, GitCommitFile, QueueSnapshot, ServerBind, ServerConfig } from '../../shared/types'
+import type {
+  DeployLogEntry,
+  GitBranchInfo,
+  GitCommitFile,
+  QueueSnapshot,
+  ServerBind,
+  ServerConfig,
+  UploadPreview
+} from '../../shared/types'
 
 // 领域类型统一定义在 shared/types.ts（铁律 1）；这里转出便于渲染层按原路径引用
-export type { DeployLogEntry, GitCommitFile }
+export type { DeployLogEntry, GitCommitFile, UploadPreview }
 
 export type ActiveView = 'filetree' | 'gitchanges' | 'gitlog'
 
@@ -71,7 +79,8 @@ export interface DeployApi {
   getGitDiff: (dir: string, filePath: string) => Promise<string>
   getCommitFiles: (dir: string, hash: string) => Promise<GitCommitFile[]>
   testConnection: (target: any) => Promise<{ success: boolean; error?: string }>
-  previewDeployFiles: (files: string[], projectRoot: string, target: any) => Promise<any[]>
+  /** 预览：会上传的任务 + 被跳过的条目（含真实原因，与上传同一趟筛选） */
+  previewDeployFiles: (files: string[], projectRoot: string, target: any) => Promise<UploadPreview>
   deployFiles: (tasks: any[], target: any, projectRoot?: string) => Promise<any>
   cancelDeploy: () => Promise<void>
   /** 仅桌面窗口自己的上传会话（队列任务不推逐文件进度） */

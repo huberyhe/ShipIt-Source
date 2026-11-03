@@ -23,7 +23,8 @@ function originTitle(log: DeployLogEntry): string {
   return parts.join('\n')
 }
 import { computed, ref } from 'vue'
-import { ChevronDown, ChevronRight, Check, X, Trash } from 'lucide-vue-next'
+import type { Component } from 'vue'
+import { ChevronDown, ChevronRight, Check, Minus, X, Trash } from 'lucide-vue-next'
 import { useUiStore } from '../stores/ui'
 import { useDeployStore } from '../stores/deploy'
 import EmptyState from '../components/common/EmptyState.vue'
@@ -52,16 +53,49 @@ const LOG_PATH_MAX_CHARS = 48
 const pathText = (path: string): string => shortenPath(path, { maxChars: LOG_PATH_MAX_CHARS })
 
 /**
+ * 条目状态（三态 + 取消）：
+ * - success：有文件传成功了；failed：有失败；skipped：一个没传成功、但也不是失败（全被跳过）
+ * 此前只有「success / 非 success」两分，跳过被人为归入失败（红✗），读起来像出错了。
+ */
+type LogEntryStatus = 'success' | 'failed' | 'skipped' | 'cancelled'
+
+function entryStatus(log: DeployLogEntry): LogEntryStatus {
+  if (log.cancelled) return 'cancelled'
+  if (log.failed > 0) return 'failed'
+  if (log.succeeded === 0 && log.skipped > 0) return 'skipped'
+  return 'success'
+}
+
+/** 颜色类：跳过用中性色（--fg2），不用状态色——它不是失败 */
+function entryClass(log: DeployLogEntry): string {
+  const status = entryStatus(log)
+  if (status === 'failed') return 'error'
+  return status
+}
+
+function entryIcon(log: DeployLogEntry): Component {
+  const status = entryStatus(log)
+  if (status === 'success') return Check
+  if (status === 'skipped') return Minus
+  return X
+}
+
+/**
  * 行内结果文案：正常用自然语言（不堆数字），异常才给计数。
  * - 有脚本：`上传成功，脚本已执行（0）`
  * - 无脚本：`上传成功`
+ * - 有跳过：单独列出（不并进失败数，否则「跳过」会被当成传错）
  * 脚本失败的退出码/输出放到 title 里，避免把一行撑满。
  */
 function resultText(log: DeployLogEntry): string {
-  if (log.cancelled) return `已取消 · 完成 ${log.succeeded} 个`
+  if (log.cancelled) return log.skipped > 0
+    ? `已取消 · 完成 ${log.succeeded} 个，跳过 ${log.skipped} 个`
+    : `已取消 · 完成 ${log.succeeded} 个`
   const parts: string[] = []
   if (log.failed > 0) parts.push(`${log.succeeded} 个成功，${log.failed} 个失败`)
-  else parts.push('上传成功')
+  else if (log.succeeded > 0) parts.push('上传成功')
+  else if (log.skipped > 0) parts.push('未上传任何文件')
+  if (log.skipped > 0) parts.push(`跳过 ${log.skipped} 个`)
   if (log.postUpload) parts.push(scriptPhrase(log.postUpload))
   return parts.join('，')
 }
@@ -169,7 +203,7 @@ function onLogListKeydown(event: KeyboardEvent): void {
           <span class="expand-arrow">
             <component :is="expandedLogs.has(log.taskId) ? ChevronDown : ChevronRight" :size="12" />
           </span>
-          <component :is="log.cancelled ? X : log.failed === 0 ? Check : X" :size="12" :class="log.cancelled ? 'cancelled' : log.failed === 0 ? 'success' : 'error'" />
+          <component :is="entryIcon(log)" :size="12" :class="entryClass(log)" />
           <span class="log-time" :title="formatTime(log.timestamp)">{{ formatTime(log.timestamp) }}</span>
           <span
             class="log-origin"
@@ -188,7 +222,8 @@ function onLogListKeydown(event: KeyboardEvent): void {
 
         <div v-if="expandedLogs.has(log.taskId)" class="log-files">
           <div v-for="d in log.details" :key="d.relativePath" class="log-file-row" :class="d.status">
-            <component :is="d.status === 'success' ? Check : X" :size="10" />
+            <component :is="d.status === 'success' ? Check : d.status === 'skipped' ? Minus : X" :size="10" />
+            <span v-if="d.status === 'skipped'" class="log-file-skip">跳过</span>
             <span class="log-file-path" :title="d.relativePath">{{ pathText(d.relativePath) }}</span>
             <span class="log-file-arrow">→</span>
             <code class="log-file-remote" :title="d.remotePath">{{ pathText(d.remotePath) }}</code>
@@ -232,6 +267,8 @@ function onLogListKeydown(event: KeyboardEvent): void {
 .success { color: var(--green); }
 .error { color: var(--red); }
 .cancelled { color: var(--yellow); }
+/* 跳过：中性色。用红字会把「没匹配目录映射」误报成「传失败了」 */
+.skipped { color: var(--fg2); }
 .log-time { color: var(--fg2); }
 .log-target { color: var(--blue); }
 .log-result { color: var(--fg); }
@@ -244,6 +281,8 @@ function onLogListKeydown(event: KeyboardEvent): void {
 .log-file-row { display: flex; align-items: center; gap: 4px; padding: 4px 0; font-size: 11px; }
 .log-file-row.success { color: var(--fg2); }
 .log-file-row.failed { color: var(--red); }
+.log-file-row.skipped { color: var(--fg2); }
+.log-file-skip { font-size: 11px; color: var(--fg2); border: 1px solid var(--bg4); border-radius: 4px; padding: 0 4px; }
 .log-file-path { color: var(--fg); }
 .log-file-arrow { color: var(--fg2); margin: 0 4px; }
 /* 不再用 max-width + text-overflow 二次截断：省略只在 pathText 里做一次 */
