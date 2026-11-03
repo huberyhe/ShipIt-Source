@@ -233,6 +233,17 @@ describe('预览计划：跳过项带真实原因', () => {
     ])
   })
 
+  it('相对路径按项目根解析；项目外的路径报 outside-project（不 stat、不当作 missing）', async () => {
+    const service = new DeployService()
+    const root = project()
+
+    const plan = await service.buildUploadPlan(['dist/a.js', '../outside.txt', join(root, 'docs', 'x.md')], root, planTarget())
+
+    // 相对路径 dist/a.js 命中 dist/ 映射
+    expect(plan.tasks.map((t) => t.relativePath)).toEqual([join('dist', 'a.js')])
+    expect(plan.skipped.map((s) => s.reason).sort()).toEqual(['no-mapping', 'outside-project'])
+    expect(plan.skipped.find((s) => s.reason === 'outside-project')?.relativePath).toContain('outside.txt')
+  })
   it('buildUploadTasks 仍只回任务列表（CLI/MCP 的 /plan 契约不变）', async () => {
     const service = new DeployService()
     const root = project()

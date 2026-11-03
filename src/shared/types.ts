@@ -226,7 +226,8 @@ export interface PlanItem {
  */
 export interface PlanSkip {
   relativePath: string
-  reason: 'no-mapping' | 'missing'
+  /** outside-project：传入的路径不在项目根下（含相对路径被解析到别处） */
+  reason: 'no-mapping' | 'missing' | 'outside-project'
 }
 
 /** 待上传计划（服务端计算，计划阶段不建立远端连接，INV-1） */

@@ -1,7 +1,7 @@
 import SftpClient from 'ssh2-sftp-client'
 import { Client } from 'basic-ftp'
 import { promises as fsPromises, readFileSync, constants } from 'fs'
-import { join, relative, posix, dirname } from 'path'
+import { join, relative, posix, dirname, isAbsolute, resolve } from 'path'
 import type {
   DeployTarget,
   DirectoryMapping,
@@ -177,13 +177,21 @@ export class DeployService {
     const tasks: UploadTask[] = []
     const skipped: PlanSkip[] = []
 
-    for (const filePath of selectedFiles) {
+    for (const rawPath of selectedFiles) {
+      // 归一化：相对路径按项目根解析（CLI / 脚本调用方常传相对路径），
+      // 解析后仍不在项目内的直接归为 outside-project——不能报 missing，也不能去 stat 项目外的路径。
+      const filePath = isAbsolute(rawPath) ? rawPath : resolve(projectRoot, rawPath)
+      const rel = toSlashes(relative(projectRoot, filePath))
+      if (!rel || rel.startsWith('..') || isAbsolute(rel)) {
+        skipped.push({ relativePath: rel || toSlashes(rawPath), reason: 'outside-project' })
+        continue
+      }
       let stats
       try {
         stats = await fsPromises.stat(filePath)
       } catch {
         // 已删除的 Git 变更文件就走这一支：必须报 missing，不能落到「无映射」兜底
-        skipped.push({ relativePath: toSlashes(relative(projectRoot, filePath)), reason: 'missing' })
+        skipped.push({ relativePath: rel, reason: 'missing' })
         continue
       }
 

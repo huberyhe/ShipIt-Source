@@ -33,6 +33,7 @@ export interface UploadPreviewSkip {
 export function skipReasonText(reason: UploadPreviewSkip['reason']): string {
   if (reason === 'missing') return '文件不存在（已删除或未提交）'
   if (reason === 'no-mapping') return '未匹配目录映射'
+  if (reason === 'outside-project') return '不在项目目录内'
   return '原因未知'
 }
 
@@ -43,10 +44,12 @@ export function skipReasonText(reason: UploadPreviewSkip['reason']): string {
 export function summarizeSkips(items: UploadPreviewSkip[]): string {
   const noMapping = items.filter((i) => i.reason === 'no-mapping').length
   const missing = items.filter((i) => i.reason === 'missing').length
-  const unknown = items.length - noMapping - missing
+  const outside = items.filter((i) => i.reason === 'outside-project').length
+  const unknown = items.length - noMapping - missing - outside
   const parts: string[] = []
   if (noMapping > 0) parts.push(`${noMapping} 个未匹配目录映射`)
   if (missing > 0) parts.push(`${missing} 个文件不存在（已删除或未提交）`)
+  if (outside > 0) parts.push(`${outside} 个不在项目目录内`)
   if (unknown > 0) parts.push(`${unknown} 个原因未知`)
   return parts.join('，')
 }
