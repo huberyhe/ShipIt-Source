@@ -2,7 +2,7 @@
 import { toastError, toastSuccess } from '../../utils/toast'
 import { computed, ref, watch, onMounted } from 'vue'
 import { reportError } from '../../utils/report-error'
-import { invalidFrom, missingFields, testResultHint, validationMessage } from '../../utils/target-form'
+import { invalidFrom, missingFields, postUploadFields, testResultHint, validationMessage } from '../../utils/target-form'
 import { Plus, Trash2, Radio, Check, X } from 'lucide-vue-next'
 import { useDeployStore } from '../../stores/deploy'
 import MappingEditor from './MappingEditor.vue'
@@ -40,7 +40,7 @@ const editingForm = ref({
 const editingMappings = ref<any[]>([]) // 编辑中的映射列表
 
 /**
- * 目标的**草稿列表**：所有增/改/删先落到这里，由设置窗口底部的全局「确定」统一落盘。
+ * 目标的**草稿列表**：所有增/改/删先落到这里，由设置窗口底部的全局「保存」统一落盘。
  *
  * 为什么不让弹窗直接写配置：设置页的语义是"改完统一保存/取消"。
  * 弹窗直接写盘会让「取消」无法整体回滚（改了一半再取消，前面几次已经写进去了）。
@@ -69,7 +69,7 @@ onMounted(async () => {
 /**
  * 脏状态（未保存改动）：
  * 编辑/新增时把"当前表单 + 映射"序列化为快照，与进入编辑时的基线比较。
- * 与服务管理保持一致：有改动时提示「未保存」，并在退出编辑前确认，避免白填。
+ * 与服务管理保持一致：有改动时上报给设置窗口（右上角未保存提示 + 关窗守门），避免白填。
  */
 const emit = defineEmits<{ 'dirty-change': [value: boolean] }>()
 const baseline = ref('')
@@ -101,9 +101,27 @@ function requestExit() {
 }
 
 
+/**
+ * 「不执行」时仍记住上一份脚本/命令（详见 `DeployTarget.postUploadStash`）。
+ * 只在内存里跟踪本次编辑的最新值；写入配置由 saveTarget 负责。
+ */
+const lastActivePostUpload = ref<{ kind: 'script' | 'command'; value: string } | null>(null)
+/** 本次编辑开始时目标身上已有的 stash（用来在用户没动过时原样写回） */
+const originalStash = ref<{ kind: 'script' | 'command'; value: string } | null>(null)
+
+watch(
+  () => [editingForm.value.postUploadKind, editingForm.value.postUploadScript, editingForm.value.postUploadCommand] as const,
+  ([kind, script, command]) => {
+    if (kind === 'script' && script.trim()) lastActivePostUpload.value = { kind: 'script', value: script.trim() }
+    else if (kind === 'command' && command.trim()) lastActivePostUpload.value = { kind: 'command', value: command.trim() }
+  }
+)
+
 function startAdd() {
   editingId.value = null
   resetFormFeedback()
+  lastActivePostUpload.value = null
+  originalStash.value = null
   editingForm.value = {
     name: '', protocol: 'sftp', host: '', port: 22,
     username: '', password: '', privateKeyPath: '', passphrase: '',
@@ -116,14 +134,22 @@ function startAdd() {
 function startEdit(target: any) {
   editingId.value = target.id
   resetFormFeedback()
+  // 不执行状态下，把上次的脚本/命令回填到对应输入框（切回对应方式时内容还在）
+  const stash = target.postUploadStash ?? null
+  lastActivePostUpload.value = target.postUpload ? { ...target.postUpload } : (stash ? { ...stash } : null)
+  originalStash.value = stash ? { ...stash } : null
   editingForm.value = {
     name: target.name, protocol: target.protocol, host: target.host,
     port: target.port || defaultPort(target.protocol),
     username: target.username, password: target.password || '',
     privateKeyPath: target.privateKeyPath || '', passphrase: target.passphrase || '',
     postUploadKind: target.postUpload?.kind ?? (target.postUploadScript ? 'script' : 'none'),
-    postUploadScript: target.postUpload?.kind === 'script' ? target.postUpload.value : (target.postUploadScript || ''),
-    postUploadCommand: target.postUpload?.kind === 'command' ? target.postUpload.value : ''
+    postUploadScript: target.postUpload?.kind === 'script'
+      ? target.postUpload.value
+      : (stash?.kind === 'script' ? stash.value : (target.postUploadScript || '')),
+    postUploadCommand: target.postUpload?.kind === 'command'
+      ? target.postUpload.value
+      : (stash?.kind === 'command' ? stash.value : '')
   }
   editingMappings.value = JSON.parse(JSON.stringify(target.mappings || []))
   baseline.value = currentSnapshot()
@@ -166,8 +192,8 @@ function applyValidation(): boolean {
 }
 
 /**
- * 保存目标（新增或修改）。
- * @returns 是否保存成功——由设置页的全局「确定」据此决定能否关闭页面。
+ * 暂存目标（新增或修改）：只写进草稿列表，**不落盘**。
+ * @returns 是否暂存成功（校验不过 / 序列化失败时为 false，弹窗保持打开）。
  */
 async function saveTarget(): Promise<boolean> {
   // 提交是一次新的判定：旧提示（含上一次的连接结果）由这次结果覆盖
@@ -185,15 +211,8 @@ async function saveTarget(): Promise<boolean> {
     password: editingForm.value.password,
     privateKeyPath: editingForm.value.privateKeyPath,
     passphrase: editingForm.value.passphrase,
-    postUpload: editingForm.value.postUploadKind === 'none'
-      ? null
-      : {
-          kind: editingForm.value.postUploadKind,
-          value: editingForm.value.postUploadKind === 'script'
-            ? editingForm.value.postUploadScript.trim()
-            : editingForm.value.postUploadCommand.trim()
-        },
-    postUploadScript: undefined,
+    // 「不执行」= postUpload:null + postUploadStash 保留内容（详见 target-form.ts 的 postUploadFields）
+    ...postUploadFields(editingForm.value, lastActivePostUpload.value, originalStash.value),
     mappings: editingMappings.value.map((m: any) => ({
       localPrefix: m.localPrefix,
       remotePath: m.remotePath,
@@ -212,7 +231,8 @@ async function saveTarget(): Promise<boolean> {
     }
     draftDirty.value = true
     editingId.value = undefined
-    toastSuccess('已加入待保存的修改（点「确定」后生效）')
+    // 指向真实存在的按钮（设置页底部「保存」）：弹窗内的按钮只做暂存，写盘不在这一步
+    toastSuccess('已加入待保存的修改（点页面底部「保存」后生效）')
     return true
   } catch (err: any) {
     toastError('保存失败: ' + (err?.message || String(err)))
@@ -220,9 +240,9 @@ async function saveTarget(): Promise<boolean> {
   }
 }
 
-/** 暴露给设置页：全局底部「取消 / 确定」需要驱动本分区 */
+/** 暴露给设置页：全局底部「取消 / 保存」需要驱动本分区 */
 /**
- * 设置窗口底部「确定」调用：把草稿差异统一落盘。
+ * 设置窗口底部「保存」调用：把草稿差异统一落盘。
  * 只提交真正发生变化的项（新增 / 修改 / 删除），避免无谓写盘。
  * @returns 是否全部成功（失败则保持页面打开，便于用户修正）
  */
@@ -275,6 +295,16 @@ function doDelete() {
 }
 
 const postUploadSupported = computed(() => editingForm.value.protocol === 'sftp' || editingForm.value.protocol === 'local')
+
+/** 「不执行」下的保留提示：让用户知道内容没丢，且它不会被执行 */
+const inactiveHint = computed(() => {
+  if (editingForm.value.postUploadKind !== 'none') return ''
+  const last = lastActivePostUpload.value ?? originalStash.value
+  if (!last) return ''
+  return last.kind === 'script'
+    ? `已保留上次的脚本路径：${last.value}（切回「执行脚本」即可继续用；这次不会执行）`
+    : `已保留上次的命令：${last.value}（切回「执行命令」即可继续用；这次不会执行）`
+})
 const postUploadOptions = computed(() => [
   { value: 'none' as const, label: '不执行', disabled: false, hint: '上传完成后不做额外动作' },
   { value: 'script' as const, label: '执行脚本', disabled: !postUploadSupported.value, hint: postUploadSupported.value ? '脚本会先传到目标临时目录（内容一致则跳过）再执行' : '仅 SFTP / 本地目录目标支持' },
@@ -417,13 +447,16 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
     </template>
 
     <!-- 编辑/新增目标：**虚拟弹窗**。
-         弹窗里点「确定」只把修改**暂存**到草稿并关闭弹窗（不写配置）；
-         真正落盘由设置窗口底部的全局「确定」统一完成（这样「取消」能整体回滚）。 -->
+         弹窗里的主动作叫「加入待保存」——它只把修改**暂存**到草稿并关闭弹窗（不写配置）；
+         真正落盘由设置窗口底部的全局「保存」统一完成（这样「取消」能整体回滚）。
+         不叫「确定」：那会让人以为已经写入配置了。Enter 同样只做暂存（输入框内不触发）。 -->
     <BaseDialog
       v-else
       :title="editingId ? '编辑目标' : '新增目标'"
       width="680px"
       :close-on-overlay="false"
+      confirm-on-enter
+      @confirm="saveTarget"
       @close="cancelEdit"
     >
       <div class="edit-form">
@@ -517,6 +550,9 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
           </FormField>
         </div>
 
+        <!-- 「不执行」并不等于忘掉配置：这里固定占一行，告知内容已保留且不会被执行 -->
+        <p class="post-upload-hint" :class="{ 'is-muted': !inactiveHint }" :title="inactiveHint || undefined">{{ inactiveHint || '　' }}</p>
+
         <div v-if="editingForm.postUploadKind === 'script'" class="form-row">
           <FormField for="tgt-post-script" class="full">
             <div class="file-picker">
@@ -582,7 +618,13 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
           <Radio :size="13" /> {{ isFormTesting ? '测试中...' : '测试连接' }}
         </BaseButton>
         <BaseButton variant="secondary" size="md" class="cancel-btn" @click="cancelEdit">取消</BaseButton>
-        <BaseButton variant="primary" size="md" class="save-btn" @click="saveTarget">确定</BaseButton>
+        <BaseButton
+          variant="primary"
+          size="md"
+          class="save-btn"
+          title="暂存到待保存列表；点设置页底部的「保存」后才会写入配置"
+          @click="saveTarget"
+        >加入待保存</BaseButton>
       </template>
     </BaseDialog>
 
@@ -677,6 +719,18 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
 .segment:hover:not(:disabled) { background: var(--bg3); color: var(--fg); }
 .segment.on { background: var(--accent); color: var(--on-accent); }
 .segment:disabled { opacity: 0.45; cursor: not-allowed; }
+/* 「不执行」时的保留提示：常占一行（空态用全角空格占位），切换执行方式时不会导致弹窗高度跳动 */
+.post-upload-hint {
+  margin: 4px 0 0;
+  font-size: 11px;
+  line-height: 16px;
+  min-height: 16px;
+  color: var(--fg2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.post-upload-hint.is-muted { color: transparent; }
 .cmd-input {
   width: 100%; min-height: 52px; resize: vertical; box-sizing: border-box;
   padding: 8px; font-family: ui-monospace, monospace; font-size: 12px;

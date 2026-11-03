@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useProjectStore } from '../stores/project'
 import { shortenPath } from '../utils/path-display'
 import { useUiStore } from '../stores/ui'
@@ -41,9 +41,37 @@ const statusTitle = computed(() => {
   if (gitStore.hasGit) p.push('变更: ' + gitStore.changes.length)
   return p.join('\n')
 })
+
+/**
+ * 读屏播报区（视觉隐藏）。
+ *
+ * 只在**文案真的变化**时写入：服务启停与队列状态都是主进程推送（无轮询），
+ * 所以不会出现「每秒念一遍」；同一刻两项都变就合并成一句。
+ */
+const liveText = ref('')
+
+watch(
+  // revision 一起看：它标记"第几份快照"，用来区分「默认值 → 真实值」与「真实状态之间的迁移」
+  () => [serverStore.revision, serverStore.stateText, serverStore.queueText] as const,
+  (current, previous) => {
+    const parts: string[] = []
+    if (current[1] !== previous[1]) parts.push(current[1])
+    if (current[2] !== previous[2]) parts.push(current[2])
+    if (parts.length === 0) return
+    // 首份快照（revision -1 → ≥0）带来的是"默认值变成真实值"，不是用户可感知的状态变化：
+    // 否则每开一个项目窗口都要朗读一遍"服务运行中 4517"
+    if (previous[0] < 0) return
+    liveText.value = parts.join('；')
+  }
+)
 </script>
 <template>
-  <div class="status-bar" data-focus-zone>
+  <!--
+    状态栏不是“容器单停靠点”式的列表：两个状态项直接进 Tab 序列。
+    因此不再标 data-focus-zone（那个标记是给“内部行 tabindex=-1”的焦点容器用的），
+    否则以后在里面误加 tabindex=-1 会被审计当合法而放过。
+  -->
+  <div class="status-bar">
     <div class="status-left">
       <span v-if="analyzingText" class="status-text analyzing">
         <span class="spinner" aria-hidden="true"></span>{{ analyzingText }}
@@ -51,10 +79,12 @@ const statusTitle = computed(() => {
       <span v-else class="status-text" :title="statusTitle">{{ statusText }}</span>
     </div>
     <div class="status-right">
+      <!-- 两项都在 Tab 序列里（此前的 tabindex="-1" 是全应用唯二键盘不可达的控件）；
+        可见文案只说“是什么”，aria-label 补上“点了会怎样” -->
       <button
         class="status-item"
-        tabindex="-1"
         :class="serverStore.stateTone"
+        :aria-label="`${serverStore.stateText}，打开本地服务管理`"
         :title="serverStore.stateText + '（点击打开本地服务管理）'"
         @click="openServerSettings"
       >
@@ -62,14 +92,16 @@ const statusTitle = computed(() => {
       </button>
       <button
         class="status-item"
-        tabindex="-1"
         :class="serverStore.queueTone"
+        :aria-label="`${serverStore.queueText}，展开上传日志`"
         :title="serverStore.queueText + '（点击展开上传日志）'"
         @click="uiStore.toggleLogPanel()"
       >
         <span class="dot" aria-hidden="true"></span>{{ serverStore.queueText }}
       </button>
     </div>
+    <!-- aria-live 必须是“常驻且非 display:none”的节点，内容变化时才播报 -->
+    <span class="status-live" role="status" aria-live="polite" aria-atomic="true">{{ liveText }}</span>
   </div>
 </template>
 <style scoped>
@@ -80,6 +112,22 @@ const statusTitle = computed(() => {
   background: var(--bg3); color: var(--fg2);
   border-top: 1px solid var(--border);
   font-size: 12px; flex-shrink: 0;
+  /* 播报区绝对定位在它里面（视觉隐藏，不占位、不参与 flex） */
+  position: relative;
+}
+/*
+ * 视觉隐藏的播报区：1×1 盒 + clip-path。不能用 display:none / visibility:hidden
+ * （那会让 aria-live 一起失效），也不占布局字节（绝对定位，不改变 24px 的行高）。
+ */
+.status-live {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0; border: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  color: var(--fg2);
 }
 .status-left { flex: 1; min-width: 0; }
 .status-right { display: flex; align-items: center; gap: 12px; flex-shrink: 0; padding: 0; }
@@ -102,7 +150,7 @@ const statusTitle = computed(() => {
 .status-item .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: 0.55; flex-shrink: 0; }
 /*
  * 状态项用语义色区分（文字与圆点同色）：运行中=绿、异常=红、空闲/排队=中性灰。
- * 用主题的 --green / --red-text（不是为深蓝底准备的 --status-bar-on，那个在浅底上只有 1.7:1）。
+ * 用主题的 --green / --red-text。不要为「深蓝底」另造状态色：亮色状态点放浅底上只有 1.7:1。
  */
 .status-item.on { color: var(--green); }
 .status-item.on .dot { background: currentColor; opacity: 1; }

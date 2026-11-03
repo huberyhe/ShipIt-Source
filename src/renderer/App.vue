@@ -367,6 +367,9 @@ async function loadProjectData(path: string) {
 /* 项目窗口首帧占位（避免先闪一帧项目选择页） */
 .window-boot { display: flex; align-items: center; justify-content: center; height: 100vh; background: var(--bg); color: var(--fg2); font-size: 12px; }
 :root, .theme-dark {
+  /* 原生控件（数字输入的上下箭头、select 下拉、滚动条、日期选器等）跟随主题深浅。
+     不加这一行时，深色界面里的 spinner 箭头会按浏览器默认的浅色渲染 → 白得刺眼。 */
+  color-scheme: dark;
   --bg: #1e1e1e; --bg2: #252526; --bg3: #2d2d30; --bg4: #333333; --bg5: #3c3c3c;
   --border: #3e3e42; --border2: #454545;
   --fg: #cccccc; --fg2: #a0a0a0; --fg3: #ffffff;
@@ -376,8 +379,6 @@ async function loadProjectData(path: string) {
   --status-bar: #0067b8; --input-bg: #3c3c3c;
   /* 列表选中态：深色主题保持实色强调底 + 白字（浅色底会让 --red/--green 掉到 AA 以下） */
   --row-selected-bg: #0e639c; --row-selected-fg: #ffffff;
-  /* 状态栏底色是固定品牌蓝，状态点需在其上有足够对比度（与主题无关） */
-  --status-bar-on: #4ade80; --status-bar-error: #ff8a80;
   --green: #4ec9b0; --green-bg: #1a3a1a;
   --yellow: #e2b714; --yellow-bg: #332b00;
   /* accent 作**文字**色时的变体（深色下沿用 --yellow 即可） */
@@ -387,7 +388,9 @@ async function loadProjectData(path: string) {
   /* 错误态**文字**变体：--red 作 12px 文字在中性底上只有 3.8:1 */
   --red-text: #ff8a80;
   --blue: #569cd6; --blue-bg: #142c47;   /* 压深：作为 code 文字底色时需满足 AA（#569cd6 on #1a3a5c 仅 3.95） */
-  --purple: #dcb67a;
+  /* 紫色：只用于**重命名**状态。旧值 #dcb67a 是棕金色，与 --yellow（已修改）同族，
+     同一棵树里“文件夹/已修改/已重命名”分不出色相 → 迁到真正的紫兰色相 */
+  --purple: #c9a6f5;
   --scrollbar: #424242; --scrollbar-hover: #4f4f4f;
   /* 浮层与投影：黑白透明值也纳入 token，便于统一调整（浅/深主题可分别微调） */
   --overlay: rgba(0, 0, 0, 0.5);
@@ -397,6 +400,7 @@ async function loadProjectData(path: string) {
 }
 
 .theme-light {
+  color-scheme: light;
   --bg: #ffffff; --bg2: #f3f3f3; --bg3: #ececec; --bg4: #e0e0e0; --bg5: #cccccc;
   --border: #d4d4d4; --border2: #c8c8c8;
   --fg: #333333; --fg2: #636363; --fg3: #000000;
@@ -404,8 +408,8 @@ async function loadProjectData(path: string) {
   --accent-text: #005a9e;
   --status-bar: #0067b8; --input-bg: #ffffff;
   /* 浅色主题用浅蓝底 + 正常文字色（语义色仍可读） */
-  --row-selected-bg: #e5f0fc; --row-selected-fg: #333333;
-  --status-bar-on: #4ade80; --status-bar-error: #ff8a80;
+  /* 选中：浅色下必须比悬停（--bg2 #f3f3f3）强一截，否则“Ctrl+X 会发哪几个”看不出来 */
+  --row-selected-bg: #cfe4fb; --row-selected-fg: #1f1f1f;
   --green: #0b6e4f; --green-bg: #e6f7ee;
   --yellow: #8a6d00; --yellow-bg: #fff8e5;
   /* 压深：#8a6d00 作为 11px 文字压在 --bg2 上仅 4.26:1 */
@@ -414,7 +418,8 @@ async function loadProjectData(path: string) {
   --red: #c42b1c; --red-bg: #ffe8e6; --red-bg2: #ffe0dc; --on-danger: #ffffff;
   --red-text: #c42b1c;
   --blue: #1a6dad; --blue-bg: #e5f2fb;
-  --purple: #a16b00;
+  /* 与深色主题同一色相（紫兰），压深以满足 12px 文字在浅底上的 AA */
+  --purple: #6a4fa3;
   --scrollbar: #c1c1c1; --scrollbar-hover: #a0a0a0;
   --overlay: rgba(0, 0, 0, 0.5);
   --shadow-control: 0 1px 2px rgba(0, 0, 0, 0.25);
@@ -452,9 +457,10 @@ input:disabled, select:disabled, textarea:disabled { opacity: 0.55; }
 /* 变更状态色：唯一定义处（组件里只挂 `.status-*` 类，不再各写一遍） */
 .status-modified { color: var(--yellow-text); }
 .status-added { color: var(--green); }
-.status-untracked { color: var(--green); }
+/* 未跟踪不再与“新增”同色（两者原来都是 --green，只能靠字母区分） */
+.status-untracked { color: var(--blue); }
 .status-deleted { color: var(--red); }
-.status-renamed { color: var(--blue); }
+.status-renamed { color: var(--purple); }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body, #app {

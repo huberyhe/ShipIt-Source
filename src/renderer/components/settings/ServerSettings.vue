@@ -9,7 +9,7 @@ import IconButton from '../common/IconButton.vue'
 
 const MIN_TOKEN_LENGTH = 16
 
-/** 暂存草稿：所有改动先落在这里，点「确定」才整体提交，点「取消」丢弃 */
+/** 暂存草稿：所有改动先落在这里，点设置页底部的「保存」才整体提交，点「取消」丢弃 */
 const draft = ref<ServerConfig>({ enabled: false, bind: 'local', port: 4517, tokenMode: 'random', token: '', allowedRoots: [] })
 const persisted = ref<ServerConfig | null>(null)
 const status = ref<(ServerRuntimeStatus & { enabled: boolean }) | null>(null)
@@ -149,9 +149,8 @@ function discard(): void {
 
 
 
-/** 确定：校验后整体保存（只提交变化项），成功后关闭；失败保持弹窗 */
 /**
- * 保存（只提交变化项）。
+ * 保存（只提交变化项）：由设置页底部的「保存」调用。
  * @returns 是否"已成功保存且可以关闭页面"——保存未成功（校验不过 / 服务起不来）时返回 false，
  *          由调用方（设置页）保持页面打开，让用户就地修正。
  */
@@ -229,9 +228,8 @@ async function save(): Promise<boolean> {
 }
 
 /**
- * 窗口形态下**没有**父组件监听 `close`（`SettingsWindow` 直接内联本组件）：
- * 保存成功后不关窗（靠 toast 告知）、点「取消」只还原草稿。
- * 这里刻意不再 emit，避免"代码意图（关闭）与真实行为（不关）"分叉。
+ * 本组件不负责关窗：`save()` 只返回结果（是否可关闭由设置页的「保存」决定），
+ * 「取消」路径只还原草稿。这里刻意不 emit `close`，避免"代码意图（关闭）与真实行为（不关）"分叉。
  */
 defineExpose({ save, discard, isDirty })
 </script>

@@ -11,6 +11,10 @@ import RowActions from './RowActions.vue'
  * 操作按钮统一包在 `.row-actions` 里：显隐由本组件负责，键盘聚焦时也会出现
  * （此前两个树各写一份 `:hover` + `:has(:focus-visible)`）。
  *
+ * 行是 `tabindex=-1`、由代码/方向键聚焦，`App.vue` 的 `.has-row-actions:has(:focus-visible)`
+ * 只看**后代**是否 `:focus-visible`，行自身被聚焦时并不命中 —— 所以本组件额外用 `:focus`
+ * 让操作区出现（否则键盘用户看不到「只发本行」的入口）。
+ *
  * 选中与焦点的视觉语言：
  * - 选中 = 蓝色底色 + 白字，**无边框**
  * - 焦点 = **上下边框（另一种颜色）+ 无底色**；已选中的行不再重复画边框
@@ -24,9 +28,11 @@ withDefaults(
     indent: number
     role?: string
     ariaExpanded?: boolean
+    /** 行级选中态：`role="treeitem"` 的行必须显式给值（选中/未选中都要有），否则读屏听不出选了什么 */
+    ariaSelected?: boolean
     tabindex?: number
   }>(),
-  { selected: false, role: undefined, ariaExpanded: undefined, tabindex: undefined }
+  { selected: false, role: undefined, ariaExpanded: undefined, ariaSelected: undefined, tabindex: undefined }
 )
 </script>
 
@@ -37,6 +43,7 @@ withDefaults(
     :style="{ paddingLeft: indent + 'px' }"
     :role="role"
     :aria-expanded="ariaExpanded"
+    :aria-selected="ariaSelected"
     :tabindex="tabindex"
   >
     <slot name="before" />
@@ -78,4 +85,10 @@ withDefaults(
 .tree-row-base.selected:focus {
   box-shadow: inset 0 1px 0 var(--row-selected-fg), inset 0 -1px 0 var(--row-selected-fg);
 }
+/* 行自身获得焦点时也显示行内操作区（键盘用户拿不到「只发本行」的入口）。
+   为什么不用 `:focus-visible`：行是 tabindex=-1、只能由代码/方向键聚焦，
+   `:focus-visible` 在程序聚焦时的模态判定不可靠（会出现“键盘导航却看不到按钮”）。
+   用 opacity 切换（不占布局），不引起行高/行宽变化。 */
+.tree-row-base:focus .row-actions,
+.tree-row-base:focus-within .row-actions { opacity: 1; }
 </style>

@@ -373,6 +373,17 @@ function exactTitle(dateStr: string): string {
   }
 }
 
+/** 详情头部提示：上传用的是**当前工作区**内容，不是该提交的快照 */
+const UPLOAD_SCOPE_HINT = '上传的是这些路径在当前工作区的内容，不是该提交的快照'
+
+/** 该提交里已删除（D）的文件数：它们没有本地内容，会被过滤掉，必须在界面上说出来 */
+function deletedCount(hash: string): number {
+  return filesOf(hash).filter((f) => f.status === 'D').length
+}
+
+/** 单选：只在选了一条提交时显示（无选区不显示“已选 0 条”，避免噪音与抖动） */
+const selectionText = computed(() => (selectedHash.value ? '已选 1 条提交' : ''))
+
 async function deployCommitFiles(targetId?: string) {
   const dir = projectStore.projectPath
   const hash = selectedHash.value
@@ -407,6 +418,8 @@ async function deployCommitFiles(targetId?: string) {
       <template #meta>
         <!-- 这是"已加载条数"（分页加载），不是总数：明确写出来，避免读成"共 N 条" -->
         <span class="result-count" v-if="gitStore.commits.length">已加载 {{ gitStore.commits.length }} 条</span>
+        <!-- 单选结果占"剩余宽度"并右对齐：出现/消失不移动左侧计数与右侧按钮 -->
+        <span class="selection-meta" :title="selectionText ? 'Ctrl+X / 右键「快速上传」上传的是这条提交的文件' : ''">{{ selectionText }}</span>
       </template>
       <template #actions>
         <IconButton class="refresh-btn" size="sm" tabindex="-1" label="刷新提交历史" title="刷新" @click="refresh">
@@ -432,46 +445,78 @@ async function deployCommitFiles(targetId?: string) {
       </div>
     </div>
     <div class="log-list">
-      <div v-for="commit in gitStore.commits" :key="commit.hash">
-        <div class="commit-item" tabindex="-1" :data-hash="commit.hash" :class="{ expanded: isExpanded(commit.hash), selected: selectedHash === commit.hash }" @click="onCommitClick(commit.hash, $event)">
-          <span class="expand-icon">
-            <component :is="isExpanded(commit.hash) ? ChevronDown : ChevronRight" :size="14" />
-          </span>
-          <GitCommit :size="14" class="commit-icon" />
-          <div class="commit-main">
-            <div class="commit-top">
-              <span class="commit-message">{{ commit.message }}</span>
-            </div>
-            <div class="commit-meta">
-              <span class="commit-hash">{{ commit.hash }}</span>
-              <span class="commit-author" :title="commit.email">{{ commit.author }}</span>
-              <span v-if="commit.date" class="commit-date" :title="exactTitle(commit.date)">{{ formatDate(commit.date) }}</span>
+      <!-- role="tree"：只包提交行（加载中/空态/加载更多留在树外，不当成 treeitem） -->
+      <div class="commit-list" role="tree" aria-label="提交历史">
+        <!-- role="none"：这层只是 v-for 容器，包着 treeitem + group；从无障碍树里摘掉它，
+             让两行级语义直属于上面的 tree -->
+        <div v-for="commit in gitStore.commits" :key="commit.hash" role="none">
+          <div
+            class="commit-item"
+            tabindex="-1"
+            role="treeitem"
+            :data-hash="commit.hash"
+            :aria-selected="selectedHash === commit.hash"
+            :aria-expanded="isExpanded(commit.hash)"
+            :class="{ expanded: isExpanded(commit.hash), selected: selectedHash === commit.hash }"
+            @click="onCommitClick(commit.hash, $event)"
+          >
+            <span class="expand-icon">
+              <component :is="isExpanded(commit.hash) ? ChevronDown : ChevronRight" :size="14" />
+            </span>
+            <GitCommit :size="14" class="commit-icon" />
+            <div class="commit-main">
+              <div class="commit-top">
+                <span class="commit-message">{{ commit.message }}</span>
+              </div>
+              <div class="commit-meta">
+                <span class="commit-hash">{{ commit.hash }}</span>
+                <span class="commit-author" :title="commit.email">{{ commit.author }}</span>
+                <span v-if="commit.date" class="commit-date" :title="exactTitle(commit.date)">{{ formatDate(commit.date) }}</span>
+              </div>
             </div>
           </div>
-        </div>
 
-        <!-- 变更文件列表 -->
-        <div v-if="isExpanded(commit.hash)" class="commit-detail">
-          <div v-if="isLoadingFiles(commit.hash)" class="detail-loading">加载中...</div>
-          <div v-else-if="filesOf(commit.hash).length === 0" class="detail-empty">无文件变更</div>
-          <template v-else>
-            <div class="detail-actions">
-              <button class="deploy-commit-btn" tabindex="-1" @click.stop="deployCommitFiles()">
-                <Wrench :size="12" /> 全部上传
-              </button>
-            </div>
-            <div v-for="f in filesOf(commit.hash)" :key="f.path" class="detail-file">
-              <StatusBadge class="detail-status" :status="f.status" :width="18" />
-              <File :size="12" class="detail-icon" />
-              <!-- 重命名/复制：显示「旧路径 → 新路径」，相似度进悬浮提示 -->
-              <span
-                class="detail-path"
-                :title="f.oldPath ? `${f.oldPath} → ${f.path}${f.score !== undefined ? `（相似度 ${f.score}%）` : ''}` : f.path"
+          <!-- 变更文件列表（role=group：展开层的语义，与 treeitem 的 aria-expanded 对应） -->
+          <div v-if="isExpanded(commit.hash)" class="commit-detail" role="group">
+            <div v-if="isLoadingFiles(commit.hash)" class="detail-loading">加载中...</div>
+            <div v-else-if="filesOf(commit.hash).length === 0" class="detail-empty">无文件变更</div>
+            <template v-else>
+              <div class="detail-actions">
+                <button
+                  class="deploy-commit-btn"
+                  tabindex="-1"
+                  :title="UPLOAD_SCOPE_HINT"
+                  @click.stop="deployCommitFiles()"
+                >
+                  <Wrench :size="12" /> 全部上传
+                </button>
+                <!-- 旁注常驻：上传范围与"提交快照"的区别必须在动手前看到（不改变上传行为） -->
+                <span class="detail-scope-hint" :title="UPLOAD_SCOPE_HINT">上传当前工作区内容（非该提交快照）</span>
+                <!-- 贴在行尾：出现/消失不移动左侧按钮与旁注 -->
+                <span v-if="deletedCount(commit.hash) > 0" class="detail-deleted-note">
+                  {{ deletedCount(commit.hash) }} 个已删除文件不会被上传
+                </span>
+              </div>
+              <div
+                v-for="f in filesOf(commit.hash)"
+                :key="f.path"
+                class="detail-file"
+                :class="{ 'is-deleted': f.status === 'D' }"
               >
-                <template v-if="f.oldPath"><span class="detail-old-path">{{ f.oldPath }}</span> → </template>{{ f.path }}
-              </span>
-            </div>
-          </template>
+                <StatusBadge class="detail-status" :status="f.status" :width="18" />
+                <File :size="12" class="detail-icon" />
+                <!-- 重命名/复制：显示「旧路径 → 新路径」，相似度进悬浮提示 -->
+                <span
+                  class="detail-path"
+                  :title="f.oldPath ? `${f.oldPath} → ${f.path}${f.score !== undefined ? `（相似度 ${f.score}%）` : ''}` : f.path"
+                >
+                  <template v-if="f.oldPath"><span class="detail-old-path">{{ f.oldPath }}</span> → </template>{{ f.path }}
+                </span>
+                <!-- 列表里照常列着，但上传时会被过滤掉：必须就地标出来 -->
+                <span v-if="f.status === 'D'" class="detail-deleted">本地已删除，不会上传</span>
+              </div>
+            </template>
+          </div>
         </div>
       </div>
       <div v-if="gitStore.isLoading" class="loading">加载中...</div>
@@ -494,6 +539,18 @@ async function deployCommitFiles(targetId?: string) {
 .log-view:focus-visible { outline: none; }
 .log-view { display: flex; flex-direction: column; height: 100%; }
 .result-count { color: var(--fg2); }
+/* 单选结果占"剩余宽度"并右对齐：出现/消失不推动左侧计数与右侧刷新按钮 */
+.selection-meta {
+  flex: 1;
+  min-width: 0;
+  margin-left: 12px;
+  text-align: right;
+  font-size: 11px;
+  color: var(--fg2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 /* 视觉由 IconButton 提供；.refresh-btn 仅作钩子 */
 .filter-bar { display: flex; gap: 16px; padding: 8px 12px; background: var(--bg3); border-bottom: 1px solid var(--border); }
 .filter-item { display: flex; align-items: center; gap: 4px; }
@@ -539,7 +596,10 @@ async function deployCommitFiles(targetId?: string) {
 .theme-dark .commit-item.selected .expand-icon,
 .theme-dark .commit-item.selected .commit-icon { color: var(--on-accent); }
 .commit-detail { padding: 4px 0 8px 48px; border-bottom: 1px solid var(--bg3); background: var(--bg); }
-.detail-actions { padding: 4px 0 4px; }
+/* 一行内：按钮、上传范围旁注、已删除文件计数（计数贴行尾，出现不推左边的按钮/旁注） */
+.detail-actions { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+.detail-scope-hint { font-size: 11px; color: var(--fg2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.detail-deleted-note { margin-left: auto; font-size: 11px; color: var(--red-text); white-space: nowrap; }
 .deploy-commit-btn { display: flex; align-items: center; gap: 4px; padding: 4px 12px; background: var(--accent); color: var(--on-accent); border-radius: 4px; font-size: 11px; }
 .deploy-commit-btn:hover { background: var(--accent2); }
 .detail-loading, .detail-empty { font-size: 11px; color: var(--fg2); padding: 4px 0; }
@@ -547,6 +607,9 @@ async function deployCommitFiles(targetId?: string) {
 .detail-status { width: 18px; text-align: center; font-size: 11px; font-weight: bold; flex-shrink: 0; }
 .detail-icon { color: var(--fg2); flex-shrink: 0; }
 .detail-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 已删除文件：与变更树同一种表达（删除线）+ 行尾一句人话 */
+.detail-file.is-deleted .detail-path { color: var(--fg2); text-decoration: line-through; }
+.detail-deleted { font-size: 11px; color: var(--red-text); white-space: nowrap; margin-left: 8px; flex-shrink: 0; }
 /* 重命名/复制的旧路径淡显（新路径才是上传目标） */
 .detail-old-path { color: var(--fg2); }
 .loading { padding: 24px; text-align: center; color: var(--fg2); }

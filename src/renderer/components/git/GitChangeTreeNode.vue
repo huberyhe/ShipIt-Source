@@ -154,9 +154,10 @@ function dirStatsTitle(n: ChangeTreeNode): string {
     :data-depth="depth"
     :selected="(selectedPaths ?? []).includes(node.path)"
     :indent="depth * 16 + 8"
-    role="button"
+    role="treeitem"
     :tabindex="-1"
     :aria-expanded="expandedDirs.has(node.path)"
+    :aria-selected="(selectedPaths ?? []).includes(node.path)"
     @click="onRowClick"
     @contextmenu="onContextMenu"
   >
@@ -179,14 +180,20 @@ function dirStatsTitle(n: ChangeTreeNode): string {
     </template>
     <template #meta><span class="dir-badge" :title="dirStatsTitle(node)">{{ getDirStats(node) }}</span></template>
     <template #actions>
-      <button class="quick-deploy-btn" tabindex="-1" :disabled="busyPath === node.path" @click.stop="emit('deployDir', node)">
+      <button
+        class="quick-deploy-btn"
+        tabindex="-1"
+        :disabled="busyPath === node.path"
+        :title="`只上传本目录（${shortcutLabel('uploadFocusedRow')}）`"
+        @click.stop="emit('deployDir', node)"
+      >
         {{ busyPath === node.path ? '收集中...' : '快速上传' }}
       </button>
     </template>
   </TreeRow>
 
-  <!-- 展开子节点 -->
-  <template v-if="node.isDirectory && expandedDirs.has(node.path)">
+  <!-- 展开子节点：包一层 role="group"（树的子层语义），DOM 顺序不变（区间选择依赖它） -->
+  <div v-if="node.isDirectory && expandedDirs.has(node.path)" role="group" class="tree-children">
     <GitChangeTreeNode
       v-for="child in node.children"
       :key="child.path"
@@ -205,7 +212,7 @@ function dirStatsTitle(n: ChangeTreeNode): string {
       @select-all-visible="emit('selectAllVisible')"
       @clear-selection="emit('clearSelection')"
     />
-  </template>
+  </div>
 
   <!-- 文件节点 -->
   <TreeRow
@@ -215,8 +222,9 @@ function dirStatsTitle(n: ChangeTreeNode): string {
     :data-depth="depth"
     :selected="(selectedPaths ?? []).includes(node.path)"
     :indent="depth * 16 + 24"
-    role="button"
+    role="treeitem"
     :tabindex="-1"
+    :aria-selected="(selectedPaths ?? []).includes(node.path)"
     @click="onRowClick"
     @dblclick="onRowDblClick"
     @contextmenu="onContextMenu"
@@ -234,6 +242,7 @@ function dirStatsTitle(n: ChangeTreeNode): string {
         class="quick-deploy-btn"
         tabindex="-1"
         :disabled="busyPath === node.path"
+        :title="`只上传本行（${shortcutLabel('uploadFocusedRow')}）`"
         @click.stop="emit('deployFile', node.path)"
       >{{ busyPath === node.path ? '收集中...' : '快速上传' }}</button>
     </template>
@@ -258,7 +267,8 @@ function dirStatsTitle(n: ChangeTreeNode): string {
   padding: 4px 8px; font-size: 13px; color: var(--fg);
   cursor: pointer;
 }
-.dir-icon { color: var(--purple); flex-shrink: 0; }
+/* 同文件树：目录用中性色，颜色只给状态字母 */
+.dir-icon { color: var(--fg2); flex-shrink: 0; }
 
 .expand-icon {
   width: 20px; height: 20px; display: flex; align-items: center; justify-content: center;

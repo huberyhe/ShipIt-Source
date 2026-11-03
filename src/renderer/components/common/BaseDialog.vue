@@ -128,6 +128,12 @@ onUnmounted(() => {
   display: flex; align-items: center; justify-content: center;
   z-index: 1000;
 }
+/*
+ * 打开时会把焦点放到弹窗容器上（tabindex=-1）：这只是键盘入口，不是“这个控件被选中”。
+ * 容器不画焦点环——否则整个弹窗被一圈 2px 蓝框包住，反而抢走了按钮的视觉第一性。
+ */
+.base-dialog:focus-visible { outline: none; }
+
 .base-dialog {
   max-width: 92vw;
   max-height: 80vh;

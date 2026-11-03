@@ -1246,10 +1246,13 @@ function buildWalker() {
       expect: [{ selector: '.page-footer button' }],
       assertScript: `(async () => {
         // 目标分区与本地服务分区统一使用页面底部按钮（此前目标分区没有页脚 → 改动无处提交）
+        // 取消是**两段式**：有未保存改动时先就地变「确认放弃」，再点一次才丢弃（DESIGN §5.2）。
+        // 因此断言接受两种文案；只要求主操作「保存」始终存在。
         const texts = Array.from(document.querySelectorAll('.page-footer button')).map((b) => b.textContent.trim())
         const problems = []
-        if (!texts.includes('取消')) problems.push('目标分区页脚缺少「取消」（实际：' + texts.join('/') + '）')
-        if (!texts.includes('保存')) problems.push('目标分区页脚缺少「保存」（实际：' + texts.join('/') + '）')
+        const hasCancel = texts.some((t) => t.includes('取消') || t.includes('确认放弃'))
+        if (!hasCancel) problems.push('目标分区页脚缺少「取消/确认放弃」（实际：' + texts.join('/') + '）')
+        if (!texts.some((t) => t.includes('保存'))) problems.push('目标分区页脚缺少「保存」（实际：' + texts.join('/') + '）')
         return problems
       })()`,
       assertTarget: 'page-footer'
@@ -1275,9 +1278,11 @@ function buildWalker() {
         const problems = []
         const dlg = document.querySelector('.base-dialog')
         if (!dlg) return ['目标编辑弹窗未出现']
-        // 弹窗页脚：测试连接 / 取消 / 确定
+        // 弹窗页脚：测试连接 / 取消 / 加入待保存
+        // 注：弹窗主动作只是暂存草稿（真正落盘的是设置页底部「保存」），
+        // 因此按钮文案由「确定」改成「加入待保存」，避免用户以为已保存。
         const footer = Array.from(dlg.querySelectorAll('.base-dialog-footer button')).map((b) => b.textContent.trim())
-        for (const want of ['取消', '确定']) {
+        for (const want of ['取消', '加入待保存']) {
           if (!footer.some((t) => t.includes(want))) problems.push('弹窗页脚缺少「' + want + '」（实际：' + footer.join('/') + '）')
         }
         if (!footer.some((t) => t.includes('测试连接'))) problems.push('弹窗页脚缺少「测试连接」（实际：' + footer.join('/') + '）')
@@ -1475,7 +1480,13 @@ async function runTheme(theme, fixture) {
         stepResults.push({ id: step.id, label: step.label, setup: typeof setupResult === 'string' ? setupResult : 'ok', ms: Date.now() - stepT0 })
       } catch (error) {
         stepResults.push({ id: step.id, label: step.label, setup: 'FAILED(' + (Date.now() - stepT0) + 'ms): ' + String(error.message).slice(0, 60) })
-        results.push({ step, severity: 'Major', rule: 'harness/step-failed', message: String(error.message).slice(0, 200), target: '-' })
+        // 「Execution context was destroyed」几乎总是因为**另一个 ShipIt/electron:dev 实例在跑**：
+      // 两个实例争抢窗口/页面，注入的检查上下文随窗口重建一起死掉。把原因写在报告里。
+      const raw = String(error.message)
+      const hint = raw.includes('Execution context was destroyed')
+        ? '（常见原因：另一个 ShipIt / npm run electron:dev 实例正在运行——先关掉再跑审计）'
+        : ''
+      results.push({ step, severity: 'Major', rule: 'harness/step-failed', message: (raw + hint).slice(0, 260), target: '-' })
       } finally {
         if (page) page.close()
       }

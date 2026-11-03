@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { toastError } from '../../utils/toast'
-import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { computed, nextTick, ref, onMounted, onUnmounted } from 'vue'
 import { useFilesStore } from '../../stores/files'
 import type { FileEntry } from '../../stores/files'
-import { ChevronsUpDown, ChevronsDownUp } from 'lucide-vue-next'
+import { ChevronsUpDown, ChevronsDownUp, RefreshCw } from 'lucide-vue-next'
+import { reportError } from '../../utils/report-error'
 import { useDeployStore } from '../../stores/deploy'
 import { useSelectionDeploy } from '../../composables/useSelectionDeploy'
 import { useProjectStore } from '../../stores/project'
@@ -91,6 +91,15 @@ function onContentKeydown(event: KeyboardEvent): void {
   }
   const expandButton = (el: HTMLElement | null): HTMLElement | null =>
     el?.querySelector<HTMLElement>('.ftn-expand') ?? null
+
+  // Alt+Enter：只上传焦点所在行（与行内「快速上传」按钮**同一实现**，不复制收集逻辑；
+  // 作用于本行，与 Ctrl+X 的选区语义区分开）。按钮是 tabindex=-1，鼠标/键盘都能到它。
+  if (event.altKey && event.key === 'Enter') {
+    if (index < 0) return
+    event.preventDefault()
+    row?.querySelector<HTMLButtonElement>('.ftn-deploy-btn')?.click()
+    return
+  }
 
   if (isSelectAllKey(event)) {
     event.preventDefault()
@@ -185,14 +194,88 @@ useDeployHotkeys(
 function handleExpandAll() { expandAllFlag.value = true }
 function handleCollapseAll() { expandAllFlag.value = false; collapseAllCounter.value++ }
 
-// Ctrl+Shift++ / Ctrl+Shift+- （由 App 统一派发；只有当前挂载的视图会收到）
+/** 刷新中：只管按钮禁用态，不改表头文案（避免文字长短变化引来额外视觉跳动） */
+const isRefreshing = ref(false)
+const snapshotAt = ref<Date | null>(null)
+/**
+ * 刷新序号：参与行 key，强制节点重建。
+ *
+ * 不加它时 Vue 会按 path 复用旧节点 —— 根级目录"看着还展开着"，但里面还是上一次
+ * `expandDirectory` 拿到的旧列表（上层新/下层陈旧的假一致）。宁可收起展开态，不要错的数据。
+ */
+const refreshSeq = ref(0)
+
+/** `HH:mm:ss`（秒级足够核验；等宽数字避免每跳一秒就把后面的内容推一下） */
+function formatClock(d: Date): string {
+  const pad = (n: number): string => String(n).padStart(2, '0')
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+}
+
+function formatStamp(d: Date): string {
+  const pad = (n: number): string => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${formatClock(d)}`
+}
+
+const snapshotLabel = computed(() => (snapshotAt.value ? `${formatClock(snapshotAt.value)} 刷新` : ''))
+const snapshotTitle = computed(() =>
+  snapshotAt.value ? `这份文件树的数据快照：${formatStamp(snapshotAt.value)}（F5 或右上角刷新可更新）` : ''
+)
+
+/**
+ * 重新加载根目录。
+ *
+ * 能保住什么：选区（在 store 里，按路径保存）、焦点（原来在哪一行就回到哪一行）。
+ * 保不住什么：已展开的目录会收起 —— 展开状态在各 FileTreeNode 内部，随节点重建释放
+ * （有意为之：复用旧节点会留下"上层已刷新、下层是旧列表"的假一致，见 refreshSeq）。
+ * 重刷后"旧快照里的文件已不存在"时，选区仍按原路径保留（与切视图回来时一致），不做静默清除。
+ */
+async function refresh(): Promise<void> {
+  const root = projectStore.projectPath
+  if (!root || isRefreshing.value) return
+  // 焦点原来在某一行上：重建后把焦点还回去（否则 F5 一下键盘焦点就掉到 body）
+  const focusedPath = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>('.ftn-row')?.dataset.path
+  isRefreshing.value = true
+  try {
+    await filesStore.loadFileTree(root)
+    refreshSeq.value++
+    // 只在本视图真正加载过之后才显示时间：表头里的时间必须对应屏幕上这批数据
+    snapshotAt.value = new Date()
+    if (focusedPath) {
+      await nextTick()
+      // 用 dataset 逐个比，不拼选择器（路径里有反斜杠/冒号，转义容易出错）
+      const still = Array.from(zoneEl.value?.querySelectorAll<HTMLElement>('.ftn-row') ?? [])
+        .find((row) => row.dataset.path === focusedPath)
+      // 已经不在了（文件被删/改名）就把焦点交给容器，由它恢复到最近一行
+      const next = still ?? zoneEl.value
+      next?.focus()
+    }
+  } catch (error) {
+    // 失败必须可见（不许空 catch）：旧树保持原样，时间戳停在上一批
+    reportError('刷新文件树失败', error)
+  } finally {
+    isRefreshing.value = false
+  }
+}
+
+// F5 由 App.vue 统一处理并派发（铁律 5），只有当前挂载的视图响应
+function onRefreshView(): void {
+  void refresh()
+}
+
+// Ctrl+Shift++ / Ctrl+Shift+- 与 F5 均回 App 统一派发（只有当前挂载的视图会收到）
 onMounted(() => {
   window.addEventListener('tree-expand-all', handleExpandAll)
   window.addEventListener('tree-collapse-all', handleCollapseAll)
+  window.addEventListener('refresh-view', onRefreshView)
+  // 视图切换（Ctrl+1/2/3）会重建组件，展开态本来就已释放；
+  // 既然要重建，就顺手拉一次根目录（单层 readdir，很便宜）——否则"回到本视图"看到的
+  // 仍是项目打开那一刻的旧列表，而树又没有任何自动刷新。
+  void refresh()
 })
 onUnmounted(() => {
   window.removeEventListener('tree-expand-all', handleExpandAll)
   window.removeEventListener('tree-collapse-all', handleCollapseAll)
+  window.removeEventListener('refresh-view', onRefreshView)
 })
 
 const rootChildren = computed(() => filesStore.fileTree?.children || [])
@@ -211,6 +294,18 @@ function countFiles(entries: any[]): number {
   for (const e of entries) { if (!e.isDirectory) n++; else if (e.children) n += countFiles(e.children) }
   return n
 }
+
+/**
+ * 选区规模（P0-2）：按 Ctrl+X 之前就能看出"要发几个"。
+ * 只数顶层选中项里的目录个数，**不递归统计目录下的文件数**（会把 UI 卡在几万个文件的遍历上）；
+ * "含目录"本身就是提示：选目录会带出整个目录里的文件。
+ */
+const selectionText = computed(() => {
+  const total = filesStore.deploySelection.length
+  if (total === 0) return ''
+  const dirs = filesStore.deploySelection.filter((item) => item.isDirectory).length
+  return dirs > 0 ? `已选 ${total} 项（含 ${dirs} 个目录）` : `已选 ${total} 项`
+})
 </script>
 
 <template>
@@ -218,8 +313,22 @@ function countFiles(entries: any[]): number {
     <ViewHeader title="文件树">
       <template #meta>
         <span class="file-count" v-if="filesStore.fileTree" :title="`已加载 ${loadedFiles} 个文件、${loadedDirs} 个目录`">{{ loadedFiles }} 文件 · {{ loadedDirs }} 目录</span>
+        <!-- 快照时间：回答"这批是什么时候的"；宽度用等宽数字稳定，右侧用 flex 位置固定（出现/消失不推邻元素） -->
+        <span v-if="snapshotLabel" class="snapshot-time" :title="snapshotTitle">{{ snapshotLabel }}</span>
+        <span class="selection-meta" :title="selectionText ? 'Ctrl+X / 右键「快速上传」上传的是这些选中项' : ''">{{ selectionText }}</span>
       </template>
       <template #actions>
+        <IconButton
+          class="icon-btn refresh-btn"
+          size="sm"
+          tabindex="-1"
+          label="刷新文件树"
+          title="刷新（F5）"
+          :disabled="isRefreshing"
+          @click="refresh"
+        >
+          <RefreshCw :size="14" />
+        </IconButton>
         <IconButton class="icon-btn" size="sm" tabindex="-1" label="全部展开" @click="handleExpandAll">
           <ChevronsUpDown :size="14" />
         </IconButton>
@@ -229,8 +338,12 @@ function countFiles(entries: any[]): number {
       </template>
     </ViewHeader>
     <div class="file-list">
-      <FileTreeNode v-for="entry in rootChildren" :key="entry.path" :entry="entry" :depth="0"
-        :expand-all="expandAllFlag" :collapse-all="collapseAllCounter" />
+      <!-- role="tree"：容器单一 Tab 停靠点模型不变（行仍 tabindex=-1，↑/↓ 进出行）。
+           空态放在树外：树里只允许 treeitem/group 子节点。 -->
+      <div v-if="rootChildren.length > 0" role="tree" aria-label="项目文件树" aria-multiselectable="true">
+        <FileTreeNode v-for="entry in rootChildren" :key="`${entry.path}#${refreshSeq}`" :entry="entry" :depth="0"
+          :expand-all="expandAllFlag" :collapse-all="collapseAllCounter" />
+      </div>
       <EmptyState v-if="rootChildren.length === 0 && !filesStore.isLoading" text="目录为空" size="page" />
     </div>
     <ServerTargetMenu :menu="serverMenu" @close="closeServerMenu" />
@@ -242,6 +355,20 @@ function countFiles(entries: any[]): number {
 .filetree-view:focus-visible { outline: none; }
 .filetree-view { display: flex; flex-direction: column; height: 100%; }
 .file-count { color: var(--fg2); font-size: 11px; }
+/* 快照时间：等宽数字（每秒跳变不改变自身宽度，不推后面的元素） */
+.snapshot-time { color: var(--fg2); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* 选区规模占了"剩余宽度"并右对齐：出现/消失都不移动左侧计数与右侧按钮（防抖动） */
+.selection-meta {
+  flex: 1;
+  min-width: 0;
+  margin-left: 12px;
+  text-align: right;
+  font-size: 11px;
+  color: var(--fg2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 /* 尺寸/悬浮/禁用由 IconButton 提供；.icon-btn 仅保留为定位/测试钩子 */
 .file-list { flex: 1; overflow-y: auto; padding: 4px 0; }
 </style>

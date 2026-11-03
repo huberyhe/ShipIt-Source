@@ -28,6 +28,7 @@ export const SHORTCUTS = {
   shortcutsHelp: { keys: ['F1'], label: '打开本页（快捷键说明）', group: '定位' },
   uploadSelection: { keys: ['Ctrl', 'X'], label: '上传选中的全部文件', group: '上传' },
   uploadTo: { keys: ['Ctrl', 'Shift', 'X'], label: '选择服务器后再上传', group: '上传' },
+  uploadFocusedRow: { keys: ['Alt', 'Enter'], label: '只上传焦点所在行（不含其它选中项）', group: '上传' },
   expandAll: { keys: ['Ctrl', 'Shift', '='], label: '全部展开（= 键；小键盘 + 同效）', group: '视图' },
   collapseAll: { keys: ['Ctrl', 'Shift', '-'], label: '全部收起（小键盘 - 同效）', group: '视图' },
   refreshView: { keys: ['F5'], label: '刷新当前视图', group: '视图' }

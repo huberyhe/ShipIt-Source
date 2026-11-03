@@ -68,3 +68,19 @@ describe('file-service 上传遍历（P2 回归）', () => {
     expect(await svc.collectFilesForUpload(empty)).toEqual([])
   })
 })
+
+/**
+ * 静态守卫：IPC 的 file:collect-files 必须接上传收集器。
+ * 曾把 UI 目录上传接到浏览用的 collectAllFiles，选 dist/ 会「一个文件都不传且不报错」。
+ */
+describe('file:collect-files 通道只用上传收集器（静态守卫）', () => {
+  it('index.ts 的 FILE_COLLECT_FILES handler 调用 collectFilesForUpload', async () => {
+    const { readFileSync } = await import('fs')
+    const src = readFileSync(new URL('../index.ts', import.meta.url), 'utf8')
+    const at = src.indexOf('IpcChannels.FILE_COLLECT_FILES')
+    expect(at).toBeGreaterThan(-1)
+    const body = src.slice(at, at + 400)
+    expect(body).toContain('collectFilesForUpload')
+    expect(body).not.toContain('collectAllFiles')
+  })
+})

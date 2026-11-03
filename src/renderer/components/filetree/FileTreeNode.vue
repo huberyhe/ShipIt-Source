@@ -130,7 +130,9 @@ async function deployThis(): Promise<void> {
 </script>
 
 <template>
-  <div class="ftn-wrapper">
+  <!-- role="none"：树的直接子元素只能是 treeitem/group。这层 wrapper 只是布局容器，
+       用 presentational role 把它从无障碍树里摘掉，读屏仍能直接看到下一层的行/分组。 -->
+  <div class="ftn-wrapper" role="none">
     <TreeRow
       row-class="ftn-row"
       :data-path="entry.path"
@@ -140,6 +142,7 @@ async function deployThis(): Promise<void> {
       role="treeitem"
       :tabindex="-1"
       :aria-expanded="entry.isDirectory ? expanded : undefined"
+      :aria-selected="isSelected"
       @click="selectSelf"
       @contextmenu="onContextMenu"
     >
@@ -163,13 +166,19 @@ async function deployThis(): Promise<void> {
       <template #label><span class="ftn-name">{{ entry.name }}</span></template>
       <template #meta><span class="ftn-spacer" /></template>
       <template #actions>
-        <button class="ftn-deploy-btn" tabindex="-1" :disabled="isDeploying" @click.stop="deployThis()">
+        <button
+          class="ftn-deploy-btn"
+          tabindex="-1"
+          :disabled="isDeploying"
+          :title="`只上传本行（${shortcutLabel('uploadFocusedRow')}）`"
+          @click.stop="deployThis()"
+        >
           {{ isDeploying ? '收集中...' : '快速上传' }}
         </button>
       </template>
     </TreeRow>
 
-    <div v-if="expanded && children.length > 0">
+    <div v-if="expanded && children.length > 0" role="group" class="ftn-children">
       <FileTreeNode v-for="child in children" :key="child.path" :entry="child" :depth="depth + 1"
         :expand-all="expandAll" :collapse-all="collapseAll" />
     </div>
@@ -191,7 +200,8 @@ async function deployThis(): Promise<void> {
 .ftn-expand { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--fg2); flex-shrink: 0; padding: 0; background: transparent; border: none; border-radius: 4px; }
 .ftn-expand:hover { color: var(--fg); }
 .ftn-expand.ph { visibility: hidden; }
-.ftn-dir-icon { color: var(--purple); flex-shrink: 0; }
+/* 目录是**结构**，不是状态：颜色留给 M/A/D/?/R，不抢语义色（文件夹形已足够表意） */
+.ftn-dir-icon { color: var(--fg2); flex-shrink: 0; }
 .ftn-file-icon { color: var(--fg2); flex-shrink: 0; }
 .ftn-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 深色主题的选中底是实色强调色：文字与图标必须转白，

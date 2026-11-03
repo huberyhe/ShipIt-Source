@@ -112,6 +112,17 @@ function onContentKeydown(event: KeyboardEvent): void {
     rows[next]?.focus()
   }
 
+  // Alt+Enter：只上传焦点所在行（与行内「快速上传」同一实现，不影响选区）。
+  // 已删除的文件没有行内按钮（本来就无本地内容可发）——必须给提示，不能静默无反应。
+  if (event.altKey && event.key === 'Enter') {
+    if (index < 0) return
+    event.preventDefault()
+    const btn = row?.querySelector<HTMLButtonElement>('.quick-deploy-btn')
+    if (btn) btn.click()
+    else toastError('该文件已在本地删除，没有可上传的内容')
+    return
+  }
+
   if (isSelectAllKey(event)) {
     event.preventDefault()
     selectAllVisible()
@@ -466,11 +477,25 @@ async function handleDeployDir(node: ChangeTreeNode, targetId?: string) {
   }
 }
 
+/**
+ * 选区规模（P0-2）：数量与"含几个目录"都在按 Ctrl+X 之前可见。
+ * 目录只数顶层选中项，**不递归统计目录下的文件数**（避免为表头数字遍历上万文件）。
+ */
+const selectionText = computed(() => {
+  const total = selectedPaths.value.length
+  if (total === 0) return ''
+  const dirs = selectedPaths.value.filter((path) => nodeIndex.value.get(path)?.isDirectory).length
+  return dirs > 0 ? `已选 ${total} 项（含 ${dirs} 个目录）` : `已选 ${total} 项`
+})
 </script>
 
 <template>
   <div ref="zoneEl" class="changes-view" data-focus-zone tabindex="0" @keydown="onContentKeydown" @focusin="onContentFocus">
     <ViewHeader :title="`Git 未提交的变更 (${gitStore.changes.length})`">
+      <template #meta>
+        <!-- 选区规模占"剩余宽度"并右对齐：出现/消失不推动左侧标题与右侧按钮（防抖动） -->
+        <span class="selection-meta" :title="selectionText ? 'Ctrl+X / 右键「快速上传」上传的是这些选中项' : ''">{{ selectionText }}</span>
+      </template>
       <template #actions>
         <IconButton class="icon-btn" size="sm" tabindex="-1" label="刷新 Git 变更" title="刷新" @click="refresh">
           <RefreshCw :size="14" />
@@ -485,27 +510,26 @@ async function handleDeployDir(node: ChangeTreeNode, targetId?: string) {
     </ViewHeader>
 
     <div class="changes-list">
-      <template v-if="changeTree.length === 0">
-        <EmptyState text="工作区干净，没有未提交的变更" size="page" />
-      </template>
-
-      <GitChangeTreeNode
-        v-if="projectRootNode"
-        :node="projectRootNode"
-        :depth="0"
-        :expanded-dirs="expandedDirs"
-        :busy-path="deployingPath"
-        :selected-paths="selectedPaths"
-        @select="onSelectNode"
-        @toggle-dir="toggleDir"
-        @deploy-file="handleDeployFile"
-        @deploy-dir="handleDeployDir"
-        @quick-deploy="quickDeploy"
-        @select-path="selectPathByKey"
-        @select-all-visible="selectAllVisible"
-        @clear-selection="clearSelection"
-        @show-diff="previewFile = $event"
-      />
+      <EmptyState v-if="changeTree.length === 0" text="工作区干净，没有未提交的变更" size="page" />
+      <!-- role="tree"：容器单一 Tab 停靠点模型不变（行仍 tabindex=-1）；空态放在树外 -->
+      <div v-else-if="projectRootNode" role="tree" aria-label="Git 未提交的变更" aria-multiselectable="true">
+        <GitChangeTreeNode
+          :node="projectRootNode"
+          :depth="0"
+          :expanded-dirs="expandedDirs"
+          :busy-path="deployingPath"
+          :selected-paths="selectedPaths"
+          @select="onSelectNode"
+          @toggle-dir="toggleDir"
+          @deploy-file="handleDeployFile"
+          @deploy-dir="handleDeployDir"
+          @quick-deploy="quickDeploy"
+          @select-path="selectPathByKey"
+          @select-all-visible="selectAllVisible"
+          @clear-selection="clearSelection"
+          @show-diff="previewFile = $event"
+        />
+      </div>
     </div>
 
     <DiffPreview
@@ -541,6 +565,17 @@ async function handleDeployDir(node: ChangeTreeNode, targetId?: string) {
 .header-actions { display: flex; align-items: center; gap: 4px; margin-left: auto; }
 /* 尺寸/悬浮由 IconButton 提供；.icon-btn 仅作钩子 */
 .refresh-btn { display: flex; align-items: center; gap: 4px; }
+.selection-meta {
+  flex: 1;
+  min-width: 0;
+  margin-left: 12px;
+  text-align: right;
+  font-size: 11px;
+  color: var(--fg2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 .changes-list {
   flex: 1;

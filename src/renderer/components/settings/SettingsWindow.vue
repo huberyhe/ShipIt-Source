@@ -14,9 +14,13 @@ import { toastError } from '../../utils/toast'
  *
  * 布局与交互与旧「设置」对话框保持一致：
  * - 左侧分区导航（上传目标 / 本地服务），支持 ←/→ 在分区之间移动
- * - 分区需要显式提交时（本地服务）在底部给「取消 / 确定」，并显示未保存提示
+ * - 两个分区共用一个页脚：「取消」两段式丢弃、「保存」把所有有改动的分区落盘后关闭
  * - 有未保存改动时关闭窗口会被拦下 → 就地确认「放弃修改 / 继续编辑」（不丢配置）
- * - 上传目标是"逐条编辑 + 各自保存"，因此该分区不设底部按钮（与旧页面一致）
+ *
+ * 两个分区在会话内**保持存活**（v-show 常驻）：切走只是隐藏，草稿与脏标都留在组件里。
+ * 用 v-if 会让切回时的重新挂载把草稿（端口 / 目标修改）重置回磁盘值、脏标变 false、
+ * 关窗守门随之失效 —— 那是 P1-7 的根因。为什么不用"拦截切换 + 确认"：切分区是浏览动作，
+ * 不该被拦（会让用户以为改动已提交/已丢弃），而且拦截条会插入一行、把内容顶下去。
  */
 type Section = 'targets' | 'server'
 
@@ -39,16 +43,48 @@ const sections = computed(() => [
   { id: 'server' as Section, label: '本地服务', icon: Plug, hint: '供 CLI / MCP 调用的本机服务' }
 ])
 
-const activeSection = computed(() => sections.value.find((s) => s.id === section.value))
+const labelOf = (id: Section): string => sections.value.find((s) => s.id === id)?.label ?? ''
+const hintOf = (id: Section): string => sections.value.find((s) => s.id === id)?.hint ?? ''
 
-/** 本地服务分区是否有未保存改动 */
+/**
+ * 本地服务分区是否有未保存改动。
+ *
+ * 读的是子组件暴露的 `isDirty`（computed）：只有在组件**存活期间**才响应式。
+ * 分区改为 v-show 常驻后，切分区不会把它重置成 false（v-if 时一销毁就变 false，
+ * 顶部的未保存提示和关窗守门会一起失效）。
+ */
 const serverDirty = computed(() => serverRef.value?.isDirty === true)
 /**
  * 是否有未保存改动（两个分区统一口径）：顶部右侧提示与关窗守门都用它，
  * 避免"改好了却不知道没保存"或"关窗才发现丢了"。
  */
 const anyDirty = computed(() => serverDirty.value || targetsDirty.value)
-/** 两个分区统一使用页面底部的全局「取消 / 确定」 */
+/**
+ * 哪些分区有未保存改动（按左侧导航顺序）。
+ * 保活后两个分区可以**同时**脏，只显示"有未保存的修改"会让用户不知道改动在哪、该不该保存。
+ */
+const dirtySections = computed<Section[]>(() => {
+  const list: Section[] = []
+  if (targetsDirty.value) list.push('targets')
+  if (serverDirty.value) list.push('server')
+  return list
+})
+/** 只有一个分区脏时文案与样式保持原样；两个都脏才点名 */
+const dirtyText = computed(() =>
+  dirtySections.value.length > 1
+    ? `有未保存的修改：${dirtySections.value.map(labelOf).join(' / ')}`
+    : '有未保存的修改'
+)
+/**
+ * tooltip 与页脚按钮口径统一：两个分区都只有底部「保存」这一个提交动作。
+ * （此前目标分区说"点保存"、服务分区说"点确定"，而底部只有「保存」）
+ */
+const dirtyTitle = computed(() => {
+  const names = dirtySections.value.map(labelOf)
+  return names.length > 1
+    ? `${names.join(' / ')} 有未保存的修改，点「保存」一并生效`
+    : '有未保存的修改，点「保存」生效'
+})
 
 /** 上报未保存状态给主进程（关闭窗口时据此守门，避免关窗即丢配置） */
 watch(
@@ -61,18 +97,27 @@ watch(
 )
 
 /**
- * 「确定」：保存并**关闭设置页面**；保存未成功（校验不过 / 服务起不来）时保持打开就地处理。
+ * 「保存」：把**所有有未保存改动的分区**落盘，全部成功后才关闭设置页面；
+ * 保存未成功（校验不过 / 服务起不来）时保持打开就地处理。
+ *
+ * 为什么不只提交当前分区：两个分区保活后可以同时脏（以前切走即销毁，另一分区不可能还脏）。
+ * 只提交当前分区会在关窗时把另一个分区的草稿静默丢掉 —— 与"切分区不丢内容"相矛盾。
+ * 只提交**确实脏**的分区：非脏分区不调用 save，避免"草稿还没加载完就整份写回"。
+ *
  * @returns 是否已成功保存（供测试与调用方判断）
  */
 async function confirm(): Promise<boolean> {
   saving.value = true
   try {
-    // 按当前分区提交；目标编辑也走同一条全局通道（此前非 server 分区直接返回 → 目标改动根本没落盘）
-    const ok =
-      section.value === 'server'
-        ? ((await serverRef.value?.save()) ?? false)
-        : ((await targetRef.value?.save()) ?? true)
-    if (!ok) return false
+    // 顺序：目标（纯数据写回）→ 服务（可能真的启停服务，端口占用等失败要留在页面上改）
+    if (targetsDirty.value) {
+      const ok = (await targetRef.value?.save()) ?? false
+      if (!ok) return false
+    }
+    if (serverDirty.value) {
+      const ok = (await serverRef.value?.save()) ?? false
+      if (!ok) return false
+    }
     // 关闭前先清主进程的脏标记守卫，避免"保存后关闭"又被拦一次
     window.deployApi.reportSettingsDirty(false)
     void window.deployApi.closeSelf()
@@ -131,7 +176,15 @@ onMounted(() => {
   const init = window.deployApi.getWindowInit()
   if (init.section === 'server') section.value = 'server'
   window.deployApi.onSettingsSection((next) => {
-    section.value = next === 'server' ? 'server' : 'targets'
+    const target: Section = next === 'server' ? 'server' : 'targets'
+    if (target === section.value) return
+    // 有弹窗时（目标编辑 / 删除确认）先不收分区：两个分区都常驻后，弹窗会跟着所在分区一起
+    // 变成 display:none——它自己的焦点陷阱仍在生效，键盘会像"卡住"一样。让用户先关了弹窗。
+    if (document.querySelector('.base-dialog')) {
+      toastError('请先关闭当前弹窗，再切换设置分区')
+      return
+    }
+    section.value = target
   })
   // 关闭窗口被拦下（有未保存改动）：用 toast 提示 + 二段式（再点一次关闭按钮才真正丢弃并关闭）
   // 不用插入式确认条：它会顶下内容造成抖动
@@ -152,15 +205,15 @@ onMounted(() => {
   <div class="settings-page" @input="cancelArmed = false" @change="cancelArmed = false">
     <header class="page-header">
       <h1 class="page-title">设置</h1>
-      <!-- 未保存提示：两个分区统一显示在这里（页面右上角） -->
+      <!-- 未保存提示：两个分区统一显示在这里（页面右上角）；两个分区同时脏时点名分区 -->
       <span
         v-if="anyDirty"
         class="dirty"
         role="status"
         aria-live="polite"
-        :title="section === 'targets' ? '有未保存的目标修改，点「保存」生效' : '有未保存的修改，点「确定」保存'"
+        :title="dirtyTitle"
       >
-        <span class="dot" aria-hidden="true" />有未保存的修改
+        <span class="dot" aria-hidden="true" />{{ dirtyText }}
       </span>
     </header>
 
@@ -184,22 +237,39 @@ onMounted(() => {
         </button>
       </nav>
 
-      <section
-        class="content"
-        role="tabpanel"
-        :id="`settings-panel-${section}`"
-        :aria-labelledby="`settings-tab-${section}`"
-        tabindex="0"
-      >
-        <!-- 分区名已在左侧导航选中态体现，这里只留一行说明（避免同一名称出现三次） -->
-        <p class="content-hint">{{ activeSection?.hint }}</p>
-        <TargetEditor
-          v-if="section === 'targets'"
-          ref="targetRef"
-          @dirty-change="targetsDirty = $event"
-        />
-        <ServerSettings v-else ref="serverRef" />
-      </section>
+      <!-- 两个分区**常驻**（v-show）：切走只隐藏，草稿与脏标都留在各自组件里。
+           用 v-if 会在切回时重新挂载 → 端口/目标草稿被重置回磁盘值、脏标变 false。
+           隐藏分区再加 inert：v-show 的 display:none 已经不接收 Tab，inert 让键盘与
+           读屏也不会停到不可见内容上。显示态必须用 undefined 移除属性（不能写 false：
+           inert="false" 仍算"存在该属性"，照样不可交互）。 -->
+      <div class="content">
+        <section
+          v-show="section === 'targets'"
+          class="tab-panel"
+          role="tabpanel"
+          id="settings-panel-targets"
+          aria-labelledby="settings-tab-targets"
+          :inert="section === 'targets' ? undefined : true"
+          tabindex="0"
+        >
+          <!-- 分区名已在左侧导航选中态体现，这里只留一行说明（避免同一名称出现三次） -->
+          <p class="content-hint">{{ hintOf('targets') }}</p>
+          <TargetEditor ref="targetRef" @dirty-change="targetsDirty = $event" />
+        </section>
+
+        <section
+          v-show="section === 'server'"
+          class="tab-panel"
+          role="tabpanel"
+          id="settings-panel-server"
+          aria-labelledby="settings-tab-server"
+          :inert="section === 'server' ? undefined : true"
+          tabindex="0"
+        >
+          <p class="content-hint">{{ hintOf('server') }}</p>
+          <ServerSettings ref="serverRef" />
+        </section>
+      </div>
     </div>
 
     <footer class="page-footer">
@@ -260,8 +330,9 @@ onMounted(() => {
 
 /* 内容列限宽居中：避免表单输入框横跨整屏、也让右侧留白不至于"没做完" */
 .content { flex: 1; min-width: 0; overflow: auto; padding: 16px; display: flex; flex-direction: column; align-items: center; }
-.content > * { width: 100%; max-width: 880px; }
-.content:focus-visible { outline: 2px solid var(--status-bar); outline-offset: -2px; }
+/* 分区面板：两个面板共用同一滚动容器（隐藏的那个 display:none，不占高度、不造成跳动） */
+.tab-panel { width: 100%; max-width: 880px; }
+.tab-panel:focus-visible { outline: 2px solid var(--status-bar); outline-offset: -2px; }
 .content-hint { margin: 0 0 12px; font-size: 11px; color: var(--fg2); }
 
 
