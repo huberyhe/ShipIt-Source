@@ -150,21 +150,24 @@ function handleCancel() { deployStore.cancelDeploy() }
     </div>
 
     <template #footer>
-      <!-- 键位不写进按钮文案（DESIGN §4 红线），也用 Kbd 提示；
-           但**不能放进实色主按钮里**：`--fg2` 压在 accent 底上过不了 AA（审计 contrast/aa 会报）。 -->
-      <BaseButton variant="secondary" size="sm" class="cancel-btn" aria-label="取消上传" @click="handleCancel">取消</BaseButton>
-      <span class="footer-hint"><Kbd variant="hint" keys="Esc" /></span>
-      <BaseButton variant="primary" size="sm" class="deploy-btn" aria-label="确认上传" :disabled="deployStore.isPreviewing || uploadCount === 0" @click="handleDeploy">
-        {{ deployStore.isPreviewing ? '计算中...' : `上传 ${uploadCount} 个文件` }}
+      <!-- 键位贴在它属于的按钮里（而不是变成并列的第四个东西）；
+           tone="inherit" 让键位继承按钮自身前景色 —— 实色主按钮上也能保持 AA 对比度。 -->
+      <BaseButton variant="secondary" size="sm" class="cancel-btn" aria-label="取消上传" @click="handleCancel">
+        取消<Kbd variant="hint" tone="inherit" keys="Esc" />
       </BaseButton>
-      <span v-if="!deployStore.isPreviewing" class="footer-hint"><Kbd variant="hint" keys="Enter" /></span>
+      <BaseButton variant="primary" size="sm" class="deploy-btn" aria-label="确认上传" :disabled="deployStore.isPreviewing || uploadCount === 0" @click="handleDeploy">
+        {{ deployStore.isPreviewing ? '计算中...' : `上传 ${uploadCount} 个文件` }}<Kbd v-if="!deployStore.isPreviewing" variant="hint" tone="inherit" keys="Enter" />
+      </BaseButton>
     </template>
   </BaseDialog>
 </template>
 
 <style scoped>
-/* 页脚的键位提示：坐在弹窗底色上（而不是实色主按钮里），才能保持 --fg2 的 AA 对比度 */
-.footer-hint { display: inline-flex; align-items: center; margin-right: 8px; }
+/* 按钮内的键位提示：与文案留一点空隙，也不让它把按钮撑高 */
+/* 不加 opacity：降不透明度会把白字对比度拉到 4.5 以下（审计 contrast/aa 会判 Major）。
+   区分度靠字号（11px vs 12px）与位置，不靠变淡。 */
+.cancel-btn :deep(.kbd-group),
+.deploy-btn :deep(.kbd-group) { margin-left: 6px; }
 .project-line { margin-right: 8px; color: var(--fg2); }
 .project-line strong { color: var(--fg); }
 .target-line { margin-right: 8px; color: var(--fg2); }
