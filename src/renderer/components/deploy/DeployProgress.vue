@@ -101,7 +101,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   position: fixed;
   bottom: 40px;
   right: 12px;
-  z-index: 1002;
+  z-index: var(--z-progress);
 }
 /* 右上角关闭：与 BaseDialog 的 .base-dialog-close 同一套观感（透明、无边框） */
 .cancel-btn {

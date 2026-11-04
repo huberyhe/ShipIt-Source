@@ -96,7 +96,7 @@ onBeforeUnmount(() => {
   position: fixed; bottom: 50px; left: 50%; transform: translateX(-50%);
   display: flex; align-items: center; gap: 8px;
   padding: 8px 20px; border-radius: 6px; font-size: 13px;
-  z-index: 3000; box-shadow: var(--shadow-toast);
+  z-index: var(--z-toast); box-shadow: var(--shadow-toast);
   animation: toastIn 0.3s ease;
   max-width: min(80vw, 900px);
 }

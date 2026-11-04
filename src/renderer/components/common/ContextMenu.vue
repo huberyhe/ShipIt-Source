@@ -192,7 +192,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .ctx-menu {
-  position: fixed; z-index: 2000;
+  position: fixed; z-index: var(--z-menu);
   background: var(--bg3); border: 1px solid var(--border2);
   border-radius: 6px; padding: 4px 0;
   min-width: 160px; max-width: 420px;

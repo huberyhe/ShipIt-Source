@@ -153,10 +153,6 @@ export const useFilesStore = defineStore('files', () => {
     selectedFiles.value = newSet
   }
 
-  function selectAll() {
-    // TODO: flatten file tree
-  }
-
   function clearSelection() {
     selectedFiles.value = new Set()
     deploySelection.value = []
@@ -185,7 +181,6 @@ export const useFilesStore = defineStore('files', () => {
     clearExpandedDirs,
     expandDirectory,
     toggleFileSelection,
-    selectAll,
     clearSelection
   }
 })

@@ -82,3 +82,16 @@ export function shortenPath(raw: string, options: ShortenPathOptions = {}): stri
   const budget = Math.max(1, maxChars - prefix.length - 1)
   return `${prefix}${sep}${last.slice(-budget)}`
 }
+
+/**
+ * 路径的最后一段（项目名/目录名）。Windows 与 POSIX 分隔符都认。
+ *
+ * 抽出来的原因：欢迎页、工具栏、日志等多处各写过一遍
+ * `replace(/\\/g, '/').split('/').filter(Boolean).pop()`，改一处就会漏掉另一处。
+ */
+export function baseNameOf(raw: string): string {
+  const normalized = String(raw ?? '').replace(/\\/g, '/').replace(/\/+$/, '')
+  if (!normalized) return ''
+  const parts = normalized.split('/').filter(Boolean)
+  return parts.length ? parts[parts.length - 1] : ''
+}

@@ -33,18 +33,17 @@ export class FileService {
   }
 
   /**
-   * 递归收集目录下所有文件的绝对路径（不阻塞渲染进程）
-   */
-  /**
    * 浏览用的全量扫描（按 `IGNORE_DIRS` 跳过构建产物与点文件）。
+   *
    * **上传路径禁止调用**：请用 `collectFilesForUpload`，否则 dist/ 等会被静默漏掉。
    * 目前仅用作对照与历史调用。
+   *
+   * 失败不吞成空数组：读目录失败与“目录为空”是两件事，
+   * 静默返回 [] 会让调用方把“读不了”当成“没文件”（与上传收集器一致）。
    */
   async collectAllFiles(dirPath: string): Promise<string[]> {
     const results: string[] = []
-    try {
-      await this._collect(dirPath, results)
-    } catch { /* ignore */ }
+    await this._collect(dirPath, results)
     return results
   }
 

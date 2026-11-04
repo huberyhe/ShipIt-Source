@@ -5,7 +5,16 @@ import { reportError } from '../../utils/report-error'
 import { copyNameOf, duplicateNameOf, invalidFrom, missingFields, postUploadFields, testResultHint, validationMessage } from '../../utils/target-form'
 import { Plus, Trash2, Radio, Check, X, Copy, Pencil, ArrowUp, ArrowDown } from 'lucide-vue-next'
 import { useDeployStore } from '../../stores/deploy'
+import type { DeployTarget } from '../../../shared/types'
 import BaseDialog from '../common/BaseDialog.vue'
+
+/**
+ * 设置页里的目标草稿：形状同 `DeployTarget`，但**映射可能尚无 id**
+ * （新增的映射只有主进程落盘时才分配 id）。此前这里是 `any[]`，
+ * 相当于把“发到哪”这条链上的类型安全丢掉了。
+ */
+type DraftMapping = { id?: string; localPrefix: string; remotePath: string; description?: string }
+type DraftTarget = Omit<DeployTarget, 'mappings'> & { mappings: DraftMapping[] }
 import BaseButton from '../common/BaseButton.vue'
 import SectionHeader from '../common/SectionHeader.vue'
 import ConfirmDialog from '../common/ConfirmDialog.vue'
@@ -44,7 +53,7 @@ const editingMappings = ref<any[]>([]) // 编辑中的映射列表
  * 为什么不让弹窗直接写配置：设置页的语义是"改完统一保存/取消"。
  * 弹窗直接写盘会让「取消」无法整体回滚（改了一半再取消，前面几次已经写进去了）。
  */
-const draftTargets = ref<any[]>([])
+const draftTargets = ref<DraftTarget[]>([])
 /** 草稿与已落盘列表是否不一致（由它驱动未保存提示与关窗守门） */
 const draftDirty = ref(false)
 

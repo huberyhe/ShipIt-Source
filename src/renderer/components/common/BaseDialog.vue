@@ -126,7 +126,7 @@ onUnmounted(() => {
   position: fixed; inset: 0;
   background: var(--overlay);
   display: flex; align-items: center; justify-content: center;
-  z-index: 1000;
+  z-index: var(--z-dialog);
 }
 /*
  * 打开时会把焦点放到弹窗容器上（tabindex=-1）：这只是键盘入口，不是“这个控件被选中”。

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { FolderOpen, Folder, ArrowRight, X, Send } from 'lucide-vue-next'
-import { shortenPath } from '../../utils/path-display'
+import { baseNameOf, shortenPath } from '../../utils/path-display'
 import { reportError } from '../../utils/report-error'
 import BaseButton from '../common/BaseButton.vue'
 
@@ -54,7 +54,7 @@ async function handleOpen(): Promise<void> {
           <button type="button" class="recent-item" :title="proj" @click="emit('openRecent', proj)">
             <Folder :size="14" />
             <!-- 主文本是项目名（人认名字，不认路径），路径作副文本；完整路径见 title -->
-            <span class="recent-name">{{ proj.replace(/\\/g, '/').split('/').filter(Boolean).pop() }}</span>
+            <span class="recent-name">{{ baseNameOf(proj) }}</span>
             <span class="recent-path">{{ shortenPath(proj, { maxChars: 56 }) }}</span>
             <ArrowRight :size="14" class="arrow" />
           </button>

@@ -377,6 +377,13 @@ async function loadProjectData(path: string) {
   /* accent 作**文字/描边**色时需要更亮的变体（深色下 #0e639c 对比度不足 3:1） */
   --accent-text: #4daafc;
   --status-bar: #0067b8; --input-bg: #3c3c3c;
+  /* 浮层层级阶梅（唯一来源）：弹窗 < 进度卡 < 右键菜单 < 全屏遮罩 < toast。
+     新增浮层引用这些 token，不要随手写 1000/2000 这类字面量。 */
+  --z-dialog: 1000;
+  --z-progress: 1002;
+  --z-menu: 2000;
+  --z-overlay: 2500;
+  --z-toast: 3000;
   /* 列表选中态：深色主题保持实色强调底 + 白字（浅色底会让 --red/--green 掉到 AA 以下） */
   --row-selected-bg: #0e639c; --row-selected-fg: #ffffff;
   --green: #4ec9b0; --green-bg: #1a3a1a;
@@ -388,9 +395,8 @@ async function loadProjectData(path: string) {
   /* 错误态**文字**变体：--red 作 12px 文字在中性底上只有 3.8:1 */
   --red-text: #ff8a80;
   --blue: #569cd6; --blue-bg: #142c47;   /* 压深：作为 code 文字底色时需满足 AA（#569cd6 on #1a3a5c 仅 3.95） */
-  /* 紫色：只用于**重命名**状态。旧值 #dcb67a 是棕金色，与 --yellow（已修改）同族，
-     同一棵树里“文件夹/已修改/已重命名”分不出色相 → 迁到真正的紫兰色相 */
-  --purple: #c9a6f5;
+  /* 重命名状态（紫兰）。token 名直说用途，避免新颜色被当成“随便一个紫” */
+  --status-renamed: #c9a6f5;
   --scrollbar: #424242; --scrollbar-hover: #4f4f4f;
   /* 浮层与投影：黑白透明值也纳入 token，便于统一调整（浅/深主题可分别微调） */
   --overlay: rgba(0, 0, 0, 0.5);
@@ -419,7 +425,7 @@ async function loadProjectData(path: string) {
   --red-text: #c42b1c;
   --blue: #1a6dad; --blue-bg: #e5f2fb;
   /* 与深色主题同一色相（紫兰），压深以满足 12px 文字在浅底上的 AA */
-  --purple: #6a4fa3;
+  --status-renamed: #6a4fa3;
   --scrollbar: #c1c1c1; --scrollbar-hover: #a0a0a0;
   --overlay: rgba(0, 0, 0, 0.5);
   --shadow-control: 0 1px 2px rgba(0, 0, 0, 0.25);
@@ -465,7 +471,7 @@ input:disabled, select:disabled, textarea:disabled { opacity: 0.55; }
 /* 未跟踪不再与“新增”同色（两者原来都是 --green，只能靠字母区分） */
 .status-untracked { color: var(--blue); }
 .status-deleted { color: var(--red); }
-.status-renamed { color: var(--purple); }
+.status-renamed { color: var(--status-renamed); }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body, #app {
@@ -496,7 +502,7 @@ input::placeholder, textarea::placeholder { color: var(--fg2); opacity: 1; }
 
 /* 项目数据加载：顶部细进度条 + 轻模糊遮罩（无卡片，避免“像按钮”） */
 .loading-overlay {
-  position: fixed; inset: 0; z-index: 2500;
+  position: fixed; inset: 0; z-index: var(--z-overlay);
   display: flex; align-items: center; justify-content: center;
   background: color-mix(in srgb, var(--bg) 62%, transparent);
   backdrop-filter: blur(1.5px);
