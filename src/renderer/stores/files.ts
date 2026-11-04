@@ -112,16 +112,26 @@ export const useFilesStore = defineStore('files', () => {
     expandedDirs.value = new Set()
   }
 
+  /**
+   * 请求序号：连续切项目（A → B）时，A 的响应若比 B 晚到，会把 A 的树写到 B 的项目上
+   * （projectStore 已指向 B，界面却是 A 的文件）——而下一步就是“选中全部发出去”。
+   * git store 的 statusSeq / refsSeq / logSeq 早就有这个保护，文件树是唯一的缺口。
+   */
+  let treeSeq = 0
+
   async function loadFileTree(rootPath: string) {
+    const seq = ++treeSeq
     isLoading.value = true
     try {
+      const tree = await window.deployApi.getFileTree(rootPath)
+      if (seq !== treeSeq) return // 过期响应：丢弃，不动 state
       if (rootPath !== treeRoot.value) {
         treeRoot.value = rootPath
         clearExpandedDirs()
       }
-      fileTree.value = await window.deployApi.getFileTree(rootPath)
+      fileTree.value = tree
     } finally {
-      isLoading.value = false
+      if (seq === treeSeq) isLoading.value = false
     }
   }
 
