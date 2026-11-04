@@ -1506,6 +1506,93 @@ function buildWalker() {
         if (btn) btn.click()
         return 'ok'
       })()`
+    },
+    {
+      id: 'narrow-filetree',
+      role: 'project',
+      label: '窄窗 720×600：文件树不出现横向溢出',
+      viewport: { width: 720, height: 600 },
+      setup: `(async () => {
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms))
+        const ft = Array.from(document.querySelectorAll('.view-btn')).find(x => x.textContent.includes('文件树'))
+        if (!ft) return 'no-view-tab'
+        ft.click()
+        await sleep(700)
+        return 'ok'
+      })()`,
+      expect: [{ selector: '.view-switcher' }, { selector: '.status-bar' }],
+      assertScript: `(() => {
+        const problems = []
+        const vw = window.innerWidth
+        if (document.documentElement.scrollWidth > vw + 1) {
+          problems.push('页面出现横向滚动：scrollWidth=' + document.documentElement.scrollWidth + ' / 视口=' + vw)
+        }
+        const sample = ['.app-menu-bar', '.toolbar', '.view-switcher', '.view-header', '.status-bar']
+        for (const sel of sample) {
+          const el = document.querySelector(sel)
+          if (!el) { problems.push('缺少 ' + sel); continue }
+          const r = el.getBoundingClientRect()
+          if (r.right > vw + 1) problems.push(sel + ' 超出右边界（right=' + Math.round(r.right) + ' > ' + vw + '）')
+        }
+        const rows = Array.from(document.querySelectorAll('.tree-row, .ftn-row'))
+        const overflowing = rows.filter((r) => r.getBoundingClientRect().right > vw + 1)
+        if (overflowing.length) problems.push(overflowing.length + ' 行超出视口右缘')
+        return problems
+      })()`,
+      assertTarget: 'narrow-filetree'
+    },
+    {
+      id: 'narrow-deploy-confirm',
+      role: 'project',
+      label: '窄窗 600×480：上传确认弹窗完整可见',
+      viewport: { width: 600, height: 480 },
+      setup: `(async () => {
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms))
+        const waitFor = async (fn, ms) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { const v = fn(); if (v) return v; await sleep(200) } return null }
+        const sel = document.querySelector('.target-select')
+        if (!sel) return 'no-target-select'
+        const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set
+        const localOpt = Array.from(sel.options).find(o => /本地/.test(o.textContent || '') || /\\(LOCAL\\)/i.test(o.textContent || ''))
+        if (!localOpt) return 'no-local-target'
+        setter.call(sel, localOpt.value)
+        sel.dispatchEvent(new Event('change', { bubbles: true }))
+        await sleep(600)
+        const ft = Array.from(document.querySelectorAll('.view-btn')).find(x => x.textContent.includes('文件树'))
+        if (ft) ft.click()
+        await sleep(800)
+        const row = Array.from(document.querySelectorAll('.ftn-row')).find(r => (r.textContent || '').trim().startsWith('docs'))
+        if (!row) return 'no-docs-row'
+        const r0 = row.getBoundingClientRect()
+        row.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, clientX: r0.left + 30, clientY: r0.top + 8 }))
+        await sleep(300)
+        const btn = row.querySelector('.ftn-deploy-btn')
+        if (!btn) return 'no-row-deploy-btn'
+        btn.click()
+        return (await waitFor(() => document.querySelector('.base-dialog'), 10000)) ? 'ok' : 'no-dialog'
+      })()`,
+      expect: [{ selector: '.base-dialog' }],
+      assertScript: `(() => {
+        const problems = []
+        const vw = window.innerWidth
+        const vh = window.innerHeight
+        const dlg = document.querySelector('.base-dialog')
+        if (!dlg) return ['弹窗不存在']
+        const r = dlg.getBoundingClientRect()
+        if (r.width > vw + 1) problems.push('弹窗宽 ' + Math.round(r.width) + ' 超出视口 ' + vw)
+        if (r.height > vh + 1) problems.push('弹窗高 ' + Math.round(r.height) + ' 超出视口 ' + vh)
+        if (r.right > vw + 1 || r.left < -1) problems.push('弹窗水平越界')
+        const primary = Array.from(dlg.querySelectorAll('.base-dialog-footer button')).find((b) => /上传/.test(b.textContent || ''))
+        if (!primary) problems.push('找不到主操作按钮')
+        else {
+          const pb = primary.getBoundingClientRect()
+          if (pb.bottom > vh + 1) problems.push('主操作按钮被挤出视口底部')
+          if (pb.width < 20 || pb.height < 20) problems.push('主操作按钮过小：' + Math.round(pb.width) + '×' + Math.round(pb.height))
+        }
+        if (document.documentElement.scrollWidth > vw + 1) problems.push('弹窗打开时页面出现横向滚动')
+        return problems
+      })()`,
+      assertTarget: 'narrow-deploy-confirm',
+      teardown: `(async () => { const c = document.querySelector('.base-dialog-close'); if (c) c.click(); await new Promise(r=>setTimeout(r,500)); return 'ok' })()`
     }
   ]
 }
@@ -1533,6 +1620,19 @@ async function runTheme(theme, fixture) {
         }
         // 置前：后台窗口的定时器会被 Chromium 强化节流（最长 1 分钟一次），会让 setTimeout 轮询严重变慢
         await setupPage.bringToFront()
+        // 步骤可临时改视口（窄窗/响应式）：设置后步骤在窄视口里跑，结束再清掉
+        if (step.viewport) {
+          try {
+            await setupPage.send('Emulation.setDeviceMetricsOverride', {
+              width: step.viewport.width,
+              height: step.viewport.height,
+              deviceScaleFactor: 1,
+              mobile: false
+            })
+          } catch (e) {
+            results.push({ step, severity: 'Major', rule: 'harness/step-setup', message: '视口覆盖失败：' + String(e && e.message).slice(0, 80), target: 'viewport' })
+          }
+        }
         let setupResult = 'no-setup'
         if (step.setup) setupResult = await setupPage.evaluate(step.setup)
         // setup 明确报错（返回 no-xxx / error）→ 说明该步骤没走到预期状态，必须可见
@@ -1653,6 +1753,10 @@ async function runTheme(theme, fixture) {
         : ''
       results.push({ step, severity: 'Major', rule: 'harness/step-failed', message: (raw + hint).slice(0, 260), target: '-' })
       } finally {
+        // 视觉覆盖必须还原，否则后续步骤（含截图）会留在窄视口里
+        if (page && step.viewport) {
+          try { await page.send('Emulation.clearDeviceMetricsOverride') } catch { /* 页面已关就忽略 */ }
+        }
         if (page) page.close()
       }
     }
