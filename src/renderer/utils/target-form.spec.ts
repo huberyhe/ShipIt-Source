@@ -5,7 +5,7 @@
  * 提示文案去重、测试结果回退文案。
  */
 import { describe, expect, it } from 'vitest'
-import { invalidFrom, missingFields, postUploadFields, testResultHint, validationMessage, type TargetFormInput } from './target-form'
+import { copyNameOf, duplicateNameOf, invalidFrom, missingFields, postUploadFields, testResultHint, validationMessage, type TargetFormInput } from './target-form'
 
 const base = (over: Partial<TargetFormInput> = {}): TargetFormInput => ({
   name: 'dev',
@@ -119,5 +119,23 @@ describe('上传后执行：切到「不执行」不丢内容（postUploadFields
     const out = postUploadFields(base({ postUploadKind: 'script', postUploadScript: '  scripts/a.sh  ' }), null, { kind: 'command', value: 'x' })
     expect(out.postUpload).toEqual({ kind: 'script', value: 'scripts/a.sh' })
     expect(out.postUploadStash).toBeNull()
+  })
+})
+
+describe('目标名唯一性与复制命名', () => {
+  it('重名能被识别（忽略自身 id，空白也算相同）', () => {
+    const others = [{ id: 'a', name: '生产' }, { id: 'b', name: '测试' }]
+    expect(duplicateNameOf('生产', others)).toBe('生产')
+    expect(duplicateNameOf('  生产  ', others)).toBe('生产')
+    expect(duplicateNameOf('生产', others, 'a')).toBeNull()   // 编辑自身不算冲突
+    expect(duplicateNameOf('预发', others)).toBeNull()
+    expect(duplicateNameOf('   ', others)).toBeNull()
+  })
+
+  it('复制命名自动避开重名：副本 → 副本 2 → 副本 3', () => {
+    expect(copyNameOf('生产', ['生产'])).toBe('生产 副本')
+    expect(copyNameOf('生产', ['生产', '生产 副本'])).toBe('生产 副本 2')
+    expect(copyNameOf('生产', ['生产', '生产 副本', '生产 副本 2'])).toBe('生产 副本 3')
+    expect(copyNameOf('  ', [])).toBe('未命名 副本')
   })
 })

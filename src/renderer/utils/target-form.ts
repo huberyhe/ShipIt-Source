@@ -65,6 +65,36 @@ export function validationMessage(missing: MissingField[]): string | null {
 export type PostUploadValue = { kind: 'script' | 'command'; value: string }
 
 /**
+ * 目标名必须唯一（人靠名字区分环境，重名会直接导致“发错服务器”）。
+ * 返回与之冲突的已有名称；无冲突/空名返回 null。`selfId` 用于编辑时忽略自身。
+ */
+export function duplicateNameOf(
+  name: string,
+  others: Array<{ id?: string; name: string }>,
+  selfId?: string | null
+): string | null {
+  const trimmed = name.trim()
+  if (!trimmed) return null
+  const hit = others.find((t) => (!selfId || t.id !== selfId) && t.name.trim() === trimmed)
+  return hit ? hit.name.trim() : null
+}
+
+/**
+ * 复制目标时的默认名：`原名 副本`；已被占用则递增 `副本 2/3…`，保证开箱即唯一。
+ */
+export function copyNameOf(base: string, existing: string[]): string {
+  const name = base.trim() || '未命名'
+  const taken = new Set(existing.map((n) => n.trim()))
+  let candidate = `${name} 副本`
+  let index = 2
+  while (taken.has(candidate)) {
+    candidate = `${name} 副本 ${index}`
+    index += 1
+  }
+  return candidate
+}
+
+/**
  * 表单 → 「上传后执行」三个字段（`postUpload` / `postUploadStash` / 旧字段）。
  *
  * 关键约定：选「不执行」时**不能丢掉已经填过的脚本/命令**——

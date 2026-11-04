@@ -2,7 +2,7 @@
 import { toastError, toastSuccess } from '../../utils/toast'
 import { computed, ref, watch, onMounted } from 'vue'
 import { reportError } from '../../utils/report-error'
-import { invalidFrom, missingFields, postUploadFields, testResultHint, validationMessage } from '../../utils/target-form'
+import { copyNameOf, duplicateNameOf, invalidFrom, missingFields, postUploadFields, testResultHint, validationMessage } from '../../utils/target-form'
 import { Plus, Trash2, Radio, Check, X } from 'lucide-vue-next'
 import { useDeployStore } from '../../stores/deploy'
 import MappingEditor from './MappingEditor.vue'
@@ -186,9 +186,31 @@ function clearAllHints(): void {
 function applyValidation(): boolean {
   const missing = missingFields(editingForm.value)
   invalid.value = invalidFrom(missing)
-  const message = validationMessage(missing)
-  hint.value = message ? { tone: 'error', text: message, title: message } : null
-  return missing.length === 0
+  if (missing.length > 0) {
+    const message = validationMessage(missing)
+    hint.value = message ? { tone: 'error', text: message, title: message } : null
+    return false
+  }
+  // 名称唯一性：人靠名字区分环境，重名会导致“发到错的那台”
+  const duplicate = duplicateNameOf(editingForm.value.name, draftTargets.value, editingId.value)
+  if (duplicate) {
+    invalid.value.name = true
+    const text = `名称「${duplicate}」已被其他目标使用，请换一个`
+    hint.value = { tone: 'error', text, title: text }
+    return false
+  }
+  hint.value = null
+  return true
+}
+
+/** 复制目标：名称自动避开重名，副本仍走「待保存」流程（保存前可整体回滚） */
+function duplicateTarget(target: any): void {
+  const copy = JSON.parse(JSON.stringify(target))
+  copy.id = `draft-${Date.now().toString(36)}`
+  copy.name = copyNameOf(target.name, draftTargets.value.map((t: any) => t.name))
+  draftTargets.value.push(copy)
+  draftDirty.value = true
+  toastSuccess(`已复制为「${copy.name}」（点页面底部「保存」后生效）`)
 }
 
 /**
@@ -248,6 +270,13 @@ async function saveTarget(): Promise<boolean> {
  */
 async function persistDraft(): Promise<boolean> {
   try {
+    // 落盘前再守一次：副本可能被改成重名，重名会让人认错环境（发错服务器）
+    const names = draftTargets.value.map((t: any) => String(t.name || '').trim())
+    const dupIndex = names.findIndex((n, i) => n && names.indexOf(n) !== i)
+    if (dupIndex >= 0) {
+      toastError(`名称「${names[dupIndex]}」重复，请先改名后再保存`)
+      return false
+    }
     const persisted = deployStore.targets as any[]
     const draftIds = new Set(draftTargets.value.map((t) => t.id))
     for (const old of persisted) {
@@ -436,6 +465,7 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
             <BaseButton class="icon-btn" variant="secondary" size="sm" title="测试连接" :disabled="testingId === target.id" @click="testConnection(target)">
               <Radio :size="14" /> <span>{{ testingId === target.id ? '测试中' : '测试连接' }}</span>
             </BaseButton>
+            <BaseButton class="icon-btn" variant="secondary" size="sm" title="复制一份（名称自动避开重名）" @click="duplicateTarget(target)">⧉ 复制</BaseButton>
             <BaseButton class="icon-btn" variant="secondary" size="sm" title="编辑" @click="startEdit(target)">✎ 编辑</BaseButton>
             <BaseButton class="icon-btn danger" variant="danger-ghost" size="sm" title="删除" :aria-label="'删除目标 ' + target.name" @click="askDelete(target)"><Trash2 :size="14" /></BaseButton>
           </div>

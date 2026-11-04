@@ -75,6 +75,7 @@ npm run gen:icon       # 换图标后重新生成 build/icon.ico
 - **跨进程共享模块（`shared/`）绝不能用 Node 全局**：渲染层没有 `process`（contextIsolation）。曾因 `platform = process.platform` 默认参数导致设置页「点确定毫无反应、未保存提示不消失」——报错被 `confirm()` 的 finally 吞掉，只表现为"没反应"。必须用 `typeof process` 守卫（`shared/allowed-roots.ts` 是范本），并有 `shared/cross-process.guard.spec.ts` 静态守卫
 - **提示不要用"插入式"元素**：`<p>`/确认条插入会顶下内容造成抖动；表头用**固定高度**（`height: 44px`），状态提示用 **toast** 或表头内的 chip（右上方）
 - **文档入库边界**：`.project/`（详细设计权威、PRD、规格）被项目 `.gitignore` 忽略、不入库；入库版本是根级 `DESIGN.md` / `PRODUCT.md`。改设计系统时两份都要同步（本地详细版 + 入库机器可读版）。`.impeccable/` 由全局 gitignore 忽略，不需要再处理
+- **上传目标名必须唯一**：人靠名字区分环境，重名 = 发错服务器。校验用 `target-form.ts` 的 `duplicateNameOf()`（编辑时忽略自身），复制用 `copyNameOf()` 自动避重名（`原名 副本` → `副本 2`…）；`persistDraft` 落盘前再守一次，防止副本被改成重名
 - **「不执行」不是忘掉配置**：目标上 `postUpload: null` 表示本次不执行，但已填的脚本/命令必须存进 `postUploadStash`（永不执行，仅供下次编辑回填）；纯逻辑在 `utils/target-form.ts` 的 `postUploadFields()`，不要把它搬回组件里重写一遍
 - **设置页保存语义**：页脚 `保存` = 落盘并**关闭页面**（保存未成功/服务起不来则保持打开并 toast 说明）；`取消` = **两段式**（有未保存改动时按钮先变成「确认放弃」，再点一次才丢弃并关闭）；目标编辑弹窗的 `取消` 同样两段式，`Esc/✕` 保持一步关闭。**两个分区用 `v-show` 常驻**（不卸载）：切分区不得丢失草稿或脏标；关窗时按分区逐个提交所有脏分区，任一失败就保持打开
 - **`keep_stdin_open` 与本项目无关**
