@@ -105,6 +105,14 @@ function requestExit() {
  * 「不执行」时仍记住上一份脚本/命令（详见 `DeployTarget.postUploadStash`）。
  * 只在内存里跟踪本次编辑的最新值；写入配置由 saveTarget 负责。
  */
+/** 弹窗语义：新增 / 编辑 / 从现有目标复制（复制也走“新增”但标题要不同） */
+const editingMode = ref<'create' | 'edit' | 'copy'>('create')
+const dialogTitle = computed(() => {
+  if (editingMode.value === 'edit') return '编辑目标'
+  if (editingMode.value === 'copy') return '复制目标'
+  return '新增目标'
+})
+
 const lastActivePostUpload = ref<{ kind: 'script' | 'command'; value: string } | null>(null)
 /** 本次编辑开始时目标身上已有的 stash（用来在用户没动过时原样写回） */
 const originalStash = ref<{ kind: 'script' | 'command'; value: string } | null>(null)
@@ -118,6 +126,7 @@ watch(
 )
 
 function startAdd() {
+  editingMode.value = 'create'
   editingId.value = null
   resetFormFeedback()
   lastActivePostUpload.value = null
@@ -132,6 +141,7 @@ function startAdd() {
 }
 
 function startEdit(target: any) {
+  editingMode.value = 'edit'
   editingId.value = target.id
   resetFormFeedback()
   // 不执行状态下，把上次的脚本/命令回填到对应输入框（切回对应方式时内容还在）
@@ -210,6 +220,7 @@ function applyValidation(): boolean {
  */
 function copyTarget(target: any): void {
   startEdit(target)                    // 复用字段映射（含上传后执行 / stash / 映射列表）
+  editingMode.value = 'copy'           // 标题叫「复制目标」，但保存语义同新增
   editingId.value = null               // 当成「新增」：保存时不会覆盖源目标
   editingForm.value.name = copyNameOf(target.name, draftTargets.value.map((t: any) => t.name))
   baseline.value = currentSnapshot()   // 预填后不应一开始就是“未保存”
@@ -484,7 +495,7 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
          不叫「确定」：那会让人以为已经写入配置了。Enter 同样只做暂存（输入框内不触发）。 -->
     <BaseDialog
       v-else
-      :title="editingId ? '编辑目标' : '新增目标'"
+      :title="dialogTitle"
       width="680px"
       :close-on-overlay="false"
       confirm-on-enter

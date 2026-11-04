@@ -1106,7 +1106,7 @@ function buildWalker() {
         const dlg = document.querySelector('.base-dialog')
         if (!dlg) return ['复制后没有打开弹窗']
         const text = dlg.textContent || ''
-        if (!/新增目标/.test(text)) problems.push('标题不是「新增目标」（实际片段：' + text.slice(0, 40) + '）')
+        if (!/复制目标/.test(text)) problems.push('标题不是「复制目标」（实际片段：' + text.slice(0, 40) + '）')
         const name = dlg.querySelector('#tgt-name')
         if (!name) problems.push('弹窗里没有名称输入框')
         else if (!/副本/.test(name.value)) problems.push('名称未预填副本名（实际：' + name.value + '）')
