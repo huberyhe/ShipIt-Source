@@ -794,8 +794,17 @@ function buildWalker() {
         if (!document.querySelectorAll('.ftn-row').length) return 'no-rows-before-refresh'
         // 真的按 F5（视图监听 refresh-view，重建节点后再从 store 恢复展开态）
         window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F5', bubbles: true }))
-        await sleep(1800)
-        return 'ok'
+        // 等重刷完成：直接轮询“src 行回来且仍已展开”，避免固定 sleep 在慢机/冷启动时不够
+        const ready = await (async () => {
+          const t0 = Date.now()
+          while (Date.now() - t0 < 12000) {
+            const row = Array.from(document.querySelectorAll('.ftn-row')).find(r => (r.textContent || '').trim().startsWith('src'))
+            if (row) return true
+            await sleep(250)
+          }
+          return false
+        })()
+        return ready ? 'ok' : 'no-src-after-refresh'
       })()`,
       assertScript: `(() => {
         const problems = []

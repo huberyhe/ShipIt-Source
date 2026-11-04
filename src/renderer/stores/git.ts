@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { reportError, warnOnly } from '../utils/report-error'
 import { ref } from 'vue'
-import type { GitBranchInfo, GitChangeInfo, GitCommitInfo } from '../../shared/types'
+import type { GitBranchInfo, GitChangeInfo, GitCommitInfo, GitRepoStatus } from '../../shared/types'
 
 /** 文件差异的读取结果：失败是**一个状态**，不是一个空字符串 */
 export type FileDiffResult =
@@ -12,6 +12,12 @@ export const useGitStore = defineStore('git', () => {
   const hasGit = ref(false)
   const branch = ref<string | undefined>()
   const changes = ref<GitChangeInfo[]>([])
+  /** 按仓库分组的明细（多根项目：项目下可能并列多个 git 仓库） */
+  const repos = ref<GitRepoStatus[]>([])
+  /** 项目内仓库数超过上限、多余仓库没有展示（主进程标记，界面必须让用户看见） */
+  const reposTruncated = ref(false)
+/** 仓库扫描的目录预算耗尽：可能还有更深的仓库未被发现 */
+const reposScanTruncated = ref(false)
   const ahead = ref(0)
   const behind = ref(0)
   const commits = ref<GitCommitInfo[]>([])
@@ -89,7 +95,12 @@ export const useGitStore = defineStore('git', () => {
       const has = await window.deployApi.checkGitRepo(dir)
       if (seq !== statusSeq) return
       hasGit.value = has
-      if (!has) return
+      if (!has) {
+        repos.value = []
+        reposTruncated.value = false
+  reposScanTruncated.value = false
+        return
+      }
 
       const [statusView] = await Promise.all([
         window.deployApi.getGitStatus(dir),
@@ -101,6 +112,9 @@ export const useGitStore = defineStore('git', () => {
       changes.value = statusView.changes
       ahead.value = statusView.ahead
       behind.value = statusView.behind
+      repos.value = Array.isArray(statusView.repos) ? statusView.repos : []
+      reposTruncated.value = statusView.truncated === true
+  reposScanTruncated.value = statusView.scanTruncated === true
     } catch (error) {
       reportError('加载 Git 状态失败', error)
     } finally {
@@ -170,6 +184,9 @@ export const useGitStore = defineStore('git', () => {
     hasGit,
     branch,
     changes,
+    repos,
+    reposTruncated,
+  reposScanTruncated,
     ahead,
     behind,
     commits,

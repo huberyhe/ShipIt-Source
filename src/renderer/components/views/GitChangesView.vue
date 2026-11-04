@@ -279,14 +279,23 @@ onUnmounted(() => {
   window.removeEventListener('refresh-view', onRefreshView)
 })
 
-function buildChangeTree(changes: Array<{ relativePath: string; status: string }>): ChangeTreeNode[] {
+/**
+ * 变更列表 → 目录树。
+ *
+ * `prefix` 用于**仓库分组**：按「仓库内相对路径」分层（否则仓库行下面会又出现一层同名目录），
+ * 但节点 `path` 仍是**项目相对**全路径 —— 上传链路靠它拼绝对路径，不能改成仓库相对。
+ */
+function buildChangeTree(changes: Array<{ relativePath: string; status: string }>, prefix = ''): ChangeTreeNode[] {
   const root: ChangeTreeNode[] = []
   const dirMap = new Map<string, ChangeTreeNode>()
+  const head = prefix === '' ? '' : `${prefix}/`
 
   const sorted = [...changes].sort((a, b) => a.relativePath.localeCompare(b.relativePath))
 
   for (const change of sorted) {
-    const parts = change.relativePath.replace(/\\/g, '/').split('/')
+    const full = change.relativePath.replace(/\\/g, '/')
+    const sub = head && full.startsWith(head) ? full.slice(head.length) : full
+    const parts = sub.split('/')
     let currentLevel = root
     let currentPath = ''
 
@@ -298,7 +307,7 @@ function buildChangeTree(changes: Array<{ relativePath: string; status: string }
       if (isLast) {
         currentLevel.push({
           name: part,
-          path: change.relativePath,
+          path: full,
           isDirectory: false,
           children: [],
           change: {
@@ -343,6 +352,93 @@ function buildChangeTree(changes: Array<{ relativePath: string; status: string }
 
 const changeTree = computed(() => buildChangeTree(gitStore.changes))
 
+/** 仓库在项目里的相对目录（`/` 归一；根仓库为 ''） */
+function repoRelDir(repoPath: string): string {
+  const root = (projectStore.projectPath || '').replace(/\\/g, '/').replace(/\/+$/, '')
+  const repo = repoPath.replace(/\\/g, '/').replace(/\/+$/, '')
+  if (!root || repo === root) return ''
+  if (!repo.startsWith(`${root}/`)) return repo
+  return repo.slice(root.length + 1)
+}
+
+/**
+ * 仓库节点的 key：「项目相对目录 + `/`」，根仓库用 `/`。
+ *
+ * 不能直接用目录路径：仓库内的节点也是 `目录/...`，仓库节点会与它自己的第一个目录层撞 key
+ * （选区、展开态、nodeIndex 都会串）。而 `目录/` 这个形态（末尾带斜杠）不会出现在文件路径里；
+ * 空串已被「项目目录」根节点占用。目录节点不会被上传，key 只需唯一且稳定。
+ */
+function repoNodeKey(repoPath: string): string {
+  const rel = repoRelDir(repoPath)
+  return rel === '' ? '/' : `${rel}/`
+}
+
+/**
+ * 什么时候多一层仓库：多个仓库，或唯一仓库不是项目根。
+ * 只有一个仓库且它就是项目根时不显示仓库层（保持原有观感，不制造噪音）；
+ * 例外：某个仓库读取失败时也要开（否则单仓库读失败会静默显示成「工作区干净」，
+ * 用户会以为这个仓库没有变更）。
+ */
+const showRepoLayer = computed(
+  () =>
+    gitStore.repos.length > 1 ||
+    gitStore.repos.some((repo) => repoRelDir(repo.repoPath) !== '' || !!repo.error)
+)
+
+const repoGroups = computed(() =>
+  gitStore.repos.map((repo) => {
+    const rel = repoRelDir(repo.repoPath)
+    // 按「仓库内相对路径」分层；节点 path 仍由 buildChangeTree 写成项目相对全路径
+    return { repo, key: repoNodeKey(repo.repoPath), nodes: buildChangeTree(repo.changes, rel) }
+  })
+)
+
+/** 仓库节点 → 分支 / 错误 / 文件数（展示用元数据，不往树结构里塞 UI 字段） */
+const repoMeta = computed(() => {
+  const map: Record<string, { branch?: string; error?: string; fileCount: number }> = {}
+  for (const group of repoGroups.value) {
+    map[group.key] = {
+      branch: group.repo.branch,
+      error: group.repo.error,
+      fileCount: group.repo.changes.length
+    }
+  }
+  return map
+})
+
+/**
+ * 仓库层默认展开：只对**首次出现**的仓库自动展开，用户手动收起的不会被下一次轮询又弹开。
+ * （仓库节点的展开态与目录共用 `expandedDirs`，不另开一份状态）
+ */
+const knownRepoKeys = new Set<string>()
+watch(
+  () => repoGroups.value.map((group) => group.key),
+  (keys) => {
+    const fresh = keys.filter((key) => !knownRepoKeys.has(key))
+    if (fresh.length === 0) return
+    fresh.forEach((key) => knownRepoKeys.add(key))
+    expandedDirs.value = new Set([...expandedDirs.value, ...fresh])
+  },
+  { immediate: true }
+)
+
+/** 树的真正顶层：开启仓库层时是仓库节点，否则直接是变更树 */
+const displayNodes = computed<ChangeTreeNode[]>(() => {
+  if (!showRepoLayer.value) return changeTree.value
+  return (
+    repoGroups.value
+      // 没有变更也没有错误的仓库不占行（只列有变化的仓库）
+      .filter((group) => group.nodes.length > 0 || !!group.repo.error)
+      .map((group) => ({
+        name: group.repo.repoName,
+        path: group.key,
+        isDirectory: true,
+        children: group.nodes,
+        change: null
+      }))
+  )
+})
+
 /**
  * 顶级「项目目录」节点：把变更树整体挂到项目根下，
  * 这样可以直接对项目根点「快速上传」= 一次性上传本次全部变更（映射规则仍然生效）。
@@ -350,11 +446,11 @@ const changeTree = computed(() => buildChangeTree(gitStore.changes))
  */
 const projectRootNode = computed<ChangeTreeNode | null>(() => {
   const root = projectStore.projectPath
-  if (!root || changeTree.value.length === 0) return null
+  if (!root || displayNodes.value.length === 0) return null
   const normalized = root.replace(/\\/g, '/').replace(/\/+$/, '')
   const name = normalized.split('/').pop() || normalized
   // 项目根自身不是"变更项"，change 置空（不显示状态徽标）
-  return { isDirectory: true, path: '', name, children: changeTree.value, change: null }
+  return { isDirectory: true, path: '', name, children: displayNodes.value, change: null }
 })
 
 function collectAllDirPaths(nodes: ChangeTreeNode[]): string[] {
@@ -384,7 +480,7 @@ onUnmounted(() => {
 })
 
 function expandAll() {
-  expandedDirs.value = new Set(['', ...collectAllDirPaths(changeTree.value)])
+  expandedDirs.value = new Set(['', ...collectAllDirPaths(displayNodes.value)])
 }
 
 function toggleDir(dirPath: string) {
@@ -497,6 +593,9 @@ const selectionText = computed(() => {
   <div ref="zoneEl" class="changes-view" data-focus-zone tabindex="0" @keydown="onContentKeydown" @focusin="onContentFocus">
     <ViewHeader :title="`Git 未提交的变更 (${gitStore.changes.length})`">
       <template #meta>
+        <!-- 仓库过多时不能静默少列：给出固定文案的提示（不插行，不引发布局跳动） -->
+        <span v-if="gitStore.reposTruncated" class="truncated-hint" title="项目内仓库数量超过上限，只展示了前几个；请直接打开对应子仓库">仓库数超出上限，仅显示部分</span>
+        <span v-else-if="gitStore.reposScanTruncated" class="truncated-hint" title="目录过多，仓库扫描已提前结束；可能有更深的仓库未显示">仓库扫描未完成</span>
         <!-- 选区规模占"剩余宽度"并右对齐：出现/消失不推动左侧标题与右侧按钮（防抖动） -->
         <span class="selection-meta" :title="selectionText ? 'Ctrl+X / 右键「快速上传」上传的是这些选中项' : ''">{{ selectionText }}</span>
       </template>
@@ -514,7 +613,7 @@ const selectionText = computed(() => {
     </ViewHeader>
 
     <div class="changes-list">
-      <EmptyState v-if="changeTree.length === 0" text="工作区干净，没有未提交的变更" size="page" />
+      <EmptyState v-if="displayNodes.length === 0" text="工作区干净，没有未提交的变更" size="page" />
       <!-- role="tree"：容器单一 Tab 停靠点模型不变（行仍 tabindex=-1）；空态放在树外 -->
       <div v-else-if="projectRootNode" role="tree" aria-label="Git 未提交的变更" aria-multiselectable="true">
         <GitChangeTreeNode
@@ -523,6 +622,7 @@ const selectionText = computed(() => {
           :expanded-dirs="expandedDirs"
           :busy-path="deployingPath"
           :selected-paths="selectedPaths"
+          :repo-meta="repoMeta"
           @select="onSelectNode"
           @toggle-dir="toggleDir"
           @deploy-file="handleDeployFile"
@@ -569,6 +669,13 @@ const selectionText = computed(() => {
 .header-actions { display: flex; align-items: center; gap: 4px; margin-left: auto; }
 /* 尺寸/悬浮由 IconButton 提供；.icon-btn 仅作钩子 */
 .refresh-btn { display: flex; align-items: center; gap: 4px; }
+.truncated-hint {
+  flex-shrink: 0;
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--yellow-text);
+  white-space: nowrap;
+}
 .selection-meta {
   flex: 1;
   min-width: 0;

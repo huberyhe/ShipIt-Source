@@ -1,12 +1,74 @@
 import simpleGit, { SimpleGit, StatusResult } from 'simple-git'
 import type { GitCommitFile } from '../../shared/types'
-import { join } from 'path'
+import { promises as fsp, type Dirent } from 'fs'
+import { basename, join } from 'path'
 import { toSlashes } from '../../shared/paths'
 import { isSafeGitRev } from '../../shared/git-rev'
-import type { GitChangeInfo, GitCommitInfo, GitStatusView, GitBranchInfo } from '../../shared/types'
+import type { GitChangeInfo, GitCommitInfo, GitStatusView, GitBranchInfo, GitRepoStatus } from '../../shared/types'
+import { IGNORE_DIRS } from './ignore-dirs'
 import { parseBranches } from './branch-parse'
 
-export type { GitChangeInfo, GitCommitInfo, GitStatusView, GitBranchInfo }
+export type { GitChangeInfo, GitCommitInfo, GitStatusView, GitBranchInfo, GitRepoStatus }
+
+/**
+ * 仓库发现时额外跳过的目录：**复用**浏览用的 `IGNORE_DIRS`（node_modules / dist / vendor /
+ * .next / build / .idea …），这里只补它没有收录的两个本仓构建产物。
+ * 不要另写一份完整清单 —— 两份清单必然会漂移。
+ */
+const REPO_SCAN_SKIP = new Set([...IGNORE_DIRS, 'dist-electron', 'release'])
+
+/** 单个项目最多展示多少个仓库（超出记 `truncated: true`，不静默丢弃） */
+const MAX_REPOS_PER_PROJECT = 12
+/**
+ * 仓库探测的**目录访问预算**（不是深度上限）。
+ *
+ * 真实项目会把仓库埋得很深（例：`manage/console/controllers/temp`，深度 4），
+ * IDEA 的多根列表里它同样是一个根。固定深度会让这类仓库彻底不可见，
+ * 而无限递归又会在大目录树上失控 —— 因此用“最多看多少个目录”来限流，
+ * 超出时在返回值里报告 `scanTruncated`，而不是静默当没有。
+ */
+const REPO_SCAN_MAX_DIRS = 2000
+/** 同时读取状态的仓库上限：每个仓库都要起 git 进程，全并行会拖慢整个视图 */
+const REPO_STATUS_CONCURRENCY = 4
+
+export interface GitServiceOptions {
+  /** 仓库数量上限（默认 12；测试用它验证 truncated） */
+  maxRepos?: number
+  /** 仓库探测的目录访问预算（默认 2000；测试用它验证 scanTruncated） */
+  maxScanDirs?: number
+}
+
+/** 单个仓库的读取结果：ahead/behind 只有根仓库对外暴露，先在这里带出来 */
+interface RepoReadResult {
+  repo: GitRepoStatus
+  ahead: number
+  behind: number
+}
+
+/** 有界并发执行（结果顺序与入参一致） */
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  mapper: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  const results: R[] = new Array(items.length)
+  let cursor = 0
+  const worker = async (): Promise<void> => {
+    while (cursor < items.length) {
+      const index = cursor++
+      results[index] = await mapper(items[index], index)
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()))
+  return results
+}
+
+/** `inner` 是否在 `outer` 目录下（按路径段比较，`a` 不匹配 `ab`；`''` = 项目根） */
+function isUnder(inner: string, outer: string): boolean {
+  if (inner === outer) return false
+  if (outer === '') return inner !== ''
+  return inner.startsWith(`${outer}/`)
+}
 
 /**
  * git 不可用（未安装 / dubious ownership / 超时等），**区别于"目录不是仓库"**。
@@ -26,6 +88,8 @@ const GIT_CACHE_LIMIT = 32
 
 export class GitService {
   private gitCache: Map<string, SimpleGit> = new Map()
+
+  constructor(private readonly options: GitServiceOptions = {}) {}
 
   private getGit(dir: string, secondary = false): SimpleGit {
     const key = secondary ? `${dir}\u0000secondary` : dir
@@ -68,6 +132,18 @@ export class GitService {
     }
   }
 
+  /**
+   * 项目里是否有仓库（项目根本身，或深度 ≤ 2 的子目录带了 `.git`）。
+   *
+   * 与 `isGitRepo` 的分工：后者只回答「这个目录是不是仓库」（CLI 判定 `NOT_A_REPO` 的口径，不能放宽）；
+   * 多根项目里**项目根本身可以不是仓库**（如 `项目/前端`、`项目/后端` 各自一个），
+   * 渲染层要用这个更宽的判定才能把 Git 视图打开。git 不可用时仍如实上抛。
+   */
+  async hasAnyRepository(dir: string): Promise<boolean> {
+    if (await this.isGitRepo(dir)) return true
+    return (await this.findSubRepos(dir)).repos.length > 0
+  }
+
   async getBranches(dir: string): Promise<GitBranchInfo[]> {
     try {
       const git = this.getGit(dir)
@@ -100,38 +176,174 @@ export class GitService {
     }
   }
 
+  /**
+   * 项目 → 若干仓库：一个项目目录下可能并列多个 git 仓库（如 `项目/前端`、`项目/后端`），
+   * 此前只看项目根那一个，子仓库的变更完全不可见（IDEA 的多根项目观感）。
+   *
+   * 返回的旧字段（`hasGit` / `branch` / `changes` / `ahead` / `behind`）语义不变：
+   * - `changes` = 所有仓库变更的并集（去重）——CLI/MCP 与上传链路依赖它；
+   * - `branch` = 根仓库（项目根自己就是仓库时）的分支；
+   * - `hasGit` = 至少发现一个仓库。
+   */
   async getStatusView(dir: string): Promise<GitStatusView> {
+    // 根仓库仍用 rev-parse 判定（不能用 `<dir>/.git`）：项目根常常是仓库的子目录，
+    // 只认 `.git` 存在会把这种情况误判成「不是仓库」。
+    let rootIsRepo = false
+    try {
+      rootIsRepo = await this.isGitRepo(dir)
+    } catch {
+      // git 本身不可用（未安装 / dubious ownership / 超时）：与改动前一致，报「没有可用的 git」，
+      // 不能落成「发现了仓库但全都读失败」（那会把环境问题说成仓库问题）。
+      return { hasGit: false, changes: [], ahead: 0, behind: 0 }
+    }
+
+    const { repos: subRepos, scanTruncated } = await this.findSubRepos(dir)
+    const candidates = rootIsRepo ? [dir, ...subRepos] : subRepos
+    const maxRepos = this.options.maxRepos ?? MAX_REPOS_PER_PROJECT
+    const truncated = candidates.length > maxRepos
+    // 根仓库排在首位（展示时它就是「项目本身」），其余按路径字典序（findSubRepos 已排序），
+    // 保证截断时分到哪些仓库是稳定的、可预期的。
+    const picked = candidates.slice(0, maxRepos)
+
+    // 每个仓库的「项目相对目录」：根仓库为 ''（它覆盖整个项目），内层仓库为项目下的相对路径。
+    const relPrefixes = picked.map((repoPath) => this.relativeToProject(dir, repoPath))
+    // 去重规则：内层仓库的文件不得同时算进外层仓库。git 对外层只会给出一个未跟踪目录条目
+    // （如 `前端/`），若不过滤，同一个文件会在两个仓库下各出现一次。
+    const innerDirs = relPrefixes.map((self) => relPrefixes.filter((other) => isUnder(other, self)))
+
+    const results = await mapWithConcurrency(picked, REPO_STATUS_CONCURRENCY, (repoPath, index) =>
+      this.readRepoStatus(repoPath, relPrefixes[index], innerDirs[index])
+    )
+
+    const rootResult = results.find((result) => result.repo.repoPath === dir)
+    const changes: GitChangeInfo[] = []
+    const seen = new Set<string>()
+    for (const result of results) {
+      for (const change of result.repo.changes) {
+        if (seen.has(change.relativePath)) continue
+        seen.add(change.relativePath)
+        changes.push(change)
+      }
+    }
+
+    return {
+      hasGit: results.length > 0,
+      branch: rootResult?.repo.branch,
+      changes,
+      ahead: rootResult?.ahead ?? 0,
+      behind: rootResult?.behind ?? 0,
+      repos: results.map((result) => result.repo),
+      ...(truncated ? { truncated: true } : {}),
+      ...(scanTruncated ? { scanTruncated: true } : {})
+    }
+  }
+
+  /**
+   * 扫描 `dir` 下的所有子仓库（不设固定深度，按**目录访问预算**限流）。
+   *
+   * 为什么不用固定深度：真实项目的仓库会埋得很深
+   * （如 `manage/console/controllers/temp`），固定 2 层会让它们彻底隐形，
+   * 与 IDEA 的多根列表对不上。
+   *
+   * 成本控制：每层只做**一次 readdir**（`.git` 直接作为目录项就看到了，不再逐个 stat），
+   * 跳过 `REPO_SCAN_SKIP`（复用 `IGNORE_DIRS`）、点目录与符号链接；
+   * 预算耗尽时置 `scanTruncated`，由调用方告知用户“没扫完”而不是当作“没仓库”。
+   */
+  private async findSubRepos(dir: string): Promise<{ repos: string[]; scanTruncated: boolean }> {
+    const found: string[] = []
+    const budget = this.options.maxScanDirs ?? REPO_SCAN_MAX_DIRS
+    let visited = 0
+    let scanTruncated = false
+
+    const walk = async (current: string, isRoot: boolean): Promise<void> => {
+      if (scanTruncated) return
+      if (visited >= budget) {
+        scanTruncated = true
+        return
+      }
+      visited++
+      let entries: Dirent[]
+      try {
+        entries = await fsp.readdir(current, { withFileTypes: true })
+      } catch {
+        return // 读不到就跳过（不让单个不可读目录毁掉整个视图）
+      }
+      entries.sort((a, b) => a.name.localeCompare(b.name))
+      // 当前目录自己是不是仓库：`.git` 是目录或 worktree/子模块用的文件都算
+      if (!isRoot && entries.some((e) => e.name === '.git')) found.push(current)
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue
+        // 符号链接可能成环；点目录（.idea/.cache/.venv…）不是仓库，跳过还能大幅减少扫描量
+        if (entry.name.startsWith('.')) continue
+        if (REPO_SCAN_SKIP.has(entry.name)) continue
+        await walk(join(current, entry.name), false)
+      }
+    }
+
+    await walk(dir, true)
+    return { repos: found, scanTruncated }
+  }
+
+  /** 项目相对目录（`/` 归一；仓库就是项目根时返回 ''） */
+  private relativeToProject(projectRoot: string, repoPath: string): string {
+    const root = toSlashes(projectRoot).replace(/\/+$/, '')
+    const repo = toSlashes(repoPath).replace(/\/+$/, '')
+    if (repo === root) return ''
+    if (!repo.startsWith(`${root}/`)) return repo
+    return repo.slice(root.length + 1)
+  }
+
+  /**
+   * 读单个仓库的 status + branch（失败只标在这个仓库上，其它仓库照常返回）。
+   *
+   * 路径口径：git 输出以**仓库根**为基准（--porcelain 不受 status.relativePaths 影响），
+   * 先按 `--show-prefix` 换算成仓库内相对路径，再拼上仓库在项目里的相对目录 → 项目相对。
+   */
+  private async readRepoStatus(
+    repoPath: string,
+    relPrefix: string,
+    innerDirs: string[]
+  ): Promise<RepoReadResult> {
+    const repoName = basename(toSlashes(repoPath).replace(/\/+$/, '')) || repoPath
     try {
       // status 与 branch 相互独立：simple-git 会在同一实例内串行排队，
-      // 因此并行时各用一个实例，避免多等一次 git 进程启动（Windows 下单次启动约数百毫秒）。
-      const [status, branchInfo] = await Promise.all([this.getGit(dir).status(), this.getGit(dir, true).branch()])
-      // git 输出的 paths 以**仓库根**为基准（--porcelain 既不受 status.relativePaths 影响，status 也没有 --relative）。
-      // 不换算的话，「项目根是仓库子目录」时下游会把它们当项目相对路径拼接 → 拼出不存在的路径，
-      // 真实变更被全部丢弃（plan 返回空、deploy 报没有可上传文件）。
-      const prefix = await this.projectPrefix(dir)
+      // 因此并行时各用一个实例（Windows 下单次 git 进程启动约数百毫秒）。
+      const [status, branchInfo] = await Promise.all([
+        this.getGit(repoPath).status(),
+        this.getGit(repoPath, true).branch().catch(() => null) // 空仓库/游离 HEAD：没有分支不算失败
+      ])
+      const prefix = await this.projectPrefix(repoPath)
 
       const changes: GitChangeInfo[] = []
-
       for (const file of status.files) {
-        const rel = this.toProjectRelative(file.path, prefix)
-        if (rel === null) continue // 项目目录之外的变更与上传无关
+        const relToRepo = this.toProjectRelative(file.path, prefix)
+        if (relToRepo === null) continue // 项目目录之外的变更与上传无关
+        const rel = relPrefix === '' ? relToRepo : `${relPrefix}/${relToRepo}`
+        // 未跟踪的内层仓库目录会以 `内层/` 的形式出现：连同其下所有文件一起排除
+        const key = rel.replace(/\/+$/, '')
+        if (innerDirs.some((inner) => key === inner || key.startsWith(`${inner}/`))) continue
         const changeInfo = this.classifyChange({ ...file, path: rel }, status)
-        if (changeInfo) {
-          changes.push(changeInfo)
-        }
+        if (changeInfo) changes.push(changeInfo)
       }
 
       return {
-        hasGit: true,
-        branch: branchInfo.current,
-        changes,
+        repo: {
+          repoPath,
+          repoName,
+          branch: branchInfo?.current || undefined,
+          changes
+        },
         ahead: status.ahead,
         behind: status.behind
       }
-    } catch {
+    } catch (error) {
       return {
-        hasGit: false,
-        changes: [],
+        repo: {
+          repoPath,
+          repoName,
+          changes: [],
+          error: error instanceof Error ? error.message : String(error)
+        },
         ahead: 0,
         behind: 0
       }

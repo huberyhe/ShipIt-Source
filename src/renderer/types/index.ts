@@ -2,6 +2,7 @@ import type {
   DeployLogEntry,
   GitBranchInfo,
   GitCommitFile,
+  GitStatusView,
   QueueSnapshot,
   ServerBind,
   ServerConfig,
@@ -71,10 +72,12 @@ export interface DeployApi {
   getFileTree: (rootPath: string) => Promise<any>
   expandDirectory: (dirPath: string) => Promise<any[]>
   collectFiles: (dirPath: string) => Promise<string[]>
+  /** 项目里是否有仓库：项目根自己是仓库，或内层子目录里有仓库（多根项目） */
   checkGitRepo: (dir: string) => Promise<boolean>
   getGitBranches: (dir: string) => Promise<GitBranchInfo[]>
   getGitAuthors: (dir: string) => Promise<string[]>
-  getGitStatus: (dir: string) => Promise<any>
+  /** 状态视图：多根项目下带 `repos`（按仓库分组）与 `truncated` 标记 */
+  getGitStatus: (dir: string) => Promise<GitStatusView>
   getGitLog: (dir: string, options?: { branch?: string; author?: string; maxCount?: number }) => Promise<any[]>
   getGitDiff: (dir: string, filePath: string) => Promise<string>
   getCommitFiles: (dir: string, hash: string) => Promise<GitCommitFile[]>

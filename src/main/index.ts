@@ -827,8 +827,11 @@ function registerIpcHandlers() {
   })
 
   // ========== Git 状态 ==========
+  // 渲染层用它决定「Git 视图是否可用」：多根项目里项目根本身可以不是仓库，
+  // 因此这里用比 isGitRepo 更宽的判定（内层仓库也算）。
+  // CLI/MCP 的 NOT_A_REPO 判定走 isGitRepo，不受影响。
   ipcMain.handle(IpcChannels.GIT_CHECK_REPO, async (_event, dir: string) => {
-    return gitService.isGitRepo(dir)
+    return gitService.hasAnyRepository(dir)
   })
 
   ipcMain.handle(IpcChannels.GIT_BRANCHES, async (_event, dir: string) => {

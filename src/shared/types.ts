@@ -351,13 +351,39 @@ export interface GitBranchInfo {
   isRemote: boolean
 }
 
+/**
+ * 项目里**一个仓库**的未提交变更（多根项目：项目目录下可能包含多个独立的 git 仓库）。
+ *
+ * `changes` 里的路径仍是**项目相对**口径（与 `GitStatusView.changes` 完全一致），
+ * 上传链路据此拼绝对路径，改成仓库相对会让映射整体错位。
+ */
+export interface GitRepoStatus {
+  /** 仓库工作目录的绝对路径（根仓库时等于项目根） */
+  repoPath: string
+  /** 展示名：目录名（根仓库用项目目录名） */
+  repoName: string
+  /** 该仓库当前分支（读取失败或游离 HEAD 时为空） */
+  branch?: string
+  changes: GitChangeInfo[]
+  /** 该仓库读取失败的原因（不影响其它仓库返回） */
+  error?: string
+}
+
 /** Git 状态视图（未提交变更 + 分支信息） */
 export interface GitStatusView {
   hasGit: boolean
+  /** 根仓库（项目根自己就是仓库时）的分支；没有根仓库则为空 */
   branch?: string
+  /** **所有仓库**变更的并集（去重后）：CLI/MCP 与上传链路依赖这个字段 */
   changes: GitChangeInfo[]
   ahead: number
   behind: number
+  /** 按仓库分组的明细（新增字段，旧调用方可以完全忽略） */
+  repos?: GitRepoStatus[]
+    /** 发现的项目内仓库数超过上限、多余仓库未展示（不要静默截断） */
+    truncated?: boolean
+    /** 仓库扫描的目录访问预算耗尽（可能还有更深的仓库没被看到） */
+    scanTruncated?: boolean
 }
 
 /** 应用持久化配置 */

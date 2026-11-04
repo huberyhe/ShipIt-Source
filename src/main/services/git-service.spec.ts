@@ -1,7 +1,7 @@
 import { execFileSync } from 'child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
-import { join } from 'path'
+import { basename, join } from 'path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { GitService } from './git-service'
 
@@ -87,5 +87,170 @@ describe('git-service 路径基准（P2 回归）', () => {
     const added = files.find((f) => f.path === 'dist/copy.js')
     expect(added?.status).toBe('A')
     expect(added?.oldPath).toBeUndefined()
+  })
+})
+
+/**
+ * 多根项目：一个项目目录下可能并列多个 git 仓库（`项目/前端`、`项目/后端`…）。
+ * 这里用真实 git 命令造数据，验「发现 / 去重 / 错误隔离 / 并集口径」。
+ */
+describe('git-service 多仓库（多根项目）', () => {
+  let projectDir = ''
+
+  const initRepo = (dir: string): void => {
+    mkdirSync(dir, { recursive: true })
+    git(dir, ['init', '-q'])
+    git(dir, ['config', 'user.email', 'shipit@test'])
+    git(dir, ['config', 'user.name', 'shipit'])
+    writeFileSync(join(dir, '.seed.txt'), 'seed', 'utf-8')
+    git(dir, ['add', '-A'])
+    git(dir, ['commit', '-qm', 'init'])
+  }
+
+  const currentBranch = (dir: string): string => git(dir, ['rev-parse', '--abbrev-ref', 'HEAD']).trim()
+
+  beforeEach(() => {
+    projectDir = mkdtempSync(join(tmpdir(), 'shipit-multi-'))
+  })
+
+  afterEach(() => {
+    rmSync(projectDir, { recursive: true, force: true })
+  })
+
+  it('根是仓库 + 一个子仓库 → repos.length === 2，两个分支各自正确', async () => {
+    initRepo(projectDir)
+    git(projectDir, ['checkout', '-q', '-b', 'feature/root'])
+    writeFileSync(join(projectDir, 'root.txt'), 'a', 'utf-8')
+
+    const sub = join(projectDir, 'frontend')
+    initRepo(sub)
+    git(sub, ['checkout', '-q', '-b', 'feat/sub'])
+    writeFileSync(join(sub, 'app.ts'), 'x', 'utf-8')
+
+    const view = await new GitService().getStatusView(projectDir)
+
+    expect(view.hasGit).toBe(true)
+    expect(view.repos?.length).toBe(2)
+
+    const rootRepo = view.repos!.find((repo) => repo.repoPath === projectDir)!
+    const subRepo = view.repos!.find((repo) => repo.repoPath === sub)!
+    expect(rootRepo.branch).toBe(currentBranch(projectDir))
+    expect(subRepo.branch).toBe(currentBranch(sub))
+    // 分支各自独立，没有串到别的仓库
+    expect(rootRepo.branch).toBe('feature/root')
+    expect(subRepo.branch).toBe('feat/sub')
+    // 旧字段：branch = 根仓库的分支
+    expect(view.branch).toBe('feature/root')
+    // 根仓库名用项目目录名，内层仓库用目录名
+    expect(rootRepo.repoName).toBe(basename(projectDir))
+    expect(subRepo.repoName).toBe('frontend')
+  })
+
+  it('子仓库的变更不会出现在外层仓库（去重），且内层路径仍是项目相对', async () => {
+    initRepo(projectDir)
+    const sub = join(projectDir, 'frontend')
+    initRepo(sub)
+    writeFileSync(join(sub, 'app.ts'), 'x', 'utf-8')
+    writeFileSync(join(projectDir, 'root.txt'), 'y', 'utf-8')
+
+    const view = await new GitService().getStatusView(projectDir)
+    const rootRepo = view.repos!.find((repo) => repo.repoPath === projectDir)!
+    const subRepo = view.repos!.find((repo) => repo.repoPath === sub)!
+
+    // git 对外层只会给出一个未跟踪目录条目（`frontend/`）：连同其下文件一并排除
+    expect(rootRepo.changes.map((c) => c.relativePath)).toEqual(['root.txt'])
+    // 内层仓库的路径必须拼上它在项目里的相对目录（否则上传会拼出不存在的路径）
+    expect(subRepo.changes.map((c) => c.relativePath)).toEqual(['frontend/app.ts'])
+    // 并集里同一个文件只出现一次
+    expect(view.changes.map((c) => c.relativePath).sort()).toEqual(['frontend/app.ts', 'root.txt'])
+  })
+
+  it('根不是仓库、只有两个子仓库 → hasGit 为 true、branch 为 undefined', async () => {
+    const backend = join(projectDir, 'backend')
+    const frontend = join(projectDir, 'frontend')
+    initRepo(backend)
+    initRepo(frontend)
+    writeFileSync(join(backend, 'a.ts'), 'x', 'utf-8')
+    writeFileSync(join(frontend, 'b.ts'), 'y', 'utf-8')
+
+    const view = await new GitService().getStatusView(projectDir)
+
+    expect(view.hasGit).toBe(true)
+    expect(view.branch).toBeUndefined()
+    expect(view.repos?.length).toBe(2)
+    expect(view.changes.map((c) => c.relativePath).sort()).toEqual(['backend/a.ts', 'frontend/b.ts'])
+  })
+
+  it('某个子仓库读取失败时，其它仓库仍返回（该仓库带 error，整体不失败）', async () => {
+    initRepo(projectDir)
+    const good = join(projectDir, 'backend')
+    initRepo(good)
+    const broken = join(projectDir, 'broken')
+    mkdirSync(broken, { recursive: true })
+    // `.git` 是文件但指向不存在的目录：会被发现成「仓库候选」，但读状态必然失败
+    writeFileSync(join(broken, '.git'), 'gitdir: D:/shipit-definitely-not-here\n', 'utf-8')
+    writeFileSync(join(good, 'a.ts'), 'x', 'utf-8')
+
+    const view = await new GitService().getStatusView(projectDir)
+
+    expect(view.hasGit).toBe(true)
+    expect(view.repos?.length).toBe(3)
+    const brokenRepo = view.repos!.find((repo) => repo.repoPath === broken)!
+    expect(brokenRepo.error).toBeTruthy()
+    expect(brokenRepo.changes).toEqual([])
+    const goodRepo = view.repos!.find((repo) => repo.repoPath === good)!
+    expect(goodRepo.error).toBeUndefined()
+    expect(goodRepo.changes.map((c) => c.relativePath)).toEqual(['backend/a.ts'])
+  })
+
+  it('changes 并集与各仓库 changes 之和一致（去重后）', async () => {
+    initRepo(projectDir)
+    const sub = join(projectDir, 'frontend')
+    initRepo(sub)
+    writeFileSync(join(sub, 'a.ts'), 'x', 'utf-8')
+    writeFileSync(join(sub, 'b.ts'), 'y', 'utf-8')
+    writeFileSync(join(projectDir, 'root.txt'), 'z', 'utf-8')
+
+    const view = await new GitService().getStatusView(projectDir)
+    const sum = view.repos!.reduce((total, repo) => total + repo.changes.length, 0)
+    expect(view.changes.length).toBe(sum)
+    expect(new Set(view.changes.map((c) => c.relativePath)).size).toBe(sum)
+  })
+
+  it('深层嵌套的仓库也能被发现（IDEA 多根：manage/console/controllers/temp）', async () => {
+    // 真实项目里仓库会埋在很深的目录下；固定深度会把它藏起来
+    initRepo(join(projectDir, 'a', 'b'))
+    initRepo(join(projectDir, 'manage', 'console', 'controllers', 'temp'))
+
+    const view = await new GitService().getStatusView(projectDir)
+
+    expect(view.repos?.map((repo) => repo.repoName).sort()).toEqual(['b', 'temp'])
+    // 相对目录能让人分辨同名仓库
+    expect(view.repos?.map((repo) => repo.repoPath).some((p) => p.replace(/\\/g, '/').endsWith('manage/console/controllers/temp'))).toBe(true)
+  })
+
+  it('目录访问预算耗尽时带 scanTruncated（不把“没扫完”当“没仓库”）', async () => {
+    initRepo(join(projectDir, 'deep', 'deeper', 'repo'))
+
+    const shallow = await new GitService({ maxScanDirs: 1 }).getStatusView(projectDir)
+    expect(shallow.scanTruncated).toBe(true)
+
+    const full = await new GitService({ maxScanDirs: 2000 }).getStatusView(projectDir)
+    expect(full.scanTruncated).toBeUndefined()
+    expect(full.repos?.map((repo) => repo.repoName)).toEqual(['repo'])
+  })
+
+  it('仓库数超过上限时带 truncated 标记（不静默截断）', async () => {
+    initRepo(projectDir)
+    initRepo(join(projectDir, 'a'))
+    initRepo(join(projectDir, 'b'))
+
+    const limited = await new GitService({ maxRepos: 2 }).getStatusView(projectDir)
+    expect(limited.truncated).toBe(true)
+    expect(limited.repos?.length).toBe(2)
+
+    const full = await new GitService({ maxRepos: 12 }).getStatusView(projectDir)
+    expect(full.truncated).toBeUndefined()
+    expect(full.repos?.length).toBe(3)
   })
 })

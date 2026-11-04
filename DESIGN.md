@@ -33,7 +33,7 @@ colors:
   on-danger: "#000000"
   blue: "#569cd6"
   blue-bg: "#142c47"
-  purple: "#dcb67a"
+  status-renamed: "#c9a6f5"
   scrollbar: "#424242"
   scrollbar-hover: "#4f4f4f"
   overlay: "rgba(0, 0, 0, 0.5)"

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { File, Folder, FolderOpen, ChevronRight, ChevronDown, FileCode, Wrench, Server } from 'lucide-vue-next'
 import ContextMenu from '../common/ContextMenu.vue'
 import ServerTargetMenu from '../common/ServerTargetMenu.vue'
@@ -20,7 +20,23 @@ const props = defineProps<{
   busyPath?: string | null
   /** 当前选中的节点路径集合（Ctrl 切换 / Shift 区间，递归时原样透传） */
   selectedPaths?: string[]
+  /**
+   * 仓库分组行的附加信息（key 是仓库节点的 path）。
+   * 单独用一份映射而不是往 `ChangeTreeNode` 上加字段：树结构只描述目录/文件。
+   */
+  repoMeta?: Record<string, { branch?: string; error?: string; fileCount: number }>
 }>()
+
+/** 本行是否是仓库分组行（元数据全展开成字符串，模板里不需要再判空） */
+const repoInfo = computed(() => {
+  const meta = props.repoMeta?.[props.node.path]
+  return {
+    isRepo: !!meta,
+    countLabel: meta ? `${meta.fileCount} 个文件` : '',
+    branch: meta?.branch ?? '',
+    error: meta?.error ?? ''
+  }
+})
 
 const emit = defineEmits<{
   toggleDir: [path: string]
@@ -178,7 +194,15 @@ function dirStatsTitle(n: ChangeTreeNode): string {
     <template #label>
       <span class="node-name">{{ node.name }}</span>
     </template>
-    <template #meta><span class="dir-badge" :title="dirStatsTitle(node)">{{ getDirStats(node) }}</span></template>
+    <template #meta>
+      <!-- 仓库分组行：文件数 + 分支 chip + 读取失败提示（三者都不影响其它行的位置） -->
+      <span v-if="repoInfo.isRepo" class="repo-meta">
+        <span class="repo-count">{{ repoInfo.countLabel }}</span>
+        <span v-if="repoInfo.branch" class="repo-branch" :title="`当前分支：${repoInfo.branch}`">{{ repoInfo.branch }}</span>
+        <span v-if="repoInfo.error" class="repo-error" :title="repoInfo.error">读取失败</span>
+      </span>
+      <span v-else class="dir-badge" :title="dirStatsTitle(node)">{{ getDirStats(node) }}</span>
+    </template>
     <template #actions>
       <button
         class="quick-deploy-btn"
@@ -202,6 +226,7 @@ function dirStatsTitle(n: ChangeTreeNode): string {
       :expanded-dirs="expandedDirs"
       :busy-path="busyPath"
       :selected-paths="selectedPaths"
+      :repo-meta="repoMeta"
       @select="(n, p, m) => emit('select', n, p, m)"
       @toggle-dir="emit('toggleDir', $event)"
       @deploy-file="(p, t) => emit('deployFile', p, t)"
@@ -282,6 +307,30 @@ function dirStatsTitle(n: ChangeTreeNode): string {
 
 /* 目录统计贴行尾（长目录名下不再紧贴名称），左侧留最小间距便于扫读 */
 .dir-badge { font-size: 11px; color: var(--fg2); white-space: nowrap; margin-left: auto; padding-left: 16px; }
+
+/* 仓库分组行：文件数 + 分支 chip + 失败提示。颜色一律走 token（--accent3 / --accent-text / --red-text） */
+.repo-meta {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-left: auto; padding-left: 16px;
+  font-size: 11px; white-space: nowrap;
+}
+.repo-count { color: var(--fg2); }
+.repo-branch {
+  padding: 0 6px; border-radius: 999px;
+  background: var(--accent3); color: var(--accent-text);
+  font-size: 11px; line-height: 16px;
+  max-width: 160px; overflow: hidden; text-overflow: ellipsis;
+}
+.repo-error { color: var(--red-text); }
+/*
+ * 对比度（选中行不能靠颜色区分，否则等于把信息交给颜色）：
+ * - 深色主题：--accent-text(#4daafc) 在 --accent3(#094771) 上只有 3.9:1，改用 --on-accent；
+ * - 选中行：文件数与错误提示跟随行文字色（"读取失败"四个字本身已说明问题，不靠红色）；
+ *   chip 自己带底色，不需要改。
+ */
+.theme-dark .repo-branch { color: var(--on-accent); }
+.tree-row.selected .repo-count,
+.tree-row.selected .repo-error { color: inherit; }
 
 .status-badge { width: 16px; text-align: center; font-size: 11px; font-weight: bold; flex-shrink: 0; }
 /* 仅深色主题（实色选中底）反白；浅色主题是浅蓝底，保留语义色 */
