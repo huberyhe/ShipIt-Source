@@ -425,31 +425,66 @@ export class GitService {
     }
   }
 
-  async getFileDiff(dir: string, filePath: string): Promise<string> {
-    try {
-      const git = this.getGit(dir)
-      // 先用 git diff HEAD 检出所有未提交差异
-      const result = await git.raw(['diff', 'HEAD', '--', filePath])
-      if (result.trim()) return result
+  /**
+   * 定位「这个文件属于哪个仓库、在仓库内的相对路径」。
+   *
+   * 项目根常常不是仓库（多仓库项目 / 项目根是某个仓库的子目录），此时在项目根跑 git 会整体失败。
+   * 这里先认根仓库，再退到**包含该文件的最内层子仓库**（与 `getStatusView` 的可见范围一致）。
+   * 找不到任何仓库时原样返回，让后续 git 调用如实报错——绝不把「读不出来」说成「没有差异」。
+   */
+  private async resolveDiffTarget(
+    dir: string,
+    filePath: string
+  ): Promise<{ repoDir: string; pathInRepo: string }> {
+    if (await this.isGitRepo(dir)) return { repoDir: dir, pathInRepo: filePath }
 
-      // 如果 diff 为空，可能是未跟踪的新文件，直接读取内容展示
-      try {
-        const { promises: fsp } = await import('fs')
-        const fullPath = join(dir, filePath)
-        const content = await fsp.readFile(fullPath, 'utf-8')
-        // 格式化为 diff 风格的输出（全部新增）
-        const lines = content.split('\n')
-        const formatted = [
-          `diff --git a/${filePath} b/${filePath}`,
-          `new file mode 100644`,
-          `--- /dev/null`,
-          `+++ b/${filePath}`,
-          ...lines.map(l => `+${l}`)
-        ].join('\n')
-        return formatted
-      } catch {
-        return ''
-      }
+    const rel = toSlashes(filePath)
+    let scan: { repos: string[]; scanTruncated: boolean }
+    try {
+      scan = await this.findSubRepos(dir)
+    } catch {
+      return { repoDir: dir, pathInRepo: filePath }
+    }
+    const owner = scan.repos
+      .map((repoPath) => ({ repoDir: repoPath, prefix: this.relativeToProject(dir, repoPath) }))
+      .filter((candidate) => candidate.prefix !== '' && isUnder(rel, candidate.prefix))
+      // 最内层仓库优先：外层仓库可能把内层目录当成一个未跟踪条目，文件真正归属内层
+      .sort((a, b) => b.prefix.length - a.prefix.length)[0]
+    if (!owner) return { repoDir: dir, pathInRepo: filePath }
+    return { repoDir: owner.repoDir, pathInRepo: rel.slice(owner.prefix.length + 1) }
+  }
+
+  async getFileDiff(dir: string, filePath: string): Promise<string> {
+    const target = await this.resolveDiffTarget(dir, filePath)
+    const git = this.getGit(target.repoDir)
+    let result: string
+    try {
+      // 先用 git diff HEAD 检出所有未提交差异
+      result = await git.raw(['diff', 'HEAD', '--', target.pathInRepo])
+    } catch (error) {
+      // 读失败必须上抛：渲染层据此显示「差异加载失败 + 重试」，
+      // 否则空字符串会被当成「文件无变更」——最坏的一种误导。
+      const message = error instanceof Error ? error.message : String(error)
+      throw new Error(`读取文件差异失败：${message}`)
+    }
+    if (result.trim()) return result
+
+    // 空 diff 但退出码 0：文件是未跟踪的新文件 → 直接把内容渲染成「全新增」。
+    // 读不到（文件已删除/被忽略）：这才是真的没有可视差异，返回空。
+    try {
+      const { promises: fsp } = await import('fs')
+      const fullPath = join(target.repoDir, target.pathInRepo)
+      const content = await fsp.readFile(fullPath, 'utf-8')
+      // 格式化为 diff 风格的输出（全部新增）
+      const lines = content.split('\n')
+      const formatted = [
+        `diff --git a/${target.pathInRepo} b/${target.pathInRepo}`,
+        `new file mode 100644`,
+        `--- /dev/null`,
+        `+++ b/${target.pathInRepo}`,
+        ...lines.map(l => `+${l}`)
+      ].join('\n')
+      return formatted
     } catch {
       return ''
     }

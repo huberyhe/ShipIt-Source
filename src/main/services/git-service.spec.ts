@@ -146,6 +146,26 @@ describe('git-service 多仓库（多根项目）', () => {
     expect(subRepo.repoName).toBe('frontend')
   })
 
+  it('getFileDiff 在多仓库项目里按文件所属仓库读取（项目根不是仓库也能出差异）', async () => {
+    // 项目根本身不是仓库，只有 frontend / backend 两个子仓库
+    const frontend = join(projectDir, 'frontend')
+    initRepo(frontend)
+    writeFileSync(join(frontend, 'app.ts'), 'line1\n', 'utf-8')
+    git(frontend, ['add', '-A'])
+    git(frontend, ['commit', '-qm', 'add app'])
+    writeFileSync(join(frontend, 'app.ts'), 'line1\nline2\n', 'utf-8')
+
+    const diff = await new GitService().getFileDiff(projectDir, 'frontend/app.ts')
+
+    // 关键：不是空串（空串会被界面当成「文件无变更」）
+    expect(diff).toContain('+line2')
+    expect(diff).toContain('diff --git')
+  })
+
+  it('项目里没有任何仓库时，getFileDiff 上抛而不是回空串', async () => {
+    await expect(new GitService().getFileDiff(projectDir, 'a.ts')).rejects.toThrow(/读取文件差异失败/)
+  })
+
   it('子仓库的变更不会出现在外层仓库（去重），且内层路径仍是项目相对', async () => {
     initRepo(projectDir)
     const sub = join(projectDir, 'frontend')

@@ -73,24 +73,27 @@ describe('deploy store：预览采用服务端 skipped', () => {
       tasks: [{ localPath: `${root}/dist/a.js`, remotePath: '/out/a.js', relativePath: 'dist/a.js', size: 2 }],
       skipped: [
         { relativePath: 'dist/gone.js', reason: 'missing' },
-        { relativePath: 'README.md', reason: 'no-mapping' }
+        { relativePath: 'README.md', reason: 'no-mapping' },
+        { relativePath: '../outside/x.js', reason: 'outside-project' }
       ]
     }))
 
     const store = useDeployStore()
     await store.loadTargets()
-    await store.previewDeploy([`${root}/dist/a.js`, `${root}/dist/gone.js`, `${root}/README.md`], root)
+    await store.previewDeploy([`${root}/dist/a.js`, `${root}/dist/gone.js`, `${root}/README.md`, `${root}/../outside/x.js`], root)
 
     expect(store.confirmFiles.map((f) => f.relativePath)).toEqual(['dist/a.js'])
     expect(store.confirmSkipped).toEqual([
       { relativePath: 'dist/gone.js', reason: 'missing' },
-      { relativePath: 'README.md', reason: 'no-mapping' }
+      { relativePath: 'README.md', reason: 'no-mapping' },
+      { relativePath: '../outside/x.js', reason: 'outside-project' }
     ])
   })
 
   it('原因文案能区分「无映射」与「文件不存在」（UI 逐条展示与 0 文件说明同源）', () => {
     expect(skipReasonText('missing')).toBe('文件不存在（已删除或未提交）')
     expect(skipReasonText('no-mapping')).toBe('未匹配目录映射')
+    expect(skipReasonText('outside-project')).toBe('不在项目目录内')
     expect(skipReasonText(null)).toBe('原因未知')
     expect(summarizeSkips([
       { relativePath: 'a', reason: 'missing' },

@@ -72,7 +72,10 @@ function toPreviewSkip(raw: unknown): UploadPreviewSkip | null {
   if (!raw || typeof raw !== 'object') return null
   const item = raw as Record<string, unknown>
   if (typeof item.relativePath !== 'string') return null
-  const reason = item.reason === 'missing' || item.reason === 'no-mapping' ? item.reason : null
+  const reason =
+    item.reason === 'missing' || item.reason === 'no-mapping' || item.reason === 'outside-project'
+      ? item.reason
+      : null
   return { relativePath: item.relativePath, reason }
 }
 

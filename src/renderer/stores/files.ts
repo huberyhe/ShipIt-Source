@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { reduceSelection } from '../utils/selection'
 import { ref } from 'vue'
+import { toastError } from '../utils/toast'
 
 export interface FileEntry {
   name: string
@@ -164,7 +165,10 @@ export const useFilesStore = defineStore('files', () => {
       const children = await window.deployApi.expandDirectory(dirPath)
       dirChildren.set(dirPath, children)
       return children
-    } catch {
+    } catch (error) {
+      // 读不出来 ≠ 空目录：静默返回 [] 会让用户以为目录真的没有文件。
+      // 保持签名不变（调用方按空目录继续渲染），但必须给出可见的错误。
+      toastError(`读取目录失败：${error instanceof Error ? error.message : String(error)}`)
       return []
     }
   }
