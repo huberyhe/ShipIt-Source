@@ -142,9 +142,10 @@ onBeforeUnmount(() => {
       <div v-if="title" class="ctx-title">{{ title }}</div>
       <template v-for="(item, idx) in items" :key="idx">
         <div v-if="item.label === 'separator'" class="ctx-separator" role="separator" />
-        <div
-          v-else
-          class="ctx-item"
+    <div
+      v-else
+      class="ctx-item"
+      :title="item.title"
           role="menuitem"
           tabindex="0"
           :aria-haspopup="item.children ? 'menu' : undefined"

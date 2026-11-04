@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, onMounted, onUnmounted } from 'vue'
+import { computed, nextTick, ref, onMounted, onUnmounted, watch } from 'vue'
+import { useUiStore } from '../../stores/ui'
 import { useFilesStore } from '../../stores/files'
 import type { FileEntry } from '../../stores/files'
 import { ChevronsUpDown, ChevronsDownUp, RefreshCw } from 'lucide-vue-next'
@@ -119,7 +120,15 @@ function onContentKeydown(event: KeyboardEvent): void {
       if (index < 0) { focusAt(0); return }
       // 空格：选中当前行；**已经是唯一选中项时再按一次 = 取消选中**。
       // Ctrl/Cmd+空格 仍是多选切换（Windows 输入法占用时由主进程抢注转发）。
-      const selectedPaths = filesStore.deploySelection.map((item) => item.path)
+      const uiStore = useUiStore()
+/** 选区规模发布给 uiStore（菜单栏读它判断“上传所选”是否可用，不再用 DOM 探针） */
+watch(
+  () => filesStore.deploySelection.length,
+  (count) => uiStore.setSelectionCount(count),
+  { immediate: true }
+)
+
+const selectedPaths = filesStore.deploySelection.map((item) => item.path)
       if (!event.ctrlKey && !event.metaKey && shouldCollapseOnSpace(selectedPaths, path)) {
         filesStore.clearSelection()
         return

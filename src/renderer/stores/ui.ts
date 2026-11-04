@@ -13,6 +13,19 @@ export const useUiStore = defineStore('ui', () => {
   /** 应用版本（启动时预取，供关于对话框同步展示，避免首帧空态） */
   const appVersion = ref('')
 
+  /**
+   * 当前视图的选区规模（项数）。
+   *
+   * 三个视图各自拥有选区（文件树=filesStore、Git 变更/Git 日志=组件内 state），
+   * 菜单栏需要判断「上传所选」是否可用。此前菜单用 DOM 探针（`.ftn-row.selected`）猜，
+   * 视图改类名就会静默失效；改成视图**发布**计数、菜单**只读**，单一来源。
+   * 只有当前挂载的视图会写这个值（切视图时旧视图卸载即归零）。
+   */
+  const selectionCount = ref(0)
+  function setSelectionCount(count: number): void {
+    selectionCount.value = Math.max(0, count)
+  }
+
   /** 预取应用版本（= 打包时 package.json 的 version，经主进程 app.getVersion()） */
   async function initAppVersion() {
     try { appVersion.value = await window.deployApi.getAppVersion() } catch { /* ignore */ }
@@ -121,6 +134,8 @@ function viewStateSnapshot(): { activeView: ActiveView; logPanelExpanded: boolea
     setTheme,
     initTheme,
     switchView,
+    selectionCount,
+    setSelectionCount,
     toggleLogPanel,
     applyViewState,
     viewStateSnapshot

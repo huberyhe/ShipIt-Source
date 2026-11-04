@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { toastError } from '../../utils/toast'
-import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
 import { ChevronsUpDown, ChevronsDownUp, RefreshCw } from 'lucide-vue-next'
+import { useUiStore } from '../../stores/ui'
 import { useGitStore } from '../../stores/git'
 import { statusClassOf, statusShort } from '../../utils/change-status'
 import { reduceSelection, shouldCollapseOnSpace } from '../../utils/selection'
@@ -28,7 +29,10 @@ const projectStore = useProjectStore()
 const AUTO_REFRESH_MS = 60000
 
 // 服务器选择菜单（Ctrl+Shift+X 唤起，数字键或鼠标选择）
+const uiStore = useUiStore()
 const selectedPaths = ref<string[]>([])
+/** 选区规模发布给 uiStore（单一来源；菜单栏读它，不再用 DOM 探针） */
+watch(() => selectedPaths.value.length, (count) => uiStore.setSelectionCount(count), { immediate: true })
 const selectionAnchor = ref<string | null>(null)
 const selectedPos = ref<{ x: number; y: number } | null>(null)
 

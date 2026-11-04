@@ -254,6 +254,8 @@ let timer: ReturnType<typeof setInterval> | null = null
 
 // 服务器选择菜单（Ctrl+Shift+X 唤起，数字键或鼠标选择）
 const selectedHash = ref<string>('')
+/** Git 日志是单选：选中提交即为 1 项（发布给 uiStore，菜单栏据此判断可用性） */
+watch(selectedHash, (hash) => uiStore.setSelectionCount(hash ? 1 : 0), { immediate: true })
 
 /**
  * 提交列表刷新后对齐状态（放在 ref 声明之后，避免 watch 回调踩到 TDZ）：

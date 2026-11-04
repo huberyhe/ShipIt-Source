@@ -42,12 +42,11 @@ function requestCloseProject() {
 /**
  * 当前视图是否有可上传的选区。
  *
- * 选区是各视图自己的状态（文件树在 `filesStore`，Git 变更 / Git 日志是视图内的局部 ref），
- * 菜单栏读不到；唯一跨视图的信号是**可见的选中行**——这些类名同时是 ui-audit 依赖的稳定选择器
- * （`TreeRow` 的 `.selected`、`GitLogView` 的 `.commit-item.selected`），且同一时刻只有当前视图挂载。
+ * 单一来源：各视图把选区规模发布到 `uiStore.selectionCount`（只有当前挂载的视图会写），
+ * 菜单栏只读。以前这里是 DOM 探针（`.ftn-row.selected` 等）——视图改类名就静默失效。
  */
 function hasVisibleSelection(): boolean {
-  return !!document.querySelector('.ftn-row.selected, .tree-row.selected, .commit-item.selected')
+  return uiStore.selectionCount > 0
 }
 
 /**
@@ -72,6 +71,13 @@ const uploadSuffix = computed(() => {
 })
 
 const uploadDisabled = computed(() => uploadBlocker.value !== null)
+
+/** 禁用原因同时写进 title（ContextMenu 已支持 title），标签保留简短形式 */
+const uploadHint = computed(() => {
+  if (uploadBlocker.value === 'selection') return '先选中要上传的文件或目录'
+  if (uploadBlocker.value === 'target') return '尚未配置上传目标：设置 → 上传目标管理'
+  return undefined
+})
 
 /**
  * 复用各视图既有的上传链路（`useDeployHotkeys`）：菜单项与 Ctrl+X / Ctrl+Shift+X **派发同一个按键**，
@@ -127,6 +133,7 @@ const menus = computed<Array<{ label: string; items: ContextMenuItem[] }>>(() =>
         // 产品第一动词：此前三张菜单里没有任何上传项，界面上看不出这工具能发文件
         {
           label: `上传所选${uploadSuffix.value}`,
+          title: uploadHint.value,
           icon: Upload,
           shortcut: shortcutLabel('uploadSelection'),
           disabled: uploadBlocked,
@@ -134,6 +141,7 @@ const menus = computed<Array<{ label: string; items: ContextMenuItem[] }>>(() =>
         },
         {
           label: `上传到…${uploadSuffix.value}`,
+          title: uploadHint.value,
           icon: Server,
           shortcut: shortcutLabel('uploadTo'),
           disabled: uploadBlocked,

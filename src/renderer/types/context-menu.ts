@@ -21,4 +21,10 @@ export interface ContextMenuItem {
   shortcut?: string
   /** 该项前的勾选标记（如当前选中的服务器） */
   checked?: boolean
+  /**
+   * 悬停提示。用于解释**为何禁用**或某个动作的边界。
+   * 注意：禁用项带 `pointer-events: none`，悬停提示在死项上可能看不到；
+   * 关键原因仍需在 `label` 里说清，title 是补充不是替代。
+   */
+  title?: string
 }
