@@ -586,7 +586,8 @@ async function deployCommitFiles(targetId?: string) {
 .commit-message { font-size: 13px; color: var(--fg); font-weight: 500; }
 .commit-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .commit-hash { font-family: 'Cascadia Code','Fira Code',Consolas,monospace; font-size: 11px; color: var(--yellow-text); }
-.commit-author { font-size: 11px; color: var(--blue); }
+/* 作者用 --accent-text（蓝色系但更暗/更亮）：--blue 在浅色主题的过渡底与遮罩下会掉到 4.5 以下 */
+.commit-author { font-size: 11px; color: var(--accent-text); }
 .commit-date { font-size: 11px; color: var(--fg2); }
 /* 仅深色主题（实色选中底）反白；浅色主题浅蓝底上保留语义色 */
 .theme-dark .commit-item.selected .commit-message,

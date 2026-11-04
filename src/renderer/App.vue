@@ -448,11 +448,16 @@ textarea:focus-visible { outline: 2px solid var(--status-bar); outline-offset: -
 input::placeholder, textarea::placeholder { color: var(--fg2); }
 input:disabled, select:disabled, textarea:disabled { opacity: 0.55; }
 
-/* 行内操作区：宿主行加 .has-row-actions，悬浮或键盘焦点进入时显示 */
+/*
+ * 行内操作区：宿主行加 .has-row-actions，**只在悬浮时**显示。
+ * 例外：.show-actions-on-focus 用于操作按钮本身可 Tab 的行（设置页的映射行），
+ * 否则键盘聚焦到看不见的按钮上。树行的操作按钮是 tabindex=-1、由快捷键/右键进入，
+ * 不给它做“聚焦即显示”——否则焦点行与鼠标悬浮行会同时冒出两个「快速上传」。
+ */
 .row-actions { display: flex; align-items: center; gap: 4px; opacity: 0; transition: opacity 0.15s ease; }
 .has-row-actions:hover .row-actions,
-.has-row-actions:has(:focus-visible) .row-actions,
 .row-actions.always { opacity: 1; }
+.has-row-actions.show-actions-on-focus:has(:focus-visible) .row-actions { opacity: 1; }
 
 /* 变更状态色：唯一定义处（组件里只挂 `.status-*` 类，不再各写一遍） */
 .status-modified { color: var(--yellow-text); }

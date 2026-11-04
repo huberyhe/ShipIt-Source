@@ -8,12 +8,9 @@ import RowActions from './RowActions.vue'
  * - 不做递归，不决定点击后的行为（`@click` / `@contextmenu` / `@keydown` 原样透传到根元素）；
  * - 行内容全部通过 slot 提供，本组件不认识「目录/文件/变更状态」。
  *
- * 操作按钮统一包在 `.row-actions` 里：显隐由本组件负责，键盘聚焦时也会出现
- * （此前两个树各写一份 `:hover` + `:has(:focus-visible)`）。
- *
- * 行是 `tabindex=-1`、由代码/方向键聚焦，`App.vue` 的 `.has-row-actions:has(:focus-visible)`
- * 只看**后代**是否 `:focus-visible`，行自身被聚焦时并不命中 —— 所以本组件额外用 `:focus`
- * 让操作区出现（否则键盘用户看不到「只发本行」的入口）。
+ * 操作按钮统一包在 `.row-actions` 里，显隐规则只有一份（App.vue 的 `.has-row-actions`）。
+ * **只在鼠标悬浮该行时出现**：焦点行不显示，否则「焦点行 + 悬浮行」会同时冒出两个按钮。
+ * 键盘用户的操作入口是右键菜单 / `Ctrl+X`（行内按钮本身是 tabindex=-1，本来也不在 Tab 序列里）。
  *
  * 选中与焦点的视觉语言：
  * - 选中 = 蓝色底色 + 白字，**无边框**
@@ -85,10 +82,4 @@ withDefaults(
 .tree-row-base.selected:focus {
   box-shadow: inset 0 1px 0 var(--row-selected-fg), inset 0 -1px 0 var(--row-selected-fg);
 }
-/* 行自身获得焦点时也显示行内操作区（键盘用户拿不到「只发本行」的入口）。
-   为什么不用 `:focus-visible`：行是 tabindex=-1、只能由代码/方向键聚焦，
-   `:focus-visible` 在程序聚焦时的模态判定不可靠（会出现“键盘导航却看不到按钮”）。
-   用 opacity 切换（不占布局），不引起行高/行宽变化。 */
-.tree-row-base:focus .row-actions,
-.tree-row-base:focus-within .row-actions { opacity: 1; }
 </style>

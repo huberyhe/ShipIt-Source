@@ -87,7 +87,7 @@ async function doRemove() {
       </template>
     </SectionHeader>
 
-    <div v-for="mapping in mappings" :key="mapping.id" class="mapping-item has-row-actions">
+    <div v-for="mapping in mappings" :key="mapping.id" class="mapping-item has-row-actions show-actions-on-focus">
       <div class="mapping-row">
         <code class="local-path">{{ mapping.localPrefix }}</code>
         <ArrowRight :size="12" class="arrow" />
