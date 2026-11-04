@@ -57,6 +57,9 @@ withDefaults(
 /* 悬浮统一用 bg3：--border 是描边色，当底色用会发灰（此前各文件写法不一） */
 .t-default:hover:not(:disabled) { background: var(--bg3); color: var(--fg); }
 .t-danger:hover:not(:disabled) { background: var(--red-bg2); color: var(--red); }
+/* 按下反馈（DESIGN §5.1：悬浮 bg3 → 按下 bg4）；图标按钮以前只有 hover，点下去没有回应 */
+.t-default:active:not(:disabled) { background: var(--bg4); }
+.t-danger:active:not(:disabled) { background: var(--red-bg2); color: var(--red); opacity: 0.85; }
 
 .icon-btn-base.active { background: var(--accent3); color: var(--accent-text); }
 .icon-btn-base:disabled { opacity: 0.45; cursor: not-allowed; }

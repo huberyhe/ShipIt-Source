@@ -334,6 +334,7 @@ onMounted(() => {
   font-size: 12px; text-align: left; cursor: pointer;
 }
 .nav-item:hover { background: var(--bg3); color: var(--fg); }
+.nav-item:active { background: var(--bg4); }
 .nav-item.active { background: var(--bg4); color: var(--fg); border-color: var(--border2); }
 .nav-item:focus-visible { outline: 2px solid var(--status-bar); outline-offset: -2px; }
 .nav-label { flex: 1; }

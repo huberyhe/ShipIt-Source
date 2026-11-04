@@ -199,6 +199,9 @@ async function handleOpen(): Promise<void> {
 .recent-item:hover {
   background: var(--bg3);
 }
+.recent-item:active {
+  background: var(--bg4);
+}
 
 /* 项目名（主）+ 路径（副）：一个人可能有多个同名项目，路径负责区分 */
 .recent-name {

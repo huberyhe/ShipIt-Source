@@ -59,7 +59,7 @@ function lineClass(line: string): string {
       <!-- 失败态：标题 + 原因 + 重试。原因用正文色（无 opacity）保证两套主题都过 AA -->
       <EmptyState v-else-if="errorMessage" size="block" text="差异加载失败" role="alert">
         <div class="diff-error-msg" :title="errorMessage">{{ errorMessage }}</div>
-        <BaseButton variant="secondary" size="xs" class="retry-btn" aria-label="重新加载差异" @click="loadDiff">重试</BaseButton>
+        <BaseButton variant="secondary" size="sm" class="retry-btn" aria-label="重新加载差异" @click="loadDiff">重试</BaseButton>
       </EmptyState>
       <div v-else-if="!diffContent.trim()" class="diff-empty">文件无变更</div>
       <div v-else class="diff-body">

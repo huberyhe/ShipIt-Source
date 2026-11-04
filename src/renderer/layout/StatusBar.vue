@@ -139,6 +139,7 @@ watch(
   font: inherit; cursor: pointer;
 }
 .status-item:hover { color: var(--fg); text-decoration: underline; }
+.status-item:active { color: var(--fg3); }
 /*
  * 焦点只画**上下一对 2px 边**（与列表行的焦点语言一致），不画整圈：
  * 状态项是 20px 高的行内文本，整圈会像输入框；用 inset 阴影不占布局、不引起跳动。
