@@ -986,6 +986,67 @@ function buildWalker() {
       teardown: `(async () => { const c = document.querySelector('.base-dialog-close'); if (c) c.click(); await new Promise(r=>setTimeout(r,600)); return 'ok' })()`
     },
     {
+      id: 'deploy-local-upload',
+      role: 'project',
+      label: '上传：本地目标成功路径（真实写入 + 日志落地）',
+      // 把“一次真的成功上传”纳入渲染级证据（不只靠单测）：目录选 docs → 确认弹窗 → 真实写盘 → 日志明细可核。
+      // 目录收集器本身回归（dist 等构建产物不得被漏）仍由 file-service.spec.ts + IPC 静态守卫兼顾。
+      setup: `(async () => {
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms))
+        const waitFor = async (fn, ms) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { const v = fn(); if (v) return v; await sleep(200) } return null }
+        const sel = document.querySelector('.target-select')
+        if (!sel) return 'no-target-select'
+        const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set
+        const localOpt = Array.from(sel.options).find(o => /本地/.test(o.textContent || '') || /\(LOCAL\)/i.test(o.textContent || ''))
+        if (!localOpt) return 'no-local-target'
+        setter.call(sel, localOpt.value)
+        sel.dispatchEvent(new Event('change', { bubbles: true }))
+        await sleep(700)
+        const ft = Array.from(document.querySelectorAll('.view-btn')).find(x => x.textContent.includes('文件树'))
+        if (ft) ft.click()
+        await sleep(900)
+        // 选 docs 目录：它在映射里（docs/ → docs），且文件树里可见（dist 等构建产物目录在浏览时被隐去）
+        const row = Array.from(document.querySelectorAll('.ftn-row')).find(r => (r.textContent || '').trim().startsWith('docs'))
+        if (!row) return 'no-docs-dir:' + Array.from(document.querySelectorAll('.ftn-row')).map(r => (r.textContent || '').trim().slice(0, 12)).join('|')
+        const r0 = row.getBoundingClientRect()
+        row.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, clientX: r0.left + 30, clientY: r0.top + 8 }))
+        await sleep(300)
+        const btn = row.querySelector('.ftn-deploy-btn')
+        if (!btn) return 'no-row-deploy-btn'
+        btn.click()
+        const dlg = await waitFor(() => document.querySelector('.base-dialog'), 10000)
+        if (!dlg) return 'no-confirm-dialog'
+        if (/没有可上传的文件/.test(dlg.textContent || '')) return 'zero-files'
+        const primary = Array.from(dlg.querySelectorAll('.base-dialog-footer button')).find(b => /上传/.test(b.textContent || '') && !b.disabled)
+        if (!primary) return 'no-primary-btn'
+        primary.click()
+        // 日志面板默认折叠（条目不在 DOM 里）：先展开再等条目
+        await sleep(1500)
+        if (!document.querySelector('.log-content')) {
+          const h = document.querySelector('.log-header')
+          if (h) h.click()
+        }
+        const entry = await waitFor(() => document.querySelector('.log-entry'), 20000)
+        return entry ? 'ok' : 'no-log-entry'
+      })()`,
+      expect: [{ selector: '.log-entry' }],
+      assertScript: `(async () => {
+        const problems = []
+        const entry = document.querySelector('.log-entry')
+        if (!entry) return ['没有日志条目']
+        const text = entry.textContent || ''
+        if (!/上传成功/.test(text)) problems.push('日志未显示「上传成功」（实际：' + text.slice(0, 60) + '）')
+        if (/跳过/.test(text)) problems.push('不该出现跳过：构建产物目录不应被忽略（' + text.slice(0, 60) + '）')
+        entry.click()
+        await new Promise(r => setTimeout(r, 500))
+        const rows = Array.from(document.querySelectorAll('.log-file-row')).map(r => r.textContent || '')
+        if (!rows.some(r => r.includes('docs/guide.md') || r.includes('docs\\guide.md'))) {
+          problems.push('明细里没有 docs/guide.md（实际：' + rows.join(' / ').slice(0, 120) + '）')
+        }
+        return problems
+      })()`
+    },
+    {
       id: 'settings-targets',
       role: 'any',
       auditRole: 'settings',
