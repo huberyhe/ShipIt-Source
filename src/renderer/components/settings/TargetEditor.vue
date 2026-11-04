@@ -3,7 +3,7 @@ import { toastError, toastSuccess } from '../../utils/toast'
 import { computed, ref, watch, onMounted } from 'vue'
 import { reportError } from '../../utils/report-error'
 import { copyNameOf, duplicateNameOf, invalidFrom, missingFields, postUploadFields, testResultHint, validationMessage } from '../../utils/target-form'
-import { Plus, Trash2, Radio, Check, X } from 'lucide-vue-next'
+import { Plus, Trash2, Radio, Check, X, Copy, Pencil } from 'lucide-vue-next'
 import { useDeployStore } from '../../stores/deploy'
 import MappingEditor from './MappingEditor.vue'
 import BaseDialog from '../common/BaseDialog.vue'
@@ -478,8 +478,12 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
             <BaseButton class="icon-btn" variant="secondary" size="sm" title="测试连接" :disabled="testingId === target.id" @click="testConnection(target)">
               <Radio :size="14" /> <span>{{ testingId === target.id ? '测试中' : '测试连接' }}</span>
             </BaseButton>
-            <BaseButton class="icon-btn" variant="secondary" size="sm" title="复制" @click="copyTarget(target)">⧉ 复制</BaseButton>
-            <BaseButton class="icon-btn" variant="secondary" size="sm" title="编辑" @click="startEdit(target)">✎ 编辑</BaseButton>
+            <BaseButton class="icon-btn" variant="secondary" size="sm" title="复制" @click="copyTarget(target)">
+              <Copy :size="14" /> <span>复制</span>
+            </BaseButton>
+            <BaseButton class="icon-btn" variant="secondary" size="sm" title="编辑" @click="startEdit(target)">
+              <Pencil :size="14" /> <span>编辑</span>
+            </BaseButton>
             <BaseButton class="icon-btn danger" variant="danger-ghost" size="sm" title="删除" :aria-label="'删除目标 ' + target.name" @click="askDelete(target)"><Trash2 :size="14" /></BaseButton>
           </div>
         </div>
@@ -699,7 +703,11 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
 .target-name { font-weight: 500; color: var(--fg3); }
 .target-protocol { font-size: 11px; padding: 1px 4px; background: var(--accent); color: var(--on-accent); border-radius: 4px; }
 .target-host { font-size: 12px; color: var(--fg2); }
-.target-actions { display: flex; gap: 4px; }
+.target-actions { display: flex; align-items: center; gap: 4px; }
+/* 三个带文字的按钮：图标与文字用同一套 flex 对齐（此前复制/编辑用 Unicode 字符充当图标，
+   基线与字号都跟 SVG 对不上，看起来三个按钮的图标不在一条线上） */
+.target-actions :deep(.base-btn) { display: inline-flex; align-items: center; gap: 4px; }
+.target-actions :deep(.base-btn svg) { flex-shrink: 0; display: block; }
 /* 测试结果内联在信息行内：不占额外行高（无空白、天然无抖动）；长文本省略 */
 .test-result { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; font-size: 11px; border-radius: 4px; flex-shrink: 0; }
 .test-result-text { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
