@@ -137,6 +137,7 @@ function startAdd() {
     postUploadKind: 'none', postUploadScript: '', postUploadCommand: ''
   }
   editingMappings.value = []
+  resetTempMapping()
   baseline.value = currentSnapshot()
 }
 
@@ -162,6 +163,7 @@ function startEdit(target: any) {
       : (stash?.kind === 'command' ? stash.value : '')
   }
   editingMappings.value = JSON.parse(JSON.stringify(target.mappings || []))
+  resetTempMapping()
   baseline.value = currentSnapshot()
 }
 
@@ -441,8 +443,48 @@ function buildTestTarget() {
 }
 
 // 编辑表单中临时添加映射
-function addTempMapping(mapping: any) { editingMappings.value.push(mapping); tempMap.value = { localPrefix: '', remotePath: '', description: '' } }
-function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
+/** 正在编辑第几条映射（null = 新增模式）；弹窗里的列表项可以直接改，不必删了重录 */
+const editingMapIndex = ref<number | null>(null)
+
+function resetTempMapping(): void {
+  editingMapIndex.value = null
+  tempMap.value = { localPrefix: '', remotePath: '', description: '' }
+}
+
+function startEditMapping(idx: number): void {
+  const mapping = editingMappings.value[idx]
+  if (!mapping) return
+  editingMapIndex.value = idx
+  tempMap.value = {
+    localPrefix: mapping.localPrefix || '',
+    remotePath: mapping.remotePath || '',
+    description: mapping.description || ''
+  }
+}
+
+/** 添加或更新（同一行表单两用）：空值不写入，避免落一条空映射 */
+function commitTempMapping(): void {
+  const localPrefix = tempMap.value.localPrefix.trim()
+  const remotePath = tempMap.value.remotePath.trim()
+  if (!localPrefix || !remotePath) {
+    toastError('请填写本地前缀与远程路径')
+    return
+  }
+  const description = tempMap.value.description.trim()
+  if (editingMapIndex.value !== null) {
+    const current = editingMappings.value[editingMapIndex.value] ?? {}
+    editingMappings.value[editingMapIndex.value] = { ...current, localPrefix, remotePath, description }
+  } else {
+    editingMappings.value.push({ id: Date.now().toString(36), localPrefix, remotePath, description })
+  }
+  resetTempMapping()
+}
+
+function removeTempMapping(idx: number) {
+  editingMappings.value.splice(idx, 1)
+  // 删掉的正好是正在编辑的那行（或前面的行）→ 编辑目标失效，回到新增模式
+  if (editingMapIndex.value !== null && editingMapIndex.value >= idx) resetTempMapping()
+}
 </script>
 
 <template>
@@ -630,19 +672,48 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
       <!-- 目录映射 -->
       <div class="form-section">
         <h5 class="form-section-title">目录映射</h5>
-        <div v-for="(m, idx) in editingMappings" :key="idx" class="edit-mapping-row">
+        <div
+          v-for="(m, idx) in editingMappings"
+          :key="m.id ?? idx"
+          class="edit-mapping-row"
+          :class="{ 'is-editing': editingMapIndex === idx }"
+        >
           <code>{{ m.localPrefix }}</code>
           <span class="map-arrow">→</span>
           <code>{{ m.remotePath }}</code>
           <span v-if="m.description" class="map-desc">{{ m.description }}</span>
-          <button class="mini-btn danger" aria-label="删除映射" @click="removeTempMapping(idx)"><Trash2 :size="12" /></button>
+          <button
+            class="mini-btn"
+            :aria-label="`编辑映射 ${m.localPrefix} 到 ${m.remotePath}`"
+            title="编辑这条映射"
+            @click="startEditMapping(idx)"
+          ><Pencil :size="12" /></button>
+          <button
+            class="mini-btn danger"
+            :aria-label="`删除映射 ${m.localPrefix} 到 ${m.remotePath}`"
+            title="删除这条映射"
+            @click="removeTempMapping(idx)"
+          ><Trash2 :size="12" /></button>
         </div>
         <div class="edit-mapping-add">
           <div class="inline-form">
-            <input v-model="tempMap.localPrefix" aria-label="本地路径前缀" placeholder="本地前缀，如 dist/" class="inline-input" @keyup.enter="addTempMapping({ id:Date.now().toString(36), localPrefix:tempMap.localPrefix, remotePath:tempMap.remotePath, description:tempMap.description })" />
+            <input
+              v-model="tempMap.localPrefix"
+              aria-label="本地路径前缀"
+              placeholder="本地前缀，如 dist/"
+              class="inline-input"
+              @keyup.enter="commitTempMapping"
+            />
             <span class="map-arrow">→</span>
-            <input v-model="tempMap.remotePath" aria-label="远程目标路径" placeholder="远程路径，如 /var/www/app/" class="inline-input flex-remote" @keyup.enter="addTempMapping({ id:Date.now().toString(36), localPrefix:tempMap.localPrefix, remotePath:tempMap.remotePath, description:tempMap.description })" />
-            <button class="mini-add-btn" @click="addTempMapping({ id:Date.now().toString(36), localPrefix:tempMap.localPrefix, remotePath:tempMap.remotePath, description:tempMap.description })">添加</button>
+            <input
+              v-model="tempMap.remotePath"
+              aria-label="远程目标路径"
+              placeholder="远程路径，如 /var/www/app/"
+              class="inline-input flex-remote"
+              @keyup.enter="commitTempMapping"
+            />
+            <button class="mini-add-btn" @click="commitTempMapping">{{ editingMapIndex === null ? '添加' : '更新' }}</button>
+            <button v-if="editingMapIndex !== null" class="mini-btn" title="取消编辑" @click="resetTempMapping"><X :size="12" /></button>
           </div>
         </div>
     </div>
@@ -819,6 +890,18 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
    主色实心只留给当前视图的终点动作（保存目标），避免同页多个"主按钮"让人误点 */
 .mini-add-btn { padding: 4px 12px; background: transparent; color: var(--accent-text); border: 1px solid var(--accent-text); border-radius: 4px; font-size: 11px; }
 .mini-add-btn:hover { background: var(--accent); color: var(--on-accent); }
+/* 行内小图标按钮（编辑/删除映射）：编辑用中性色，删除用 danger 变体 */
+.mini-btn {
+  padding: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--fg2);
+  border-radius: 4px;
+  font-size: 11px;
+}
+.mini-btn:hover { background: var(--bg3); color: var(--fg); }
 .mini-btn.danger { padding: 4px; background: transparent; color: var(--fg2); border-radius: 4px; font-size: 11px; display: flex; align-items: center; }
 .mini-btn.danger:hover { background: var(--red-bg2); color: var(--red); }
 

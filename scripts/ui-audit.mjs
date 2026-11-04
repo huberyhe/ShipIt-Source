@@ -1304,6 +1304,42 @@ function buildWalker() {
         return 'ok'
       })()`,
       expect: [{ selector: '.edit-mapping-row' }],
+      // 不关弹窗：紧接着验“已添加的映射可以就地编辑”
+    },
+    {
+      id: 'mapping-inline-edit',
+      role: 'settings',
+      label: '目标弹窗：已添加的映射可就地编辑',
+      setup: `(async () => {
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms))
+        const row = document.querySelector('.edit-mapping-row')
+        if (!row) return 'no-mapping-row'
+        const editBtn = Array.from(row.querySelectorAll('.mini-btn')).find(b => (b.getAttribute('aria-label') || '').startsWith('编辑映射'))
+        if (!editBtn) return 'no-edit-btn'
+        editBtn.click()
+        await sleep(500)
+        const form = document.querySelector('.edit-mapping-add')
+        const inputs = Array.from(form.querySelectorAll('input'))
+        const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+        const prefilled = inputs[0].value === 'src/' && inputs[1].value === '/opt/x'
+        if (!prefilled) return 'not-prefilled:' + inputs[0].value + '|' + inputs[1].value
+        setter.call(inputs[1], '/opt/y')
+        inputs[1].dispatchEvent(new Event('input', { bubbles: true }))
+        await sleep(300)
+        const update = form.querySelector('.mini-add-btn')
+        if (!update || update.textContent.trim() !== '更新') return 'no-update-btn:' + (update ? update.textContent.trim() : '-')
+        update.click()
+        await sleep(600)
+        return 'ok'
+      })()`,
+      assertScript: `(() => {
+        const rows = Array.from(document.querySelectorAll('.edit-mapping-row')).map(r => r.textContent || '')
+        const problems = []
+        if (!rows.some(t => t.includes('/opt/y'))) problems.push('更新后的映射未生效（实际：' + rows.join(' / ').slice(0, 120) + '）')
+        if (rows.some(t => t.includes('/opt/x'))) problems.push('旧值 /opt/x 仍在列表里')
+        if (rows.length !== 1) problems.push('不该新增行，实际行数：' + rows.length)
+        return problems
+      })()`,
       teardown: `(async () => { const c = document.querySelector('.base-dialog-close'); if (c) c.click(); await new Promise(r=>setTimeout(r,600)); return 'ok' })()`
     },
     {
