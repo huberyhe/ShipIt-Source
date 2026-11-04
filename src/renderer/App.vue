@@ -410,7 +410,9 @@ async function loadProjectData(path: string) {
   --bg: #ffffff; --bg2: #f3f3f3; --bg3: #ececec; --bg4: #e0e0e0; --bg5: #cccccc;
   --border: #d4d4d4; --border2: #c8c8c8;
   --fg: #333333; --fg2: #636363; --fg3: #000000;
-  --accent: #0078d4; --accent2: #1a8ce8; --accent3: #e5f0fc; --on-accent: #ffffff;
+  /* 主色悬停（--accent2）必须**变深**而不是变亮：
+     白字压 #1a8ce8 只有 3.5:1（审计 contrast/aa 会报）；#0068b8 约 5.7:1。 */
+  --accent: #0078d4; --accent2: #0068b8; --accent3: #e5f0fc; --on-accent: #ffffff;
   --accent-text: #005a9e;
   --status-bar: #0067b8; --input-bg: #ffffff;
   /* 浅色主题用浅蓝底 + 正常文字色（语义色仍可读） */

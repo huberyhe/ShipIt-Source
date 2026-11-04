@@ -240,7 +240,19 @@ const previewFile = ref<string | null>(null)
  * 展开状态。空串代表「项目目录」这个顶级节点（见 projectRootNode），
  * 默认展开：视觉上与原来一致（多一层项目目录），又便于一键整体上传。
  */
-const expandedDirs = ref<Set<string>>(new Set(['']))
+/**
+ * 展开态存在 uiStore（跨视图切换保留）：视图切走会卸载，局部 ref 会丢。
+ * 变更数据本来就在 gitStore，所以切回来时展开态与内容同帧出现，不会“动态展开”。
+ */
+const expandedDirs = computed<Set<string>>({
+  get: () => uiStore.gitChangesExpanded,
+  set: (next) => uiStore.setGitChangesExpanded(next)
+})
+
+/** 全部收起（模板里不能直接调 .clear()：computed 只有 getter/setter） */
+function collapseAllDirs(): void {
+  uiStore.setGitChangesExpanded(new Set())
+}
 
 // 手动刷新（有反馈）
 async function refresh() {
@@ -592,7 +604,7 @@ const selectionText = computed(() => {
         <IconButton class="icon-btn" size="sm" tabindex="-1" label="全部展开" @click="expandAll">
           <ChevronsUpDown :size="14" />
         </IconButton>
-        <IconButton class="icon-btn" size="sm" tabindex="-1" label="全部收起" @click="expandedDirs.clear()">
+        <IconButton class="icon-btn" size="sm" tabindex="-1" label="全部收起" @click="collapseAllDirs()">
           <ChevronsDownUp :size="14" />
         </IconButton>
       </template>

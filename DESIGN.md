@@ -56,6 +56,11 @@ typography:
     fontSize: "17px"
     fontWeight: 600
     lineHeight: 1.35
+  # 显示级字号：仅首屏品牌标题（如欢迎页的 ShipIt），不要用在正文/控件里
+  display:
+    fontSize: "24px"
+    fontWeight: 600
+    lineHeight: 1.2
   # 等宽：仅用于 diff / 日志 / 配置键值（DESIGN §3）
   mono:
     fontFamily: "'Cascadia Code', 'Fira Code', Consolas, monospace"
@@ -154,7 +159,7 @@ ShipIt 是开发者的文件发布工具（Electron 桌面端）。界面语言�
 ## Do's and Don'ts
 
 - **Do** 用 `var(--*)`；**Don't** 写 `#xxxxxx` / `rgba()`（唯一例外：`App.vue` 里的 token 声明与 `index.html` 的首帧底色）。
-- **Do** 让每个交互元素都有 default/hover/active/focus-visible/disabled；**Don't** 只在 hover 时提供操作（键盘用户拿不到）。
+- **Do** 让每个交互元素都有 default/hover/active/focus-visible/disabled；**Don't** 只在 hover 时提供操作却**没有**键盘等价入口（树行的行内操作是例外：配 `Alt+Enter` 与右键菜单）。
 - **Do** 每个异步动作给可见状态（loading/进度/toast/状态栏）；**Don't** 出现"点了没反应"。
 - **Do** 上传前展示远端路径与文件数量并与实际执行一致；**Don't** 用默认值替用户决定发到哪。
 - **Don't** 用颜色单独表达状态：错误 = 红框 + `aria-invalid`，提示 = 文字 + 图标 + `role`。

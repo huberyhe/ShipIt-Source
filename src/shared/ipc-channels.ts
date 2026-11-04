@@ -93,6 +93,8 @@ export const IpcChannels = {
 
   // 应用信息（版本号等）
   APP_GET_VERSION: 'app:get-version',
+  /** 用系统浏览器打开外部链接（仅限白名单域名 + https） */
+  APP_OPEN_EXTERNAL: 'app:open-external',
 
   // 菜单同步（渲染进程 → 主进程，单向）
   MENU_SYNC_STATE: 'menu:sync-state',

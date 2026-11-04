@@ -1,4 +1,4 @@
-import { app, BrowserWindow, globalShortcut, ipcMain, dialog, Menu, nativeTheme } from 'electron'
+import { app, BrowserWindow, globalShortcut, ipcMain, dialog, Menu, nativeTheme, shell } from 'electron'
 import { join, dirname } from 'path'
 import { networkInterfaces } from 'os'
 import { promises as fsPromises } from 'fs'
@@ -663,6 +663,27 @@ function registerIpcHandlers() {
 
   // 应用版本（来自打包时的 package.json，UI 与安装包版本同源）
   ipcMain.handle(IpcChannels.APP_GET_VERSION, () => app.getVersion())
+
+  /**
+   * 用系统浏览器打开外部链接。
+   *
+   * 只接受 https + 白名单主机：这个通道供渲染层拼字符串用（关于页的发布地址），
+   * 不校验就相当于把“可打开任意 URL”的能力交给页面（渲染层一旦被注入就是任意协议拉起）。
+   */
+  // 目前只有 GitHub releases 需要从应用内打开；不留 npm 主机（暂时用不上，少一个可被拉起的域名）
+  const OPEN_EXTERNAL_HOSTS = new Set(['github.com'])
+  ipcMain.handle(IpcChannels.APP_OPEN_EXTERNAL, async (_event, rawUrl: unknown) => {
+    let parsed: URL
+    try {
+      parsed = new URL(String(rawUrl))
+    } catch {
+      throw new Error('无效的链接')
+    }
+    if (parsed.protocol !== 'https:' || !OPEN_EXTERNAL_HOSTS.has(parsed.hostname)) {
+      throw new Error('该链接不允许从应用内打开：' + parsed.hostname)
+    }
+    await shell.openExternal(parsed.toString())
+  })
 
   // 打开全局设置窗口（指定标签页）：项目/主窗口的「上传目标管理」「本地服务管理」都走这里
   ipcMain.handle(IpcChannels.SETTINGS_OPEN, async (_event, section: unknown) => {

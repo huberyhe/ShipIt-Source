@@ -86,6 +86,6 @@ web
 
 ## Accessibility & Inclusion
 
-- 键盘可达为硬性要求：控件用 `<button>`（带 `aria-label` / `aria-expanded`），全局 `:focus-visible` **2px** 焦点环；树/列表行是例外——`div[role="treeitem"]` + 容器单一 Tab 停靠点、行上 **1px** 上下焦点边。表单 `label for` 关联，toast/进度 `aria-live`。**已知缺口**：树尚无 `role="tree"`/`group` 与行级 `aria-selected`。
+- 键盘可达为硬性要求：控件用 `<button>`（带 `aria-label` / `aria-expanded`），全局 `:focus-visible` **2px** 焦点环；树/列表行是例外——`div[role="treeitem"]` + 容器单一 Tab 停靠点、行上 **1px** 上下焦点边。表单 `label for` 关联，toast/进度 `aria-live`。树语义已补齐：容器 `role="tree"` + 子层 `role="group"` + 行 `aria-selected`。
 - 双主题需维持对比度：小字号状态文字用专用 token（`--yellow-text` / `--red-text`），列表选中态在浅色下用浅底深字、深色下用实色强调底白字，避免状态色跌破 AA。
 - 不使用纯图标无标签的不可读控件；图标按钮必须带 `label`。

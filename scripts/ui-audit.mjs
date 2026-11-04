@@ -1570,6 +1570,97 @@ function buildWalker() {
       })()`
     },
     {
+      id: 'git-changes-keeps-expanded',
+      role: 'project',
+      label: 'Git 变更：切走去再回来，仓库/目录仍展开且不“动态展开”',
+      setup: `(async () => {
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms))
+        const waitFor = async (fn, ms) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { const v = fn(); if (v) return v; await sleep(200) } return null }
+        const gitTab = await waitFor(() => Array.from(document.querySelectorAll('.view-btn')).find(x => x.textContent.includes('Git变更') && !x.classList.contains('disabled')), 15000)
+        if (!gitTab) return 'no-git-tab'
+        gitTab.click()
+        await waitFor(() => document.querySelectorAll('.tree-row').length > 0, 15000)
+        await sleep(500)
+        // 展开第一个目录（有展开按钮的行）
+        const dirRow = Array.from(document.querySelectorAll('.tree-row')).find(r => r.querySelector('.expand-icon'))
+        if (!dirRow) return 'no-dir-row'
+        const expandBtn = dirRow.querySelector('.expand-icon')
+        if (expandBtn.getAttribute('aria-expanded') !== 'true') expandBtn.click()
+        await sleep(600)
+        // 切到文件树再切回
+        const ft = Array.from(document.querySelectorAll('.view-btn')).find(x => x.textContent.includes('文件树'))
+        if (!ft) return 'no-filetree-tab'
+        ft.click()
+        await sleep(900)
+        gitTab.click()
+        // 抓切回后的**首帧**
+        let firstFrame = null
+        const t1 = Date.now()
+        while (Date.now() - t1 < 6000) {
+          const rows = Array.from(document.querySelectorAll('.tree-row'))
+          if (rows.length > 0) {
+            const expanded = rows.filter(r => { const e = r.querySelector('.expand-icon'); return e && e.getAttribute('aria-expanded') === 'true' })
+            firstFrame = { rows: rows.length, expandedRows: expanded.length }
+            break
+          }
+          await sleep(30)
+        }
+        window.__auditGitChangesExpand = firstFrame
+        return firstFrame ? 'ok' : 'no-first-frame'
+      })()`,
+      assertScript: `(() => {
+        const probe = window.__auditGitChangesExpand
+        if (!probe) return ['没有抓到切回后的首帧']
+        const problems = []
+        if (probe.expandedRows < 1) problems.push('切回 Git 变更时目录已收起（应保持展开）')
+        return problems
+      })()`
+    },
+    {
+      id: 'git-log-keeps-expanded',
+      role: 'project',
+      label: 'Git 日志：切走去再回来，已展开的提交仍展开',
+      setup: `(async () => {
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms))
+        const waitFor = async (fn, ms) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { const v = fn(); if (v) return v; await sleep(200) } return null }
+        const logTab = await waitFor(() => Array.from(document.querySelectorAll('.view-btn')).find(x => x.textContent.includes('Git日志') && !x.classList.contains('disabled')), 15000)
+        if (!logTab) return 'no-log-tab'
+        logTab.click()
+        const item = await waitFor(() => document.querySelector('.commit-item'), 15000)
+        if (!item) return 'no-commit-item'
+        // 全量运行时前面的截图步骤可能已经把首条提交展开过了：点击是 toggle，
+        // 直接 click 反而会收起 → 只在未展开时才点
+        if (!document.querySelector('.commit-detail')) item.click()
+        await waitFor(() => document.querySelector('.commit-detail'), 10000)
+        await sleep(400)
+        // 切到文件树再切回
+        const ft = Array.from(document.querySelectorAll('.view-btn')).find(x => x.textContent.includes('文件树'))
+        if (!ft) return 'no-filetree-tab'
+        ft.click()
+        await sleep(900)
+        logTab.click()
+        let firstFrame = null
+        const t1 = Date.now()
+        while (Date.now() - t1 < 6000) {
+          const items = Array.from(document.querySelectorAll('.commit-item'))
+          if (items.length > 0) {
+            firstFrame = { items: items.length, detailVisible: !!document.querySelector('.commit-detail') }
+            break
+          }
+          await sleep(30)
+        }
+        window.__auditGitLogExpand = firstFrame
+        return firstFrame ? 'ok' : 'no-first-frame'
+      })()`,
+      assertScript: `(() => {
+        const probe = window.__auditGitLogExpand
+        if (!probe) return ['没有抓到切回后的首帧']
+        const problems = []
+        if (!probe.detailVisible) problems.push('切回 Git 日志时已展开的提交被收起了（应保持展开，且文件列表不应清空）')
+        return problems
+      })()`
+    },
+    {
       id: 'narrow-filetree',
       role: 'project',
       label: '窄窗 720×600：文件树不出现横向溢出',

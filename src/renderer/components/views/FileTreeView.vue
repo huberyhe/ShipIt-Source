@@ -232,7 +232,9 @@ function formatStamp(d: Date): string {
 
 const snapshotLabel = computed(() => (snapshotAt.value ? `${formatClock(snapshotAt.value)} 刷新` : ''))
 const snapshotTitle = computed(() =>
-  snapshotAt.value ? `这份文件树的数据快照：${formatStamp(snapshotAt.value)}（F5 或右上角刷新可更新）` : ''
+  snapshotAt.value
+    ? `这份文件树的数据快照：${formatStamp(snapshotAt.value)}（切回本窗口会自动刷新，也可按 F5 或点右上角刷新）`
+    : ''
 )
 
 /**
@@ -276,11 +278,26 @@ function onRefreshView(): void {
   void refresh()
 }
 
+/**
+ * 窗口重新获得焦点（用户从 IDE / 资源管理器改完文件切回来）时刷新一次。
+ *
+ * 为什么只做聚焦刷新、不做轮询：目录树每展开一层都是一次 readdir，轮询纯属白烧 IO；
+ * 而真正需要看到新文件的时刻，几乎都是"我刚在外面改完切回来"。
+ * 这样三视图的新鲜度策略一致：Git 变更 / 提交历史是 60s 轮询 + 聚焦刷新，文件树是聚焦刷新。
+ * 表头的「HH:mm:ss 刷新」因此有了确切含义：上次真正拉取数据的时刻。
+ */
+function onWindowFocus(): void {
+  // 只有本窗口真的拿到焦点才刷（焦点可能落到别的窗口上，此时不该动树）
+  if (!document.hasFocus()) return
+  void refresh()
+}
+
 // Ctrl+Shift++ / Ctrl+Shift+- 与 F5 均回 App 统一派发（只有当前挂载的视图会收到）
 onMounted(() => {
   window.addEventListener('tree-expand-all', handleExpandAll)
   window.addEventListener('tree-collapse-all', handleCollapseAll)
   window.addEventListener('refresh-view', onRefreshView)
+  window.addEventListener('focus', onWindowFocus)
   // 视图切换（Ctrl+1/2/3）会重建组件，展开态本来就已释放；
   // 既然要重建，就顺手拉一次根目录（单层 readdir，很便宜）——否则"回到本视图"看到的
   // 仍是项目打开那一刻的旧列表，而树又没有任何自动刷新。
@@ -292,6 +309,7 @@ onUnmounted(() => {
   window.removeEventListener('tree-expand-all', handleExpandAll)
   window.removeEventListener('tree-collapse-all', handleCollapseAll)
   window.removeEventListener('refresh-view', onRefreshView)
+  window.removeEventListener('focus', onWindowFocus)
 })
 
 const rootChildren = computed(() => filesStore.fileTree?.children || [])

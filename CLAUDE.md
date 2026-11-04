@@ -2,6 +2,22 @@
 
 面向开发者的文件发布工具（Electron + Vue 3 + Pinia + TS）。将本地文件通过 FTP/SFTP/FTPS/FTPS/本地目录上传到多台服务器，附带 Git 状态/日志查看。
 
+## 协作纪律（与用户约定，优先于下面的铁律）
+
+- **不主动提交代码**：除非用户在当轮明确要求提交（如“提交”“commit”“先提交再继续”）或明确确认过提交范围，否则**只改工作区、不执行 `git add` / `git commit`**。完成一个任务后默认停在工作区并报告改动与验证结果；需要提交时先问一句。这条同样适用于：不主动 amend、不主动打 tag/发版、不主动推送。
+- **文档类改动也一样**：改 `CLAUDE.md` / `README.md` / `DESIGN.md` 不会自动连带提交。
+- **不擅自发布、不擅自执行高危动作**：下列动作都必须先说明“要做什么 + 影响范围”，得到用户当轮的明确同意后才执行；用户只说“继续 / 下一步 / 需要 / 可以”不等于发布了授权：
+
+  | 类别 | 具体动作 |
+  | --- | --- |
+  | 对外发布 | `npm publish`（含 `publish:cli`）、创建/编辑/删除 GitHub Release、上传/替换 Release 资产、推送/强推 tag、创建 tag |
+  | 远端仓库 | `git push`（含 `push -f`）、修改远端分支、删分支/删 tag、改仓库可见性或协作者 |
+  | 破坏性变更 | 删除/覆盖远端资产、改写历史（rebase / filter / 强推）、批量删除本地文件 |
+  | 环境与凭据 | 修改全局配置（`~/.npmrc`、系统环境变量、注册表）、安装/卸载全局依赖、改动别人的安装目录或运行中的实例 |
+  | 外部服务 | 调用会产生费用的接口、向第三方上传代码或数据、创建云资源 |
+
+  例外：**只是把本轮已确认的改动发出去**的常规链路（确认版本号 → 全量校验 → 提交 → 打 tag → 等 CI），在用户已经给出发布指令且版本号经确认的前提下可以连续执行；中途出现异常（CI 红、资产异常、需要强推 tag）时停下来报告，不要自行补救式地重发。
+
 ## 常用命令
 
 ```bash
@@ -79,14 +95,16 @@ npm run gen:icon       # 换图标后重新生成 build/icon.ico
 - **文档入库边界**：`.project/`（详细设计权威、PRD、规格）被项目 `.gitignore` 忽略、不入库；入库版本是根级 `DESIGN.md` / `PRODUCT.md`。改设计系统时两份都要同步（本地详细版 + 入库机器可读版）。`.impeccable/` 由全局 gitignore 忽略，不需要再处理
 - **上传目标名必须唯一**：人靠名字区分环境，重名 = 发错服务器。校验用 `target-form.ts` 的 `duplicateNameOf()`（编辑时忽略自身），复制用 `copyNameOf()` 自动避重名（`原名 副本` → `副本 2`…）；`persistDraft` 落盘前再守一次，防止副本被改成重名
 - **「复制目标」走「新增」流程**：点复制只是**打开新增弹窗并预填配置**（名称预先避重名），用户改完再「加入待保存」；不要直接往草稿里塞一份副本（多出来那份会先于用户确认出现）
-- **展开态跨视图保留，但不得“动态展开”**：`expandedDirs` 记住哪些目录展开了，切走再回来应该**原样还是展开的**；但对“只记展开态”不够——节点会先渲染成折叠、再异步拉子项，看起来就是自己在展开。因此还有**子项缓存** `dirChildren`（`filesStore.getDirChildren/setDirChildren`）：节点首次渲染直接用缓存带出子项（首帧即展开），后台再静默校对一次；换项目时清缓存。审计 `view-switch-keeps-expanded-without-animation` 锁的是**首帧**（src 已展开 且 子项已存在）
+- **三个视图的展开态都跨视图保留，且不得“动态展开”**：文件树的 `filesStore.expandedDirs` + 子项缓存 `dirChildren`；Git 变更的 `uiStore.gitChangesExpanded`；Git 日志的 `uiStore.gitLogExpandedCommits` + `gitStore.commitFiles`（文件列表缓存）。
+  只记“展开了”不够：节点会先渲染成折叠、再异步拉内容，看起来就是自己在展开；**展开态与它需要的缓存必须同存**，首次渲染直接用缓存（首帧即展开），后台再静默校对。换项目时三份一起清（`resetGitLogFilters` 里已带 `resetGitExpandedState`）。
+  审计：`view-switch-keeps-expanded-without-animation`（文件树）、`git-changes-keeps-expanded`、`git-log-keeps-expanded` —— 都抓切回后的**首帧**。
 - **「不执行」不是忘掉配置**：目标上 `postUpload: null` 表示本次不执行，但已填的脚本/命令必须存进 `postUploadStash`（永不执行，仅供下次编辑回填）；纯逻辑在 `utils/target-form.ts` 的 `postUploadFields()`，不要把它搬回组件里重写一遍
 - **设置页保存语义**：页脚 `保存` = 落盘并**关闭页面**（保存未成功/服务起不来则保持打开并 toast 说明）；`取消` = **两段式**（有未保存改动时按钮先变成「确认放弃」，再点一次才丢弃并关闭）；目标编辑弹窗的 `取消` 同样两段式，`Esc/✕` 保持一步关闭。**两个分区用 `v-show` 常驻**（不卸载）：切分区不得丢失草稿或脏标；关窗时按分区逐个提交所有脏分区，任一失败就保持打开
 - **`keep_stdin_open` 与本项目无关**
 - **TLS 客户端必须关掉会话复用**（`maxCachedSessions: 0`）：服务端关掉空闲连接后，新连接会走 session resumption → **不再下发证书** → `getPeerCertificate()` 为空 → 指纹算成 `''`。修复前这被误判成 `TLS_MISMATCH`，表现为"空闲后第一次调用必失败、紧接着重试成功"（实测在真机上约一半调用失败）。同时**空证书 ≠ 指纹不一致**：前者换新 socket 重试一次，仍取不到才报 `BACKEND_UNAVAILABLE`；`TLS_MISMATCH` 只用于"确实看到了另一张证书"。回归用例 `src/cli/client.resume.spec.ts`（含反向验证：改回会话缓存即失败）
 - **连接信息文件必须与"是否真的在监听"一致**：桌面版监听失败（`PORT_IN_USE`）时会清理**残留**文件（文件里的 `pid` 已不存在 = 被强杀留下的），但**不删存活实例的**；否则客户端会 pin 一个永不被服务的指纹，报出误导性的 `TLS_MISMATCH`（真实原因是"服务没开/端口被别人占"）。`TLS_MISMATCH` 的提示必须给出**指纹来源**（连接串 / 已保存配置 / 连接信息文件路径）+ 端口 + 两侧指纹前 8 位 + 分来源的下一步 —— 用户不看到来源就不知道该改哪里
 - **「加载更多」类按钮要与"是否还有更多"绑定**：Git 日志以「返回条数 < 请求上限」判定取完（`gitStore.logExhausted`），取完后隐藏按钮并显示「（已全部加载）」——按钮留着点了也不变，会让人以为还有更多。审计 `git-log` 步骤有对应断言
-- **自动化界面检查（`npm run audit:ui`）**：39 步 × 浅/深双主题。重点步骤：`deploy-local-upload`（本地目标一次**真实成功上传**）、`narrow-filetree` / `narrow-deploy-confirm`（720×600 与 600×480 窄窗：无横向溢出、弹窗完整可见）、`filetree-refresh-keeps-expanded`（F5 保留展开态）。跑之前先关掉其它 ShipIt / `electron:dev` 实例，否则 `Execution context was destroyed`；**采样前必须等动画结束**（`waitForAnimations`：忽略无限动画、要求有限动画连续两次归零）——曾在淡入过渡中途采样，把视图切换标签记成对比度 2.08（稳定态 4.55），造成间歇性假问题；步骤 teardown **不得关闭窗口**（页面销毁后页面内 await 永不返回 → 30s "Runtime.evaluate 超时"），确需关闭时用 `closesWindow: true`（不等应答 + Node 侧确认窗口消失）
+- **自动化界面检查（`npm run audit:ui`）**：全量步骤 × 浅/深双主题（步骤数以脚本为准，报告末尾会打印「本轮覆盖」；新增步骤时同步 `.audit/ui-audit-report.md` 覆盖说明，别在文档里写死数字）。重点步骤：`deploy-local-upload`（本地目标一次**真实成功上传**）、`narrow-filetree` / `narrow-deploy-confirm`（720×600 与 600×480 窄窗：无横向溢出、弹窗完整可见）、`filetree-refresh-keeps-expanded`（F5 保留展开态）。跑之前先关掉其它 ShipIt / `electron:dev` 实例，否则 `Execution context was destroyed`；**采样前必须等动画结束**（`waitForAnimations`：忽略无限动画、要求有限动画连续两次归零）——曾在淡入过渡中途采样，把视图切换标签记成对比度 2.08（稳定态 4.55），造成间歇性假问题；步骤 teardown **不得关闭窗口**（页面销毁后页面内 await 永不返回 → 30s "Runtime.evaluate 超时"），确需关闭时用 `closesWindow: true`（不等应答 + Node 侧确认窗口消失）
 - **CLI 帮助分两级**：顶层 `--help` 只列**命令名 + 常用参数**（按用途分类：上传流程/查询/集成）；**完整参数在各命令自己的帮助里** —— `shipit help <命令>` 与 `shipit <命令> --help` 等价，内容来自 `args.ts` 的 `COMMAND_HELP`（新增命令/参数时同一处维护，`helpText(cmd)` 是渲染入口）
 - **设置页保存语义（最终）**：目标编辑=**虚拟弹窗**，弹窗内「加入待保存」只把改动**暂存**到草稿并关弹窗（**不写配置**）——**不要再叫「确定」**，否则用户会以为已落盘；设置窗口底部统一「取消 / 保存」——`保存` 按当前分区落盘（目标=差异写回：新增/修改/删除）成功后关闭页面，`取消` 两段式（有未保存改动时第一次只把按钮变成红的「确认放弃」）。**未保存提示只在设置窗口右上角**（弹窗内不重复提示），且表头固定 44px、提示用"黄点+可读文字"（不用边框/底色，避免像按钮）
 - **类型不要从 `.vue` 导出**：`vue-tsc` 能解析 `.vue` 的导出，但**纯 `npx tsc --noEmit` 不能**（未声明 `*.vue` 模块 → TS2614）。共享类型放 `src/renderer/types/*.ts`（如 `ContextMenuItem`），组件与 composable 都从那里导入；CI 同时跑 `vue-tsc` 与 `tsc --noEmit` 两套口径
@@ -153,6 +171,8 @@ node --experimental-websocket scripts/ui-audit.mjs \
 - 截图里的端口显示 4599 属正常，不要为此改回 4517。
 
 ## 发布纪律（硬性）
+
+> 本节与《协作纪律》里的「不擅自发布、不擅自执行高危动作」配套：没有当轮授权就不要开始发布流程。
 
 - **提交并发布前，先与用户确认版本号**：不自行决定、不自行递增；确认后按该版本号统一全部位置。
 - **版本号必须处处一致**，发布前逐项核对（任何一处不一致就先对齐再发）：

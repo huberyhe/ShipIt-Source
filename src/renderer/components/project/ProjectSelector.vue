@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { FolderOpen, Folder, ArrowRight, X, Send } from 'lucide-vue-next'
+import { FolderOpen, Folder, ArrowRight, X } from 'lucide-vue-next'
 import { baseNameOf, shortenPath } from '../../utils/path-display'
 import { reportError } from '../../utils/report-error'
 import BaseButton from '../common/BaseButton.vue'
@@ -32,13 +32,10 @@ async function handleOpen(): Promise<void> {
 <template>
   <div class="project-selector">
     <div class="selector-card">
-      <!-- 身份：一个 24px 的发布语义图标（Send = 把文件发出去）+ 产品名，不做插图/大卡片 -->
-      <h1 class="app-title">
-        <span class="app-mark" aria-hidden="true"><Send :size="16" /></span>
-        <span>ShipIt</span>
-      </h1>
+      <!-- 身份就产品名本身：不放装饰图标（对“这是个什么工具”没有帮助） -->
+      <h1 class="app-title">ShipIt</h1>
       <!-- 副标题承载产品事实（原文案只有"一键上传"，漏掉另外两件：多目标、预览后确认） -->
-      <p class="app-subtitle">按 Git 变更选文件 · 一次发到多台服务器 · 预览确认后再上传</p>
+      <p class="app-subtitle">开发者文件发布工具 · 一键上传到多台服务器</p>
 
       <div class="primary-row">
         <!-- 首屏的唯一主操作：autofocus 让键盘用户落地即可回车 -->
@@ -105,28 +102,13 @@ async function handleOpen(): Promise<void> {
 }
 
 .app-title {
-  /* 图标与产品名同一行，整体居中（图标不是装饰，与名字同属一个标识块） */
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  /* 17px 是设计规范里 16-17px 这一档（此前的 28px 属于待收敛的历史值） */
-  font-size: 17px;
+  /* 首屏唯一的主标题：用显示级字号（DESIGN §3 的 display 档，仅首屏品牌标题使用） */
+  text-align: center;
+  font-size: 24px;
   font-weight: 600;
+  letter-spacing: -0.01em;
   color: var(--fg3);
   margin: 0 0 12px;
-}
-
-/* 身份标记：24px 方块 + 6px 圆角的语义色底，不用插图、不用渐变、不用阴影 */
-.app-mark {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
-  background: var(--bg3);
-  color: var(--accent-text);
 }
 
 .app-subtitle {

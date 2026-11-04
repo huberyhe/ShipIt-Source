@@ -109,8 +109,15 @@ const localAuthorFilter = computed({
 })
 // 展开彼此独立：选中另一条只新增展开，不折叠已展开的那条
 // （折叠会让上方高度骤减、把选中的行顶出视口，也与鼠标单击行为不一致）
-const expandedCommits = ref<string[]>([])
-const commitFilesMap = ref<Record<string, GitCommitFile[]>>({})
+/** 展开态与已加载文件都放 store：切视图不走丢，且切回来首帧就是展开后的样子 */
+const expandedCommits = computed<string[]>({
+  get: () => uiStore.gitLogExpandedCommits,
+  set: (next) => uiStore.setGitLogExpandedCommits(next)
+})
+const commitFilesMap = computed<Record<string, GitCommitFile[]>>({
+  get: () => gitStore.commitFiles,
+  set: (next) => gitStore.setCommitFiles(next)
+})
 const loadingHashes = ref<string[]>([])
 const isExpanded = (hash: string): boolean => expandedCommits.value.includes(hash)
 const filesOf = (hash: string): GitCommitFile[] => commitFilesMap.value[hash] ?? []
@@ -145,6 +152,29 @@ const authorOptions = computed<Array<{ value: string; label: string }>>(() => {
   return list
 })
 
+/**
+ * 多仓库提示：git log 只跑在项目根那一个仓库上。
+ * 项目根不是仓库（子仓库项目）时这里必然为空——必须说清原因，
+ * 不能让「读不出来」显示成「暂无提交记录」。
+ */
+const multiRepoHint = computed(() => {
+  const list = gitStore.repos
+  if (!list.length) return ''
+  const root = projectStore.projectPath
+  if (!root) return ''
+  const normalizedRoot = root.replace(/\\/g, '/').replace(/\/+$/, '')
+  const rootIsRepo = list.some(
+    (repo) => repo.repoPath.replace(/\\/g, '/').replace(/\/+$/, '') === normalizedRoot
+  )
+  if (!rootIsRepo) {
+    return `项目根不是 git 仓库：已发现 ${list.length} 个项目内仓库，提交记录目前只读项目根`
+  }
+  if (list.length > 1) {
+    return `该项目包含 ${list.length} 个仓库，提交记录目前只读项目根`
+  }
+  return ''
+})
+
 // 空列表文案：筛选条件失效/无结果时给出可诊断信息，避免“静默空列表”
 const emptyText = computed(() => {
   const missing: string[] = []
@@ -152,6 +182,7 @@ const emptyText = computed(() => {
   if (authorMissing.value) missing.push('提交者')
   if (missing.length) return `无匹配提交：已选${missing.join('、')}在当前仓库中不存在`
   if (localBranchFilter.value || localAuthorFilter.value) return '无匹配提交：请调整或清空筛选条件'
+  if (multiRepoHint.value) return multiRepoHint.value
   return '暂无提交记录'
 })
 
@@ -170,6 +201,8 @@ onMounted(async () => {
 watch(() => gitStore.logFilterResetToken, async () => {
   // 清的是 uiStore（单一来源）：不残留上个项目的分支/提交者
   uiStore.resetGitLogFilters()
+  // 提交文件缓存跟着一起清：换项目后旧 hash 的文件列表既没用，也会一直占内存
+  gitStore.clearCommitFiles()
   logMaxCount.value = PAGE_SIZE
   await refreshLight()
 })

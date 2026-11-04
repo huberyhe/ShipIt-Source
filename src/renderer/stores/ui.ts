@@ -97,11 +97,36 @@ export const useUiStore = defineStore('ui', () => {
 const gitLogBranch = ref('')
 const gitLogAuthor = ref('')
 
+/**
+ * 两个 Git 视图的展开态（跨视图切换保留）。
+ *
+ * 为什么不放组件里：视图切走会卸载，局部 ref 随之丢失，切回来就全收起。
+ * 这两份数据都是纯展示状态，不涉业务，归 ui store；换项目时一并清空。
+ * Git 变更的数据本来就在 git store 里，展开态跟它一起就能**首帧即展开**（不需异步补内容）。
+ */
+const gitChangesExpanded = ref<Set<string>>(new Set())
+const gitLogExpandedCommits = ref<string[]>([])
+
+function setGitChangesExpanded(next: Set<string>): void {
+  gitChangesExpanded.value = next
+}
+
+function setGitLogExpandedCommits(next: string[]): void {
+  gitLogExpandedCommits.value = next
+}
+
+/** 换项目/重新打开时：两个视图的展开态都要清（旧路径/旧提交对新项目无意义） */
+function resetGitExpandedState(): void {
+  gitChangesExpanded.value = new Set()
+  gitLogExpandedCommits.value = []
+}
+
 /** 应用某项目记忆的视图状态（打开项目后调用） */
 /** 清空 Git 日志筛选（切项目/重新打开时用）：筛选值归本 store 单一持有，因此清这里即可 */
   function resetGitLogFilters(): void {
     gitLogBranch.value = ''
     gitLogAuthor.value = ''
+    resetGitExpandedState()
   }
 
   function applyViewState(state: { activeView?: ActiveView; logPanelExpanded?: boolean; gitLogBranch?: string; gitLogAuthor?: string } | null): void {
@@ -128,6 +153,11 @@ function viewStateSnapshot(): { activeView: ActiveView; logPanelExpanded: boolea
     gitLogBranch,
     gitLogAuthor,
     resetGitLogFilters,
+    gitChangesExpanded,
+    gitLogExpandedCommits,
+    setGitChangesExpanded,
+    setGitLogExpandedCommits,
+    resetGitExpandedState,
     theme,
     appVersion,
     initAppVersion,

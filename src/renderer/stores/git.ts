@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { reportError, warnOnly } from '../utils/report-error'
 import { ref } from 'vue'
-import type { GitBranchInfo, GitChangeInfo, GitCommitInfo, GitRepoStatus } from '../../shared/types'
+import type { GitBranchInfo, GitChangeInfo, GitCommitFile, GitCommitInfo, GitRepoStatus } from '../../shared/types'
 
 /** 文件差异的读取结果：失败是**一个状态**，不是一个空字符串 */
 export type FileDiffResult =
@@ -180,6 +180,21 @@ const reposScanTruncated = ref(false)
     }
   }
 
+  /**
+   * Git 日志已展开提交的文件列表缓存（hash → 文件）。
+   * 放 store 而不是组件：视图切走会卸载，局部 ref 会丢，切回来就只剾“展开态”、
+   * 还得再异步拉一次文件 → 看起来就是在动态展开。缓存与之同存才能首帧即展开。
+   */
+  const commitFiles = ref<Record<string, GitCommitFile[]>>({})
+
+  function setCommitFiles(next: Record<string, GitCommitFile[]>): void {
+    commitFiles.value = next
+  }
+
+  function clearCommitFiles(): void {
+    commitFiles.value = {}
+  }
+
   return {
     hasGit,
     branch,
@@ -200,6 +215,9 @@ const reposScanTruncated = ref(false)
     loadGitLog,
     loadGitRefs,
     resetLogFilters,
+    commitFiles,
+    setCommitFiles,
+    clearCommitFiles,
     getFileDiff
   }
 })
