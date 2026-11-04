@@ -51,6 +51,16 @@ typography:
     fontSize: "16px"
     fontWeight: 600
     lineHeight: 1.4
+  # 对话框/页面标题允许 17px（DESIGN §3 已登记 16-17px 一档）；不给机器可读层就会把合规写法报成越界
+  title-lg:
+    fontSize: "17px"
+    fontWeight: 600
+    lineHeight: 1.35
+  # 等宽：仅用于 diff / 日志 / 配置键值（DESIGN §3）
+  mono:
+    fontFamily: "'Cascadia Code', 'Fira Code', Consolas, monospace"
+    fontSize: "12px"
+    lineHeight: 1.5
   meta:
     fontSize: "11px"
     lineHeight: 1.4

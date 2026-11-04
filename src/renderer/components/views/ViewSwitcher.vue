@@ -110,7 +110,11 @@ function onSwitcherKeydown(event: KeyboardEvent): void {
 .view-btn:hover:not(.disabled) { background: var(--bg3); color: var(--fg); }
 .view-btn.active { background: var(--bg2); color: var(--fg3); border-left: 2px solid var(--accent); }
 /* 焦点只用颜色表达（与内容区行一致），不再叠一圈外框 */
-.view-btn:focus-visible { outline: none; background: var(--accent3); color: var(--accent-text); }
+/*
+ * 焦点不能用“只换颜色”表达（红线 7）：视图按钮与其它控件用同一套 2px 焦点环。
+ * 选中态（.active）的背景不变，两者可以同时看见。
+ */
+.view-btn:focus-visible { outline: 2px solid var(--status-bar); outline-offset: -2px; }
 .view-btn.disabled { opacity: 0.3; cursor: not-allowed; }
 .btn-label { font-size: 11px; line-height: 1.1; white-space: nowrap; }
 /*

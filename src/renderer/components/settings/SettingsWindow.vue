@@ -307,7 +307,8 @@ onMounted(() => {
   padding: 0 16px; background: var(--bg2); border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
-.page-title { margin: 0; font-size: 14px; font-weight: 500; }
+/* 回到字号 ramp（13px）：14px 是历史值，检测器会当成设计系统越界 */
+.page-title { margin: 0; font-size: 13px; font-weight: 600; }
 /* 未保存提示：统一放标题行右侧（显眼、且与两个分区口径一致） */
 /* 未保存提示：纯文字 + 圆点（**不要边框/底色** —— 那会让它看起来像个可点的按钮）。
    语义色放在圆点上，文字用可读前景色（黄字直压背景对比度不达标）。
