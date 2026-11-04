@@ -891,13 +891,19 @@ function buildWalker() {
       label: 'Git 日志（发布截图，展开首条提交）',
       setup: `(async () => {
         const sleep = (ms) => new Promise(r => setTimeout(r, ms))
+        const waitFor = async (fn, ms) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { const v = fn(); if (v) return v; await sleep(200) } return null }
         const tab = Array.from(document.querySelectorAll('.view-btn')).find(x => x.textContent.includes('Git日志'))
         if (tab) tab.click()
         await sleep(1200)
-        const item = document.querySelector('.commit-item')
-        if (item) item.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-        await sleep(1200)
-        return 'commits=' + document.querySelectorAll('.commit-item').length
+        // 提交列表是异步拉的：固定 sleep 后直接点会“点在空处”（深色主题下曾截到 commits=0）
+        const item = await waitFor(() => document.querySelector('.commit-item'), 10000)
+        if (item && !document.querySelector('.commit-detail')) {
+          item.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+          await waitFor(() => document.querySelector('.commit-detail'), 8000)
+          await sleep(600)
+        }
+        return 'commits=' + document.querySelectorAll('.commit-item').length +
+          ' detail=' + (document.querySelector('.commit-detail') ? 'yes' : 'no')
       })()`,
       expect: []
     },
