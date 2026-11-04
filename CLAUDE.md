@@ -74,6 +74,7 @@ npm run gen:icon       # 换图标后重新生成 build/icon.ico
 - **弹窗 footer 的"就近反馈"**：状态类文案（如测试连接结果）要**紧贴它所解释的那个按钮**左侧，不要用 `margin-right: auto` 推到容器最左端（视线要横跨整个 footer）；文案可能很长时用 `max-width` + 省略号 + `title` 保证按钮不被挤走
 - **跨进程共享模块（`shared/`）绝不能用 Node 全局**：渲染层没有 `process`（contextIsolation）。曾因 `platform = process.platform` 默认参数导致设置页「点确定毫无反应、未保存提示不消失」——报错被 `confirm()` 的 finally 吞掉，只表现为"没反应"。必须用 `typeof process` 守卫（`shared/allowed-roots.ts` 是范本），并有 `shared/cross-process.guard.spec.ts` 静态守卫
 - **提示不要用"插入式"元素**：`<p>`/确认条插入会顶下内容造成抖动；表头用**固定高度**（`height: 44px`），状态提示用 **toast** 或表头内的 chip（右上方）
+- **视觉基线（`screenshots/`）**：三视图各一张浅色 + 一张 `-dark`，来自 `node scripts/ui-audit.mjs --shots=.audit/shots` 的 `shot-filetree / shot-changes / shot-log` 步骤，拷入后提交。改了视图外观就重出一次（`.audit/shots/` 是本次全量证据，不提交）。截图里出现夹具临时路径是正常的（审计跑在临时项目上）
 - **文档入库边界**：`.project/`（详细设计权威、PRD、规格）被项目 `.gitignore` 忽略、不入库；入库版本是根级 `DESIGN.md` / `PRODUCT.md`。改设计系统时两份都要同步（本地详细版 + 入库机器可读版）。`.impeccable/` 由全局 gitignore 忽略，不需要再处理
 - **上传目标名必须唯一**：人靠名字区分环境，重名 = 发错服务器。校验用 `target-form.ts` 的 `duplicateNameOf()`（编辑时忽略自身），复制用 `copyNameOf()` 自动避重名（`原名 副本` → `副本 2`…）；`persistDraft` 落盘前再守一次，防止副本被改成重名
 - **「复制目标」走「新增」流程**：点复制只是**打开新增弹窗并预填配置**（名称预先避重名），用户改完再「加入待保存」；不要直接往草稿里塞一份副本（多出来那份会先于用户确认出现）
