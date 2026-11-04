@@ -614,7 +614,11 @@ function prepareFixture(baseDir) {
         host: '10.255.255.1',
         port: 22,
         username: 'root',
-        mappings: [{ id: 'm1', localPrefix: 'src/', remotePath: '/opt/app/src' }]
+        mappings: [
+          { id: 'm1', localPrefix: 'src/', remotePath: '/opt/app/src' },
+          // 第二条映射：用来验“多条映射按列表纵向展示”（水平排列会变成一条长带）
+          { id: 'm1b', localPrefix: 'docs/', remotePath: '/opt/app/docs', description: '文档产物' }
+        ]
       },
       {
         id: 't2',

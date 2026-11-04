@@ -861,10 +861,15 @@ function removeTempMapping(idx: number) {
 .rail-btn { min-width: 24px; min-height: 24px; padding: 0; }
 
 /* 映射只读列表：与卡片内其它信息同字号，不加操作按钮 */
-.target-mappings { margin-top: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: 12px; color: var(--fg2); }
+/* 映射按列表纵向展示：多条映射时水平排列会变成一条长带，看不出各自是一条规则 */
+.target-mappings { margin-top: 8px; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; font-size: 12px; color: var(--fg2); }
 .mappings-label { color: var(--fg2); }
 .mappings-empty { color: var(--fg2); font-style: italic; }
-.mapping-line { display: inline-flex; align-items: center; gap: 4px; }
+.mapping-line { display: flex; align-items: center; gap: 4px; padding-left: 8px; width: 100%; min-width: 0; }
+.mapping-line code { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mapping-line .map-arrow { flex-shrink: 0; }
+/* 卡片里的备注跟路径同行、紧跟其后（对话弹窗里的 .map-desc 用 margin:auto 右对齐，这里不要） */
+.target-mappings .map-desc { margin: 0 0 0 4px; }
 .mapping-line code { font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace; font-size: 11px; color: var(--fg); }
 .map-desc { color: var(--fg2); }
 .target-info { display: flex; align-items: center; justify-content: space-between; }
