@@ -40,7 +40,7 @@ const selectedPos = ref<{ x: number; y: number } | null>(null)
 const nodeIndex = computed(() => {
   const map = new Map<string, ChangeTreeNode>()
   const walk = (n: ChangeTreeNode) => { map.set(n.path, n); n.children.forEach(walk) }
-  if (projectRootNode.value) walk(projectRootNode.value)
+  displayNodes.value.forEach(walk)
   return map
 })
 
@@ -439,20 +439,6 @@ const displayNodes = computed<ChangeTreeNode[]>(() => {
   )
 })
 
-/**
- * 顶级「项目目录」节点：把变更树整体挂到项目根下，
- * 这样可以直接对项目根点「快速上传」= 一次性上传本次全部变更（映射规则仍然生效）。
- * path 用空串表示项目根（collect/handleDeployDir 会拼成 projectPath + '/'）。
- */
-const projectRootNode = computed<ChangeTreeNode | null>(() => {
-  const root = projectStore.projectPath
-  if (!root || displayNodes.value.length === 0) return null
-  const normalized = root.replace(/\\/g, '/').replace(/\/+$/, '')
-  const name = normalized.split('/').pop() || normalized
-  // 项目根自身不是"变更项"，change 置空（不显示状态徽标）
-  return { isDirectory: true, path: '', name, children: displayNodes.value, change: null }
-})
-
 function collectAllDirPaths(nodes: ChangeTreeNode[]): string[] {
   const paths: string[] = []
   for (const n of nodes) {
@@ -465,8 +451,8 @@ function collectAllDirPaths(nodes: ChangeTreeNode[]): string[] {
 }
 
 function collapseAll() {
-  // 保留根节点展开，其余收起
-  expandedDirs.value = new Set([''])
+  // 没有“项目目录”虚拟根了：全部收起就是空集
+  expandedDirs.value = new Set()
 }
 
 // Ctrl+Shift++ / Ctrl+Shift+-（App 统一派发）
@@ -480,7 +466,7 @@ onUnmounted(() => {
 })
 
 function expandAll() {
-  expandedDirs.value = new Set(['', ...collectAllDirPaths(displayNodes.value)])
+  expandedDirs.value = new Set(collectAllDirPaths(displayNodes.value))
 }
 
 function toggleDir(dirPath: string) {
@@ -614,10 +600,14 @@ const selectionText = computed(() => {
 
     <div class="changes-list">
       <EmptyState v-if="displayNodes.length === 0" text="工作区干净，没有未提交的变更" size="page" />
-      <!-- role="tree"：容器单一 Tab 停靠点模型不变（行仍 tabindex=-1）；空态放在树外 -->
-      <div v-else-if="projectRootNode" role="tree" aria-label="Git 未提交的变更" aria-multiselectable="true">
+      <!-- role="tree"：容器单一 Tab 停靠点模型不变（行仍 tabindex=-1）；空态放在树外。
+           不再套“项目目录”虚拟根：单仓库时变更树直接是顶层（避免 ssmp/ssmp），
+           多仓库时每个仓库各是一个顶层节点（并列多个根）。 -->
+      <div v-else role="tree" aria-label="Git 未提交的变更" aria-multiselectable="true">
         <GitChangeTreeNode
-          :node="projectRootNode"
+          v-for="node in displayNodes"
+          :key="node.path"
+          :node="node"
           :depth="0"
           :expanded-dirs="expandedDirs"
           :busy-path="deployingPath"
