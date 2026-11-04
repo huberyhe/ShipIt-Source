@@ -125,6 +125,7 @@ contextBridge.exposeInMainWorld('deployApi', {
   addTarget: (target: any) => ipcRenderer.invoke(IpcChannels.TARGET_ADD, target),
   updateTarget: (id: string, updates: any) => ipcRenderer.invoke(IpcChannels.TARGET_UPDATE, id, updates),
   removeTarget: (id: string) => ipcRenderer.invoke(IpcChannels.TARGET_REMOVE, id),
+  reorderTargets: (ids: string[]) => ipcRenderer.invoke(IpcChannels.TARGET_REORDER, ids),
   addMapping: (targetId: string, mapping: any) => ipcRenderer.invoke(IpcChannels.MAPPING_ADD, targetId, mapping),
   updateMapping: (targetId: string, mappingId: string, updates: any) =>
     ipcRenderer.invoke(IpcChannels.MAPPING_UPDATE, targetId, mappingId, updates),

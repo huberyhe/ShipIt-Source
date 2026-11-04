@@ -3,7 +3,7 @@ import { toastError, toastSuccess } from '../../utils/toast'
 import { computed, ref, watch, onMounted } from 'vue'
 import { reportError } from '../../utils/report-error'
 import { copyNameOf, duplicateNameOf, invalidFrom, missingFields, postUploadFields, testResultHint, validationMessage } from '../../utils/target-form'
-import { Plus, Trash2, Radio, Check, X, Copy, Pencil } from 'lucide-vue-next'
+import { Plus, Trash2, Radio, Check, X, Copy, Pencil, ArrowUp, ArrowDown } from 'lucide-vue-next'
 import { useDeployStore } from '../../stores/deploy'
 import MappingEditor from './MappingEditor.vue'
 import BaseDialog from '../common/BaseDialog.vue'
@@ -308,6 +308,19 @@ async function persistDraft(): Promise<boolean> {
       }
     }
     await deployStore.loadTargets()
+
+    // 顺序也要落盘：名称唯一（上面已校验），所以用“草稿顺序的名称”映射回真实 id，
+    // 新增目标的真实 id 只有落盘后才知道。
+    const fresh = deployStore.targets as any[]
+    const idByName = new Map(fresh.map((t) => [String(t.name || '').trim(), t.id]))
+    const desired = draftTargets.value
+      .map((t: any) => idByName.get(String(t.name || '').trim()))
+      .filter((id): id is string => typeof id === 'string')
+    const currentOrder = fresh.map((t) => t.id).join('|')
+    if (desired.length === fresh.length && desired.join('|') !== currentOrder) {
+      await deployStore.reorderTargets(desired)
+    }
+
     syncDraftFromStore()
     return true
   } catch (err: any) {
@@ -480,6 +493,17 @@ function commitTempMapping(): void {
   resetTempMapping()
 }
 
+/** 手动排序：上下移一格（只动草稿，点「保存」时统一落盘） */
+function moveTarget(index: number, delta: -1 | 1): void {
+  const next = index + delta
+  if (next < 0 || next >= draftTargets.value.length) return
+  const list = draftTargets.value.slice()
+  const [moved] = list.splice(index, 1)
+  list.splice(next, 0, moved)
+  draftTargets.value = list
+  draftDirty.value = true
+}
+
 function removeTempMapping(idx: number) {
   editingMappings.value.splice(idx, 1)
   // 删掉的正好是正在编辑的那行（或前面的行）→ 编辑目标失效，回到新增模式
@@ -501,7 +525,7 @@ function removeTempMapping(idx: number) {
 
       <EmptyState v-if="draftTargets.length === 0" text="暂无上传目标，请添加一个" size="page" bordered />
 
-      <div v-for="target in draftTargets" :key="target.id" class="target-card">
+        <div v-for="(target, index) in draftTargets" :key="target.id" class="target-card">
         <div class="target-info">
           <div class="target-primary">
             <span class="target-name">{{ target.name }}</span>
@@ -517,6 +541,24 @@ function removeTempMapping(idx: number) {
             </span>
           </div>
           <div class="target-actions">
+            <BaseButton
+              class="icon-btn"
+              variant="secondary"
+              size="sm"
+              title="上移"
+              :aria-label="`上移目标 ${target.name}`"
+              :disabled="index === 0"
+              @click="moveTarget(index, -1)"
+            ><ArrowUp :size="14" /></BaseButton>
+            <BaseButton
+              class="icon-btn"
+              variant="secondary"
+              size="sm"
+              title="下移"
+              :aria-label="`下移目标 ${target.name}`"
+              :disabled="index === draftTargets.length - 1"
+              @click="moveTarget(index, 1)"
+            ><ArrowDown :size="14" /></BaseButton>
             <BaseButton class="icon-btn" variant="secondary" size="sm" title="测试连接" :disabled="testingId === target.id" @click="testConnection(target)">
               <Radio :size="14" /> <span>{{ testingId === target.id ? '测试中' : '测试连接' }}</span>
             </BaseButton>
@@ -771,10 +813,11 @@ function removeTempMapping(idx: number) {
 .target-card { background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin: 12px; }
 .target-info { display: flex; align-items: center; justify-content: space-between; }
 .target-primary { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.target-name { font-weight: 500; color: var(--fg3); }
+/* 名字必须单行：卡片右侧操作变多后，信息区被压窄，不加 nowrap 就会折行（审计 overflow/wrap 已报过） */
+.target-name { font-weight: 500; color: var(--fg3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .target-protocol { font-size: 11px; padding: 1px 4px; background: var(--accent); color: var(--on-accent); border-radius: 4px; }
-.target-host { font-size: 12px; color: var(--fg2); }
-.target-actions { display: flex; align-items: center; gap: 4px; }
+.target-host { font-size: 12px; color: var(--fg2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.target-actions { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
 /* 三个带文字的按钮：图标与文字用同一套 flex 对齐（此前复制/编辑用 Unicode 字符充当图标，
    基线与字号都跟 SVG 对不上，看起来三个按钮的图标不在一条线上） */
 .target-actions :deep(.base-btn) { display: inline-flex; align-items: center; gap: 4px; }

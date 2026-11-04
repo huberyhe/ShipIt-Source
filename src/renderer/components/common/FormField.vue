@@ -32,7 +32,9 @@ const props = withDefaults(
 .form-field { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .form-field label { font-size: 12px; color: var(--fg2); }
 .req { color: var(--red); margin-left: 4px; }
-.field-hint { font-size: 11px; color: var(--fg2); opacity: 0.8; }
+/* 不加 opacity：0.8 会把 --fg2 压到 AA 以下（浅色主题下审计会判 contrast/aa）。
+   层次靠字号（11px）与颜色本身区分，不靠变淡。 */
+.field-hint { font-size: 11px; color: var(--fg2); }
 
 /*
  * 控件的底色/描边/圆角/焦点环由 App.vue 的全局表单基座统一提供。

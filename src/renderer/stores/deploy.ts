@@ -181,7 +181,13 @@ export const useDeployStore = defineStore('deploy', () => {
     await loadTargets()
   }
 
-  async function addMapping(targetId: string, mapping: any) {
+    /** 手动排序：菜单/下拉的顺序 = 持久化数组的顺序，所以直接落盘 */
+    async function reorderTargets(ids: string[]) {
+    await window.deployApi.reorderTargets(ids)
+    await loadTargets()
+    }
+
+    async function addMapping(targetId: string, mapping: any) {
     await window.deployApi.addMapping(targetId, mapping)
     await loadTargets()
   }
@@ -397,6 +403,7 @@ export const useDeployStore = defineStore('deploy', () => {
     addTarget,
     updateTarget,
     removeTarget,
+    reorderTargets,
     addMapping,
     updateMapping,
     removeMapping,

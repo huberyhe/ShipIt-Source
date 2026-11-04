@@ -950,6 +950,11 @@ function registerIpcHandlers() {
     return saved
   })
 
+  ipcMain.handle(IpcChannels.TARGET_REORDER, async (_event, ids: string[]) => {
+    await configStore.reorderTargets(ids)
+    broadcastConfigChanged()
+  })
+
   ipcMain.handle(IpcChannels.MAPPING_ADD, async (_event, targetId: string, mapping: any) => {
     const saved = await configStore.addMapping(targetId, mapping)
     broadcastConfigChanged()

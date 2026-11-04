@@ -1089,6 +1089,30 @@ function buildWalker() {
       expect: [{ selector: '.target-card' }, { selector: '.add-btn' }, { selector: '.nav-item' }]
     },
     {
+      id: 'settings-reorder-target',
+      role: 'settings',
+      label: '目标卡片：手动排序（下移/上移）',
+      setup: `(async () => {
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms))
+        const cards = () => Array.from(document.querySelectorAll('.target-card'))
+        const names = () => cards().map(c => (c.querySelector('.target-name') || {}).textContent || '')
+        const before = names()
+        if (before.length < 2) return 'need-two-targets'
+        // 第一张卡片点「下移」
+        const down = Array.from(cards()[0].querySelectorAll('.target-actions button')).find(b => (b.getAttribute('aria-label') || '').startsWith('下移'))
+        if (!down || down.disabled) return 'down-btn-unavailable'
+        down.click()
+        await sleep(400)
+        const after = names()
+        if (after[0] !== before[1] || after[1] !== before[0]) return 'order-not-swapped:' + before.join('|') + ' => ' + after.join('|')
+        // 第一张卡片的「上移」在边界上应当禁用
+        const up0 = Array.from(cards()[0].querySelectorAll('.target-actions button')).find(b => (b.getAttribute('aria-label') || '').startsWith('上移'))
+        if (up0 && !up0.disabled) return 'up-not-disabled-at-top'
+        return 'ok'
+      })()`,
+      expect: [{ selector: '.target-card' }]
+    },
+    {
       id: 'settings-copy-target',
       role: 'settings',
       label: '目标卡片：复制走「新增」流程并预填',

@@ -100,6 +100,8 @@ export interface DeployApi {
   addTarget: (target: any) => Promise<void>
   updateTarget: (id: string, updates: any) => Promise<void>
   removeTarget: (id: string) => Promise<void>
+  /** 按 id 顺序重排上传目标（菜单/下拉的顺序就是这里的顺序） */
+  reorderTargets: (ids: string[]) => Promise<void>
   addMapping: (targetId: string, mapping: any) => Promise<void>
   updateMapping: (targetId: string, mappingId: string, updates: any) => Promise<void>
   removeMapping: (targetId: string, mappingId: string) => Promise<void>

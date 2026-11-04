@@ -149,6 +149,28 @@ export class ConfigStore {
     })
   }
 
+  /**
+   * 按给定 id 顺序重排上传目标（菜单/下拉里的顺序 = 这里存的数据）。
+   * 未知 id 忽略；未出现在 ids 里的目标按原相对顺序排在后面，不会丢。
+   */
+  async reorderTargets(ids: string[]): Promise<void> {
+    await this.mutateOwned((config) => {
+      const byId = new Map(config.deploymentTargets.map((t) => [t.id, t]))
+      const ordered: DeployTarget[] = []
+      for (const id of ids) {
+        const hit = byId.get(id)
+        if (hit) {
+          ordered.push(hit)
+          byId.delete(id)
+        }
+      }
+      for (const t of config.deploymentTargets) {
+        if (byId.has(t.id)) ordered.push(t)
+      }
+      config.deploymentTargets = ordered
+    })
+  }
+
   async updateTarget(id: string, updates: Partial<DeployTarget>): Promise<void> {
     await this.mutateOwned((config) => {
       const idx = config.deploymentTargets.findIndex(t => t.id === id)

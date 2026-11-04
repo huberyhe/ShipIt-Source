@@ -45,6 +45,18 @@ const target = (id = 't1'): DeployTarget => ({
   mappings: []
 })
 
+describe('config-store · 目标排序', () => {
+  it('reorderTargets 按给定顺序重排，且不丢未列出的目标、不碰服务端配置', async () => {
+    seed({ server: SERVER, recentProjects: [], deploymentTargets: [target('a'), target('b'), target('c')] })
+
+    await store.reorderTargets(['c', 'a'])
+
+    const saved = onDisk()
+    const ids = (saved.deploymentTargets as Array<{ id: string }>).map((t) => t.id)
+    expect(ids).toEqual(['c', 'a', 'b'])   // 未列出的 b 追加在末尾，不丢
+    expect(saved.server).toEqual(SERVER)
+  })
+})
 describe('config-store', () => {
   it('新增目标不会抹掉同一文件里的服务端配置块（P2 回归）', async () => {
     seed({ server: SERVER, recentProjects: ['D:/p1'], deploymentTargets: [] })
