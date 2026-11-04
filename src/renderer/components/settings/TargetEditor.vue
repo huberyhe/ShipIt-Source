@@ -5,7 +5,6 @@ import { reportError } from '../../utils/report-error'
 import { copyNameOf, duplicateNameOf, invalidFrom, missingFields, postUploadFields, testResultHint, validationMessage } from '../../utils/target-form'
 import { Plus, Trash2, Radio, Check, X, Copy, Pencil, ArrowUp, ArrowDown } from 'lucide-vue-next'
 import { useDeployStore } from '../../stores/deploy'
-import MappingEditor from './MappingEditor.vue'
 import BaseDialog from '../common/BaseDialog.vue'
 import BaseButton from '../common/BaseButton.vue'
 import SectionHeader from '../common/SectionHeader.vue'
@@ -525,7 +524,8 @@ function removeTempMapping(idx: number) {
 
       <EmptyState v-if="draftTargets.length === 0" text="暂无上传目标，请添加一个" size="page" bordered />
 
-        <div v-for="(target, index) in draftTargets" :key="target.id" class="target-card">
+        <div v-for="(target, index) in draftTargets" :key="target.id" class="target-card-outer">
+        <div class="target-card">
         <div class="target-info">
           <div class="target-primary">
             <span class="target-name">{{ target.name }}</span>
@@ -541,24 +541,6 @@ function removeTempMapping(idx: number) {
             </span>
           </div>
           <div class="target-actions">
-            <BaseButton
-              class="icon-btn"
-              variant="secondary"
-              size="sm"
-              title="上移"
-              :aria-label="`上移目标 ${target.name}`"
-              :disabled="index === 0"
-              @click="moveTarget(index, -1)"
-            ><ArrowUp :size="14" /></BaseButton>
-            <BaseButton
-              class="icon-btn"
-              variant="secondary"
-              size="sm"
-              title="下移"
-              :aria-label="`下移目标 ${target.name}`"
-              :disabled="index === draftTargets.length - 1"
-              @click="moveTarget(index, 1)"
-            ><ArrowDown :size="14" /></BaseButton>
             <BaseButton class="icon-btn" variant="secondary" size="sm" title="测试连接" :disabled="testingId === target.id" @click="testConnection(target)">
               <Radio :size="14" /> <span>{{ testingId === target.id ? '测试中' : '测试连接' }}</span>
             </BaseButton>
@@ -568,11 +550,48 @@ function removeTempMapping(idx: number) {
             <BaseButton class="icon-btn" variant="secondary" size="sm" title="编辑" @click="startEdit(target)">
               <Pencil :size="14" /> <span>编辑</span>
             </BaseButton>
-            <BaseButton class="icon-btn danger" variant="danger-ghost" size="sm" title="删除" :aria-label="'删除目标 ' + target.name" @click="askDelete(target)"><Trash2 :size="14" /></BaseButton>
+            <!-- 删除与其它按钮同一套外观（不单独做成红色图标）：危险语义由确认弹窗承担 -->
+            <BaseButton class="icon-btn" variant="secondary" size="sm" title="删除" :aria-label="'删除目标 ' + target.name" @click="askDelete(target)">
+              <Trash2 :size="14" /> <span>删除</span>
+            </BaseButton>
           </div>
         </div>
 
-      <MappingEditor :target-id="target.id" :mappings="target.mappings || []" />
+
+        <!-- 映射只读展示：新增/编辑/删除统一在「编辑」弹窗里做，列表里不再放第二套入口 -->
+        <div class="target-mappings">
+          <span class="mappings-label">目录映射</span>
+          <span v-if="(target.mappings || []).length === 0" class="mappings-empty">未配置（在「编辑」里添加）</span>
+          <div v-for="m in target.mappings || []" :key="m.id ?? m.localPrefix + m.remotePath" class="mapping-line">
+            <code>{{ m.localPrefix }}</code>
+            <span class="map-arrow">→</span>
+            <code>{{ m.remotePath }}</code>
+            <span v-if="m.description" class="map-desc">{{ m.description }}</span>
+          </div>
+        </div>
+        </div>
+
+        <!-- 排序：放在目标块**外侧**的右边缘，纵向悬浮显示（不悬浮时不影响视觉，位置固定不引起跳动） -->
+        <div class="reorder-rail">
+          <BaseButton
+            class="rail-btn"
+            variant="secondary"
+            size="sm"
+            title="上移"
+            :aria-label="`上移目标 ${target.name}`"
+            :disabled="index === 0"
+            @click="moveTarget(index, -1)"
+          ><ArrowUp :size="12" /></BaseButton>
+          <BaseButton
+            class="rail-btn"
+            variant="secondary"
+            size="sm"
+            title="下移"
+            :aria-label="`下移目标 ${target.name}`"
+            :disabled="index === draftTargets.length - 1"
+            @click="moveTarget(index, 1)"
+          ><ArrowDown :size="12" /></BaseButton>
+        </div>
     </div>
 
     </template>
@@ -810,13 +829,53 @@ function removeTempMapping(idx: number) {
 :deep(.base-dialog) { max-height: 94vh; }
 
 .target-editor { color: var(--fg); }
-.target-card { background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin: 12px; }
+/* 外壳只负责给右外侧的排序轴留出通道，卡片本体仍是原来的样子 */
+.target-card-outer {
+  position: relative;
+  margin: 12px;
+  padding-right: 28px;
+}
+
+.target-card {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+}
+
+/* 排序轴：在目标块**外侧**的右边缘，纵向排列，悬浮时显形 */
+.reorder-rail {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.target-card-outer:hover .reorder-rail,
+.target-card-outer:focus-within .reorder-rail { opacity: 1; }
+/* 点击目标 20×20 以上（审计 target/size），图标仍是 12px */
+.rail-btn { min-width: 24px; min-height: 24px; padding: 0; }
+
+/* 映射只读列表：与卡片内其它信息同字号，不加操作按钮 */
+.target-mappings { margin-top: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: 12px; color: var(--fg2); }
+.mappings-label { color: var(--fg2); }
+.mappings-empty { color: var(--fg2); font-style: italic; }
+.mapping-line { display: inline-flex; align-items: center; gap: 4px; }
+.mapping-line code { font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace; font-size: 11px; color: var(--fg); }
+.map-desc { color: var(--fg2); }
 .target-info { display: flex; align-items: center; justify-content: space-between; }
 .target-primary { display: flex; align-items: center; gap: 8px; min-width: 0; }
-/* 名字必须单行：卡片右侧操作变多后，信息区被压窄，不加 nowrap 就会折行（审计 overflow/wrap 已报过） */
-.target-name { font-weight: 500; color: var(--fg3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/*
+ * 名字必须优先：人靠名字区分环境，被地址挤成“本地…”就失去意义。
+ * 所以名字不收缩，让地址去吸收剩余宽度（地址本来就是辅助信息）。
+ */
+.target-name { flex: 0 0 auto; font-weight: 500; color: var(--fg3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%; }
 .target-protocol { font-size: 11px; padding: 1px 4px; background: var(--accent); color: var(--on-accent); border-radius: 4px; }
-.target-host { font-size: 12px; color: var(--fg2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.target-host { flex: 1 1 auto; font-size: 12px; color: var(--fg2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .target-actions { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
 /* 三个带文字的按钮：图标与文字用同一套 flex 对齐（此前复制/编辑用 Unicode 字符充当图标，
    基线与字号都跟 SVG 对不上，看起来三个按钮的图标不在一条线上） */

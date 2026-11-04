@@ -1094,20 +1094,21 @@ function buildWalker() {
       label: '目标卡片：手动排序（下移/上移）',
       setup: `(async () => {
         const sleep = (ms) => new Promise(r => setTimeout(r, ms))
-        const cards = () => Array.from(document.querySelectorAll('.target-card'))
+        const cards = () => Array.from(document.querySelectorAll('.target-card-outer'))
         const names = () => cards().map(c => (c.querySelector('.target-name') || {}).textContent || '')
         const before = names()
         if (before.length < 2) return 'need-two-targets'
-        // 第一张卡片点「下移」
-        const down = Array.from(cards()[0].querySelectorAll('.target-actions button')).find(b => (b.getAttribute('aria-label') || '').startsWith('下移'))
-        if (!down || down.disabled) return 'down-btn-unavailable'
+        // 排序轴在目标块外侧（.reorder-rail），不在 .target-actions 里
+        const railBtns = (i) => Array.from((cards()[i].querySelector('.reorder-rail') || cards()[i]).querySelectorAll('button'))
+        const down = railBtns(0).find(b => (b.getAttribute('aria-label') || '').startsWith('下移'))
+        if (!down || down.disabled) return 'no-down-btn'
         down.click()
         await sleep(400)
         const after = names()
-        if (after[0] !== before[1] || after[1] !== before[0]) return 'order-not-swapped:' + before.join('|') + ' => ' + after.join('|')
+        if (after[0] !== before[1] || after[1] !== before[0]) return 'error:order-not-swapped ' + before.join('|') + ' => ' + after.join('|')
         // 第一张卡片的「上移」在边界上应当禁用
-        const up0 = Array.from(cards()[0].querySelectorAll('.target-actions button')).find(b => (b.getAttribute('aria-label') || '').startsWith('上移'))
-        if (up0 && !up0.disabled) return 'up-not-disabled-at-top'
+        const up0 = railBtns(0).find(b => (b.getAttribute('aria-label') || '').startsWith('上移'))
+        if (up0 && !up0.disabled) return 'error:up-not-disabled-at-top'
         return 'ok'
       })()`,
       expect: [{ selector: '.target-card' }]
@@ -1139,17 +1140,6 @@ function buildWalker() {
         return problems
       })()`,
       teardown: `(async () => { const c = document.querySelector('.base-dialog-close'); if (c) c.click(); await new Promise(r=>setTimeout(r,600)); return 'ok' })()`
-    },
-    {
-      id: 'hover-mapping-actions',
-      role: 'settings',
-      label: '目标卡片：悬停映射行（悬停才显示的编辑/删除按钮）',
-      setup: `(async () => {
-        if (!document.querySelector('.mapping-item')) return 'no-mapping-item'
-        return 'ok'
-      })()`,
-      hover: '.mapping-item .mapping-row',
-      expect: [{ selector: '.mapping-actions' }, { selector: '.mapping-actions .mini-btn' }]
     },
     {
       id: 'settings-add-target',
@@ -1367,20 +1357,6 @@ function buildWalker() {
       teardown: `(async () => { const c = document.querySelector('.base-dialog-close'); if (c) c.click(); await new Promise(r=>setTimeout(r,600)); return 'ok' })()`
     },
     {
-      id: 'mapping-delete-confirm',
-      role: 'settings',
-      label: '映射删除确认弹窗',
-      setup: `(async () => {
-        const del = Array.from(document.querySelectorAll('.mapping-item .mini-btn.danger'))[0]
-        if (!del) return 'no-mapping-delete'
-        del.click()
-        await new Promise(r=>setTimeout(r,700))
-        return 'ok'
-      })()`,
-      expect: [{ selector: '.base-dialog' }],
-      teardown: `(async () => { const c = document.querySelector('.base-dialog-close'); if (c) c.click(); await new Promise(r=>setTimeout(r,500)); return 'ok' })()`
-    },
-    {
       id: 'server-dirty-state',
       role: 'settings',
       label: '本地服务：未保存提示',
@@ -1556,7 +1532,9 @@ async function runTheme(theme, fixture) {
         let setupResult = 'no-setup'
         if (step.setup) setupResult = await setupPage.evaluate(step.setup)
         // setup 明确报错（返回 no-xxx / error）→ 说明该步骤没走到预期状态，必须可见
-        if (typeof setupResult === 'string' && setupResult !== 'no-setup' && /^no-|error/.test(setupResult)) {
+        // 失败标记必须是显式前缀/关键词：`no-*` / `error:*` / *unavailable* / `failed`。
+  // 不能用“非 ok 即失败”——截图步骤会回 `rows=6 scroll=...` 这类纯信息字符串。
+  if (typeof setupResult === 'string' && setupResult !== 'no-setup' && /^no-|^error:|unavailable|^failed/i.test(setupResult)) {
           results.push({ step, severity: 'Major', rule: 'harness/step-setup', message: '步骤前置动作未成功：' + setupResult, target: 'setup' })
         }
         page = setupPage
