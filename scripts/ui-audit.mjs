@@ -1517,9 +1517,9 @@ function buildWalker() {
       })()`
     },
     {
-      id: 'view-switch-resets-expanded',
+      id: 'view-switch-keeps-expanded-without-animation',
       role: 'project',
-      label: '文件树：切走再回来不应自动恢复展开态',
+      label: '文件树：切回时保持展开态，但不得“动态展开”',
       setup: `(async () => {
         const sleep = (ms) => new Promise(r => setTimeout(r, ms))
         const waitFor = async (fn, ms) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { const v = fn(); if (v) return v; await sleep(200) } return null }
@@ -1538,18 +1538,35 @@ function buildWalker() {
         if (!git) return 'no-git-tab'
         git.click()
         await sleep(1000)
+        // 切回文件树：**抓住第一帧**（第一次出现 .ftn-row），看它是否已经是展开后的样子。
+        // 如果子项是之后才异步填进去的，就说明发生了“动态展开”。
         ft.click()
-        await sleep(1500)
-        return 'ok'
+        let firstFrame = null
+        const t1 = Date.now()
+        while (Date.now() - t1 < 6000) {
+          const rows = Array.from(document.querySelectorAll('.ftn-row'))
+          if (rows.length > 0) {
+            const src = rows.find((r) => (r.textContent || '').trim().startsWith('src'))
+            const names = rows.map((r) => (r.querySelector('.ftn-name') || {}).textContent || '')
+            firstFrame = {
+              rows: rows.length,
+              srcExpanded: src ? (src.querySelector('.ftn-expand') || {}).getAttribute?.('aria-expanded') : null,
+              childVisible: names.some((n) => n === 'app' || n === 'new-file.ts')
+            }
+            break
+          }
+          await sleep(30)
+        }
+        window.__auditExpandProbe = firstFrame
+        return firstFrame ? 'ok' : 'no-first-frame'
       })()`,
       assertScript: `(() => {
-        const srcRow = Array.from(document.querySelectorAll('.ftn-row')).find(r => (r.textContent || '').trim().startsWith('src'))
-        if (!srcRow) return ['切回后找不到 src 行']
-        const expand = srcRow.querySelector('.ftn-expand')
-        if (expand && expand.getAttribute('aria-expanded') === 'true') {
-          return ['切走再回来时自动恢复了展开态（应保持全收起：展开态只服务于同一次挂载内的 F5）']
-        }
-        return []
+        const probe = window.__auditExpandProbe
+        if (!probe) return ['没有抓到切回后的首帧']
+        const problems = []
+        if (probe.srcExpanded !== 'true') problems.push('切回时 src 没有保持展开（首帧 rows=' + probe.rows + '）')
+        if (!probe.childVisible) problems.push('首帧里看不到 src 的子项 → 发生了“切回后再动态展开”')
+        return problems
       })()`
     },
     {

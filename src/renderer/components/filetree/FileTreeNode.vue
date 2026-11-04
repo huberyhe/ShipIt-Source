@@ -60,11 +60,20 @@ function selectSelf(e: MouseEvent) {
 
 onMounted(async () => {
   filesStore.registerDeployEntry(props.entry)
-  // 刷新后重建：store 里还是“展开”的目录，要把子项重新拉回来
-  if (props.entry.isDirectory && expanded.value) await loadChildren()
+  if (!props.entry.isDirectory || !expanded.value) return
+  // 子项缓存命中：首帧已经是展开后的样子，**不再“动态展开”**；只在后台静默校对一次
+  if (children.value.length > 0) {
+    void refreshChildrenInBackground()
+    return
+  }
+  await loadChildren()
 })
 onBeforeUnmount(() => filesStore.unregisterDeployEntry(props.entry.path))
-const children = ref<FileEntry[]>([])
+/**
+ * 首帧就用缓存里的子项渲染：展开态跨视图保留、且不出现“先折叠再展开”的过程。
+ * 缓存由 filesStore.expandDirectory 写入，换项目时清空。
+ */
+const children = ref<FileEntry[]>(props.entry.isDirectory ? filesStore.getDirChildren(props.entry.path) ?? [] : [])
 const isDeploying = ref(false)
 const ctxMenu = ref<{ x: number; y: number; items: ContextMenuItem[] } | null>(null)
 
@@ -73,12 +82,24 @@ watch(() => props.collapseAll, () => { expanded.value = false })
 
 async function loadChildren(): Promise<boolean> {
   try {
-    children.value = await window.deployApi.expandDirectory(props.entry.path)
+    // 走 store 的封装：顺便把结果写进子项缓存，供下次挂载首帧使用
+    children.value = await filesStore.expandDirectory(props.entry.path)
     return true
   } catch (error) {
     reportError('展开目录失败', error)
     return false
   }
+}
+
+/** 后台校对子项（不改变展开态、不闪）：目录内容真变了才替换 */
+async function refreshChildrenInBackground(): Promise<void> {
+  const before = children.value
+  const next = await filesStore.expandDirectory(props.entry.path)
+  const same =
+    Array.isArray(next) &&
+    next.length === before.length &&
+    next.every((item, i) => item.path === before[i].path && item.name === before[i].name)
+  if (!same) children.value = next
 }
 async function loadAndExpand() {
   // 拉子项成功后才把展开态写进 store；失败则保持收起，不留下“展开但空”的假象

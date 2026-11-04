@@ -113,6 +113,29 @@ export const useFilesStore = defineStore('files', () => {
   }
 
   /**
+   * 已加载目录的子项缓存。
+   *
+   * 为什么需要：展开态跨视图保留后，如果只记“这个目录是展开的”，回来时还得再异步拉一次子项，
+   * 画面会先生成折叠行、再“凭空展开”——用户看到的就是“切回去又在动态展开”。
+   * 缓存子项后，节点首次渲染就能带出内容，视觉上与“一直没离开过”一致。
+   *
+   * 失效：换项目（root 变化）时清空；F5 刷新时不清（先秒出，再由节点在后台补新）。
+   */
+  const dirChildren = new Map<string, FileEntry[]>()
+
+  function getDirChildren(path: string): FileEntry[] | undefined {
+    return dirChildren.get(path)
+  }
+
+  function setDirChildren(path: string, children: FileEntry[]): void {
+    dirChildren.set(path, children)
+  }
+
+  function clearDirChildren(): void {
+    dirChildren.clear()
+  }
+
+  /**
    * 请求序号：连续切项目（A → B）时，A 的响应若比 B 晚到，会把 A 的树写到 B 的项目上
    * （projectStore 已指向 B，界面却是 A 的文件）——而下一步就是“选中全部发出去”。
    * git store 的 statusSeq / refsSeq / logSeq 早就有这个保护，文件树是唯一的缺口。
@@ -128,6 +151,7 @@ export const useFilesStore = defineStore('files', () => {
       if (rootPath !== treeRoot.value) {
         treeRoot.value = rootPath
         clearExpandedDirs()
+        clearDirChildren()
       }
       fileTree.value = tree
     } finally {
@@ -137,7 +161,9 @@ export const useFilesStore = defineStore('files', () => {
 
   async function expandDirectory(dirPath: string): Promise<FileEntry[]> {
     try {
-      return await window.deployApi.expandDirectory(dirPath)
+      const children = await window.deployApi.expandDirectory(dirPath)
+      dirChildren.set(dirPath, children)
+      return children
     } catch {
       return []
     }
@@ -179,6 +205,9 @@ export const useFilesStore = defineStore('files', () => {
     isDirExpanded,
     setDirExpanded,
     clearExpandedDirs,
+    getDirChildren,
+    setDirChildren,
+    clearDirChildren,
     expandDirectory,
     toggleFileSelection,
     clearSelection
