@@ -201,7 +201,12 @@ useDeployHotkeys(
 )
 
 function handleExpandAll() { expandAllFlag.value = true }
-function handleCollapseAll() { expandAllFlag.value = false; collapseAllCounter.value++ }
+  function handleCollapseAll() {
+    // 全部收起要连 store 里的展开态一起清，否则刷新后又会一个个展开回来
+    filesStore.clearExpandedDirs()
+    expandAllFlag.value = false
+    collapseAllCounter.value++
+  }
 
 /** 刷新中：只管按钮禁用态，不改表头文案（避免文字长短变化引来额外视觉跳动） */
 const isRefreshing = ref(false)
@@ -233,10 +238,10 @@ const snapshotTitle = computed(() =>
 /**
  * 重新加载根目录。
  *
- * 能保住什么：选区（在 store 里，按路径保存）、焦点（原来在哪一行就回到哪一行）。
- * 保不住什么：已展开的目录会收起 —— 展开状态在各 FileTreeNode 内部，随节点重建释放
- * （有意为之：复用旧节点会留下"上层已刷新、下层是旧列表"的假一致，见 refreshSeq）。
- * 重刷后"旧快照里的文件已不存在"时，选区仍按原路径保留（与切视图回来时一致），不做静默清除。
+ * 能保住什么：选区（在 store 里，按路径保存）、**已展开的目录**（展开态也在 store 里，
+ * 节点重建后自己重新拉子项）、焦点（原来在哪一行就回到哪一行）。
+ * 仍然重建节点（refreshSeq）：复用旧节点会留下“上层已刷新、下层是旧列表”的假一致。
+ * 重刷后“旧快照里的文件已不存在”时，选区仍按原路径保留（与切视图回来时一致），不做静默清除。
  */
 async function refresh(): Promise<void> {
   const root = projectStore.projectPath

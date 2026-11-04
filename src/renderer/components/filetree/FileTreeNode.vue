@@ -25,7 +25,14 @@ const deployStore = useDeployStore()
 const projectStore = useProjectStore()
 const filesStore = useFilesStore()
 
-const expanded = ref(false)
+/**
+ * 展开态存在 store 里（而不是组件局部）：F5 刷新会重建行节点，
+ * 节点重新挂载时先看 store，已展开就重新拉子项并继续展开。
+ */
+const expanded = computed({
+  get: () => filesStore.isDirExpanded(props.entry.path),
+  set: (value: boolean) => filesStore.setDirExpanded(props.entry.path, value)
+})
 const isSelected = computed(() => filesStore.isDeploySelected(props.entry.path))
 
 // Shift 区间要知道「当前可见行」的顺序：用 DOM 顺序（展开状态在子组件内部，父级看不到）
@@ -51,7 +58,11 @@ function selectSelf(e: MouseEvent) {
   filesStore.selectDeployEntry(props.entry, pos, mode)
 }
 
-onMounted(() => filesStore.registerDeployEntry(props.entry))
+onMounted(async () => {
+  filesStore.registerDeployEntry(props.entry)
+  // 刷新后重建：store 里还是“展开”的目录，要把子项重新拉回来
+  if (props.entry.isDirectory && expanded.value) await loadChildren()
+})
 onBeforeUnmount(() => filesStore.unregisterDeployEntry(props.entry.path))
 const children = ref<FileEntry[]>([])
 const isDeploying = ref(false)
@@ -60,9 +71,18 @@ const ctxMenu = ref<{ x: number; y: number; items: ContextMenuItem[] } | null>(n
 watch(() => props.expandAll, (v) => { if (v && props.entry.isDirectory && !expanded.value) loadAndExpand() })
 watch(() => props.collapseAll, () => { expanded.value = false })
 
+async function loadChildren(): Promise<boolean> {
+  try {
+    children.value = await window.deployApi.expandDirectory(props.entry.path)
+    return true
+  } catch (error) {
+    reportError('展开目录失败', error)
+    return false
+  }
+}
 async function loadAndExpand() {
-  try { children.value = await window.deployApi.expandDirectory(props.entry.path); expanded.value = true } catch (error) {
-    reportError('展开目录失败', error)}
+  // 拉子项成功后才把展开态写进 store；失败则保持收起，不留下“展开但空”的假象
+  if (await loadChildren()) expanded.value = true
 }
 async function toggleExpand() {
   if (!props.entry.isDirectory) return

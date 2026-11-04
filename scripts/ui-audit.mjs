@@ -774,6 +774,40 @@ function buildWalker() {
       expect: []
     },
     {
+      id: 'filetree-refresh-keeps-expanded',
+      role: 'project',
+      label: '文件树：F5 刷新后仍保留展开态',
+      setup: `(async () => {
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms))
+        const ft = Array.from(document.querySelectorAll('.view-btn')).find(x => x.textContent.includes('文件树'))
+        if (ft) ft.click()
+        await sleep(700)
+        const srcRow = Array.from(document.querySelectorAll('.ftn-row')).find(r => (r.textContent || '').trim().startsWith('src'))
+        if (!srcRow) return 'no-src-row'
+        const expand = srcRow.querySelector('.ftn-expand')
+        if (expand && expand.getAttribute('aria-expanded') !== 'true') expand.click()
+        await sleep(1200)
+        if (!document.querySelectorAll('.ftn-row').length) return 'no-rows-before-refresh'
+        // 真的按 F5（视图监听 refresh-view，重建节点后再从 store 恢复展开态）
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F5', bubbles: true }))
+        await sleep(1800)
+        return 'ok'
+      })()`,
+      assertScript: `(() => {
+        const problems = []
+        const srcRow = Array.from(document.querySelectorAll('.ftn-row')).find(r => (r.textContent || '').trim().startsWith('src'))
+        if (!srcRow) return ['刷新后找不到 src 行']
+        const expand = srcRow.querySelector('.ftn-expand')
+        if (!expand || expand.getAttribute('aria-expanded') !== 'true') {
+          problems.push('刷新后 src 被收起了（展开态应保留）')
+        }
+        const names = Array.from(document.querySelectorAll('.ftn-row')).map(r => (r.textContent || '').trim())
+        const hasChild = names.some(n => n.startsWith('app') || n.startsWith('new-file'))
+        if (!hasChild) problems.push('刷新后 src 的子项未重新加载（实际：' + names.slice(0, 8).join(' | ') + '）')
+        return problems
+      })()`
+    },
+    {
       id: 'git-changes',
       role: 'project',
       label: 'Git 变更视图',

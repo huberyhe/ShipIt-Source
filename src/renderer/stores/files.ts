@@ -88,9 +88,37 @@ export const useFilesStore = defineStore('files', () => {
     applySelection({ path: clickedPath, mode: 'range', order: visiblePaths })
   }
 
+  /**
+   * 已展开目录（按绝对路径）。
+   * 刷新（F5）会用 refreshSeq 重建行节点；展开态不再存在子组件里，而是记在这里，
+   * 节点重新挂载时自己恢复 —— 否则每次 F5 都把用户辛苦展开的目录收起来。
+   */
+  const expandedDirs = ref<Set<string>>(new Set())
+  /** 当前树根：换项目时必须清空展开态（旧路径对新项目无意义） */
+  const treeRoot = ref('')
+
+  function isDirExpanded(path: string): boolean {
+    return expandedDirs.value.has(path)
+  }
+
+  function setDirExpanded(path: string, value: boolean): void {
+    const next = new Set(expandedDirs.value)
+    if (value) next.add(path)
+    else next.delete(path)
+    expandedDirs.value = next
+  }
+
+  function clearExpandedDirs(): void {
+    expandedDirs.value = new Set()
+  }
+
   async function loadFileTree(rootPath: string) {
     isLoading.value = true
     try {
+      if (rootPath !== treeRoot.value) {
+        treeRoot.value = rootPath
+        clearExpandedDirs()
+      }
       fileTree.value = await window.deployApi.getFileTree(rootPath)
     } finally {
       isLoading.value = false
@@ -142,6 +170,9 @@ export const useFilesStore = defineStore('files', () => {
     unregisterDeployEntry,
     isDeploySelected,
     loadFileTree,
+    isDirExpanded,
+    setDirExpanded,
+    clearExpandedDirs,
     expandDirectory,
     toggleFileSelection,
     selectAll,
