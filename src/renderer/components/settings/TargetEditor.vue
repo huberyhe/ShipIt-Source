@@ -203,14 +203,16 @@ function applyValidation(): boolean {
   return true
 }
 
-/** 复制目标：名称自动避开重名，副本仍走「待保存」流程（保存前可整体回滚） */
-function duplicateTarget(target: any): void {
-  const copy = JSON.parse(JSON.stringify(target))
-  copy.id = `draft-${Date.now().toString(36)}`
-  copy.name = copyNameOf(target.name, draftTargets.value.map((t: any) => t.name))
-  draftTargets.value.push(copy)
-  draftDirty.value = true
-  toastSuccess(`已复制为「${copy.name}」（点页面底部「保存」后生效）`)
+/**
+ * 复制目标：**走「新增」流程**——打开弹窗并预填配置，名称预先避开重名。
+ * 不直接生成副本：复制后往往要改主机/端口/映射，直接落一份草稿会让“多出来那一份”
+ * 在用户确认之前就出现，且难以判断它到底改过什么。
+ */
+function copyTarget(target: any): void {
+  startEdit(target)                    // 复用字段映射（含上传后执行 / stash / 映射列表）
+  editingId.value = null               // 当成「新增」：保存时不会覆盖源目标
+  editingForm.value.name = copyNameOf(target.name, draftTargets.value.map((t: any) => t.name))
+  baseline.value = currentSnapshot()   // 预填后不应一开始就是“未保存”
 }
 
 /**
@@ -465,7 +467,7 @@ function removeTempMapping(idx: number) { editingMappings.value.splice(idx, 1) }
             <BaseButton class="icon-btn" variant="secondary" size="sm" title="测试连接" :disabled="testingId === target.id" @click="testConnection(target)">
               <Radio :size="14" /> <span>{{ testingId === target.id ? '测试中' : '测试连接' }}</span>
             </BaseButton>
-            <BaseButton class="icon-btn" variant="secondary" size="sm" title="复制一份（名称自动避开重名）" @click="duplicateTarget(target)">⧉ 复制</BaseButton>
+            <BaseButton class="icon-btn" variant="secondary" size="sm" title="复制" @click="copyTarget(target)">⧉ 复制</BaseButton>
             <BaseButton class="icon-btn" variant="secondary" size="sm" title="编辑" @click="startEdit(target)">✎ 编辑</BaseButton>
             <BaseButton class="icon-btn danger" variant="danger-ghost" size="sm" title="删除" :aria-label="'删除目标 ' + target.name" @click="askDelete(target)"><Trash2 :size="14" /></BaseButton>
           </div>

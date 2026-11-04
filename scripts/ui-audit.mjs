@@ -1089,6 +1089,34 @@ function buildWalker() {
       expect: [{ selector: '.target-card' }, { selector: '.add-btn' }, { selector: '.nav-item' }]
     },
     {
+      id: 'settings-copy-target',
+      role: 'settings',
+      label: '目标卡片：复制走「新增」流程并预填',
+      setup: `(async () => {
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms))
+        const btn = Array.from(document.querySelectorAll('.target-actions button')).find(b => (b.textContent || '').includes('复制'))
+        if (!btn) return 'no-copy-btn'
+        btn.click()
+        await sleep(900)
+        return document.querySelector('.base-dialog') ? 'ok' : 'no-dialog'
+      })()`,
+      expect: [{ selector: '.base-dialog' }],
+      assertScript: `(() => {
+        const problems = []
+        const dlg = document.querySelector('.base-dialog')
+        if (!dlg) return ['复制后没有打开弹窗']
+        const text = dlg.textContent || ''
+        if (!/新增目标/.test(text)) problems.push('标题不是「新增目标」（实际片段：' + text.slice(0, 40) + '）')
+        const name = dlg.querySelector('#tgt-name')
+        if (!name) problems.push('弹窗里没有名称输入框')
+        else if (!/副本/.test(name.value)) problems.push('名称未预填副本名（实际：' + name.value + '）')
+        const host = dlg.querySelector('#tgt-host')
+        if (!host || !host.value) problems.push('主机未带过来')
+        return problems
+      })()`,
+      teardown: `(async () => { const c = document.querySelector('.base-dialog-close'); if (c) c.click(); await new Promise(r=>setTimeout(r,600)); return 'ok' })()`
+    },
+    {
       id: 'hover-mapping-actions',
       role: 'settings',
       label: '目标卡片：悬停映射行（悬停才显示的编辑/删除按钮）',
