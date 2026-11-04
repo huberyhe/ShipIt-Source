@@ -287,6 +287,9 @@ onMounted(() => {
   void refresh()
 })
 onUnmounted(() => {
+  // 展开态只服务于「同一个视图内的 F5 刷新」：切走就释放。
+  // 不释放的话，切去 Git 变更再回来会“自动恢复上次展开的目录”，看起来像自己展开了。
+  filesStore.clearExpandedDirs()
   window.removeEventListener('tree-expand-all', handleExpandAll)
   window.removeEventListener('tree-collapse-all', handleCollapseAll)
   window.removeEventListener('refresh-view', onRefreshView)

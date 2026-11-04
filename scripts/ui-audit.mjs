@@ -1517,6 +1517,42 @@ function buildWalker() {
       })()`
     },
     {
+      id: 'view-switch-resets-expanded',
+      role: 'project',
+      label: '文件树：切走再回来不应自动恢复展开态',
+      setup: `(async () => {
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms))
+        const waitFor = async (fn, ms) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { const v = fn(); if (v) return v; await sleep(200) } return null }
+        const ft = Array.from(document.querySelectorAll('.view-btn')).find(x => x.textContent.includes('文件树'))
+        if (!ft) return 'no-filetree-tab'
+        ft.click()
+        await sleep(800)
+        // 先手动展开 src（模拟用户操作，让它进入展开态缓存）
+        const srcRow = Array.from(document.querySelectorAll('.ftn-row')).find(r => (r.textContent || '').trim().startsWith('src'))
+        if (!srcRow) return 'no-src-row'
+        const expand = srcRow.querySelector('.ftn-expand')
+        if (expand && expand.getAttribute('aria-expanded') !== 'true') expand.click()
+        await sleep(1200)
+        // 切到 Git 变更再切回文件树
+        const git = await waitFor(() => Array.from(document.querySelectorAll('.view-btn')).find(x => x.textContent.includes('Git变更') && !x.classList.contains('disabled')), 15000)
+        if (!git) return 'no-git-tab'
+        git.click()
+        await sleep(1000)
+        ft.click()
+        await sleep(1500)
+        return 'ok'
+      })()`,
+      assertScript: `(() => {
+        const srcRow = Array.from(document.querySelectorAll('.ftn-row')).find(r => (r.textContent || '').trim().startsWith('src'))
+        if (!srcRow) return ['切回后找不到 src 行']
+        const expand = srcRow.querySelector('.ftn-expand')
+        if (expand && expand.getAttribute('aria-expanded') === 'true') {
+          return ['切走再回来时自动恢复了展开态（应保持全收起：展开态只服务于同一次挂载内的 F5）']
+        }
+        return []
+      })()`
+    },
+    {
       id: 'narrow-filetree',
       role: 'project',
       label: '窄窗 720×600：文件树不出现横向溢出',
