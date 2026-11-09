@@ -32,7 +32,9 @@ export function buildAdminHandlers (rt: Runtime, events: EventHub): Record<strin
     configSave: async (ctx) => {
       await rt.configStore.patchOwned(body(ctx).config ?? {})
       notifyConfig()
-      return ok(await rt.configStore.load())
+      // 不能把完整配置回给 HTTP：目标秘密不得出现在任何响应中（F1 / P1-4）
+      const config = await rt.configStore.load()
+      return ok({ ...config, deploymentTargets: config.deploymentTargets.map(toTargetView) })
     },
 
     targetDetail: async (ctx) => {
@@ -43,7 +45,9 @@ export function buildAdminHandlers (rt: Runtime, events: EventHub): Record<strin
 
     targetAdd: async (ctx) => {
       const { target, secrets } = body(ctx) as { target: DeployTarget; secrets?: TargetSecrets }
-      await rt.configStore.addTarget(applySecrets(target, secrets))
+      // 新增目标同样剥离明文秘密字段，只按 SecretOp 写入
+      const { password: _pw, passphrase: _pp, ...safeTarget } = (target ?? {}) as any
+      await rt.configStore.addTarget(applySecrets(safeTarget, secrets))
       notifyConfig()
       return ok(null)
     },
@@ -52,8 +56,9 @@ export function buildAdminHandlers (rt: Runtime, events: EventHub): Record<strin
       const { id, updates, secrets } = body(ctx) as { id: string; updates: Partial<DeployTarget>; secrets?: TargetSecrets }
       const current = (await rt.configStore.load()).deploymentTargets.find((t) => t.id === id)
       if (!current) return errEnvelope('NO_TARGET', `目标不存在：${id}`)
-      // 先套字段更新，再按 SecretOp 合并秘密（keep 保留原值）
-      const merged = applySecrets({ ...current, ...updates }, secrets)
+      // 普通字段与秘密分开：updates 里的空密码不能覆盖已存值（P1-2）
+      const { password: _pw, passphrase: _pp, ...safeUpdates } = (updates ?? {}) as any
+      const merged = applySecrets({ ...current, ...safeUpdates }, secrets)
       await rt.configStore.updateTarget(id, merged)
       notifyConfig()
       return ok(null)
@@ -138,6 +143,18 @@ export function buildAdminHandlers (rt: Runtime, events: EventHub): Record<strin
     gitDiff: async (ctx) => ok(await rt.git.getFileDiff(str(ctx, 'project'), str(ctx, 'filePath'))),
     gitCommitFiles: async (ctx) => ok(await rt.git.getCommitFiles(str(ctx, 'project'), str(ctx, 'rev'))),
 
+    // 桌面专用完整视图：返回服务层原始对象（公开端点保持原契约）
+    gitStatusFull: async (ctx) => ok(await rt.git.getStatusView(str(ctx, 'project'))),
+    gitLogFull: async (ctx) =>
+      ok(
+        await rt.git.getLogView(str(ctx, 'project'), {
+          ...(ctx.query.get('branch') ? { branch: String(ctx.query.get('branch')) } : {}),
+          ...(ctx.query.get('author') ? { author: String(ctx.query.get('author')) } : {}),
+          ...(ctx.query.get('maxCount') ? { maxCount: Number(ctx.query.get('maxCount')) } : {})
+        })
+      ),
+    gitBranchesFull: async (ctx) => ok(await rt.git.getBranches(str(ctx, 'project'))),
+
     // ---- 草稿目标与桌面直连 ----
     planPreview: async (ctx) => {
       const { files, projectRoot, target } = body(ctx)
@@ -145,7 +162,9 @@ export function buildAdminHandlers (rt: Runtime, events: EventHub): Record<strin
     },
 
     testConnDraft: async (ctx) => {
-      const { target, targetId } = body(ctx)
+      const { target } = body(ctx)
+      // 桌面传的是 target.id；兼容显式 targetId（P1-5）
+      const targetId = body(ctx).targetId ?? target?.id
       // 草稿测试已存目标：表单留空的密码沿用已存值（F1 / A5）；新目标直接使用草稿值（A6）
       const saved = targetId
         ? (await rt.configStore.load()).deploymentTargets.find((item) => item.id === targetId)

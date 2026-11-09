@@ -186,6 +186,8 @@ function nextStatusRevision(): number {
 /** 服务端状态与队列快照（状态栏展示；仅内存，无轮询） */
 function broadcastServerStatus(): void {
   const config = serverConfigCache
+  // process 模式：队列真值在远端镜像里（本地 deployQueue 永远是空的）
+  const remote = statusMirror?.snapshot()
   broadcast(IpcChannels.SERVER_STATUS_CHANGED, {
     listening: serverSnapshot.listening,
     port: serverSnapshot.port,
@@ -193,7 +195,7 @@ function broadcastServerStatus(): void {
     error: serverSnapshot.error,
     enabled: config.enabled,
     bind: config.bind,
-    queue: deployQueue.snapshot(),
+    queue: serverHost && remote?.queue ? remote.queue : deployQueue.snapshot(),
     revision: nextStatusRevision()
   })
   // 托盘状态文本也含队列/项目数：不刷新的话右键菜单永远停在“上次构建时”的值
@@ -329,6 +331,10 @@ function createAppWindow(opts: {
 
   const id = win.webContents.id
   appWindows.set(id, { win, role: opts.role, projectPath, title: windowTitle(opts.role, projectPath) })
+  // 窗口镜像：后端不知道窗口，必须由主进程推送（P1-8）
+  if (opts.role === 'project' || projectPath) {
+    statusMirror?.onWindowOpened({ id, projectPath, focused: win.isFocused() })
+  }
 
   // 首帧就绪 → 显示。兜底：若 ready-to-show 未触发（渲染进程加载失败等），
   // 3 秒后强制显示，避免"点了设置却没反应"。
@@ -368,6 +374,11 @@ function createAppWindow(opts: {
   win.on('focus', () => {
     focusedWindowId = win.webContents.id
     syncCurrentProject()
+    statusMirror?.onWindowOpened({
+      id,
+      projectPath: appWindows.get(id)?.projectPath ?? projectPath,
+      focused: true
+    })
     // 只有项目窗口里有可选行：设置窗口/主窗口不抢输入法的 Ctrl+空格。
     // 角色要**现取**：主窗口打开项目后会就地变成项目窗口（创建时的 role 还是 main）。
     const role = appWindows.get(id)?.role ?? opts.role
@@ -400,6 +411,7 @@ function createAppWindow(opts: {
   })
 
   win.on('closed', () => {
+    statusMirror?.onWindowClosed(id)
     if (opts.role === 'settings') settingsDirty = false
     // 项目窗口关闭 = 该项目不再使用：释放它的 git 缓存（否则长会话里只增不减）。
     // 以**注册表里的当前绑定**为准：窗口可能中途从主窗口认领了项目，
@@ -567,9 +579,11 @@ function startLocalServer(): Promise<void> {
     if (localServer) await localServer.stop()
     const config = await loadServerConfig(configStore.path)
     serverConfigCache = { enabled: config.enabled, bind: config.bind, allowedRoots: config.allowedRoots }
-    localServer = createLocalServer({
-      config,
-      dataDir: dirname(configStore.path),
+      localServer = createLocalServer({
+        config,
+        // embedded 语义：未开启服务就不监听（INV-4）；管理端点仅存在于独立后端进程
+        listen: config.enabled,
+        dataDir: dirname(configStore.path),
       handlers: serverHandlers,
       // 监听建立后的运行时异常必须有人接住：未处理的 'error' 事件会直接崩掉主进程
       onError: (error) => {
@@ -660,7 +674,14 @@ async function openProjectDialog(parent?: BrowserWindow | null) {
  * 多窗口下不再把项目塞进「当前窗口」，而是每项目一个窗口（决策 D-2）。
  */
 async function openProjectPath(projectPath: string, callerId: number | null = focusedWindowId) {
-  await configStore.addRecentProject(projectPath)
+  // process 模式：配置写入必须走后端（跨进程写锁无效，P1-10）
+  if (serverHost) {
+    const cfg = (await ipcAdapter.configLoad()) as { recentProjects?: string[] }
+    const recent = [projectPath, ...(cfg.recentProjects ?? []).filter((p) => p !== projectPath)].slice(0, 10)
+    await ipcAdapter.configSave({ recentProjects: recent })
+  } else {
+    await configStore.addRecentProject(projectPath)
+  }
   openProjectWindow(projectPath, callerId)
 }
 
@@ -802,7 +823,8 @@ function registerIpcHandlers() {
   ipcMain.handle(IpcChannels.PROJECT_VIEW_SAVE, async (_event, projectPath: string, patch: unknown) => {
     if (typeof projectPath !== 'string' || !projectPath.trim()) return null
     if (!patch || typeof patch !== 'object') return null
-    await configStore.saveProjectViewState(projectPath, patch as never)
+    if (serverHost) await ipcAdapter.projectViewSave(projectPath, patch)
+    else await configStore.saveProjectViewState(projectPath, patch as never)
     return null
   })
 
@@ -1122,6 +1144,9 @@ app.whenReady().then(async () => {
       revision: nextStatusRevision()
     }),
     serverConfigSave: (patch: any) => saveServerConfig(configStore.path, patch),
+    saveProjectViewState: async (project: string, patch: any) => {
+      await configStore.saveProjectViewState(project, patch)
+    },
     serverTokenRotate: () => rotateToken(configStore.path),
     serverExport: async () => {
       const cfg = await loadServerConfig(configStore.path)
@@ -1172,7 +1197,18 @@ app.whenReady().then(async () => {
       statusMirror!.onSnapshot(data)
       broadcastServerStatus()
     })
-    serverHost.on('server.state', () => broadcastServerStatus())
+    serverHost.on('server.state', (data: any) => {
+      // 远端状态同步到本地快照（否则状态栏/托盘一直停留在“未监听”）
+      const publicState = data?.public ?? {}
+      serverSnapshot = {
+        listening: !!publicState.listening,
+        port: publicState.port ?? null,
+        bound: publicState.bound ?? '',
+        error: publicState.error
+      }
+      serverConfigCache = { ...serverConfigCache, enabled: !!data?.published }
+      broadcastServerStatus()
+    })
   }
 
   // 启动即应用持久化主题（原生滚动条/系统对话框跟随）
@@ -1249,8 +1285,8 @@ app.whenReady().then(async () => {
   showMainWindow()
   createTrayIfPossible()
   openStartupProjectIfAny()
-  // 配置已开启时启动监听；未开启时不监听（INV-4）
-  await startLocalServer()
+  // process 模式由后端管理监听；embedded 才由主进程监听（且尊重 enabled）
+  if (!serverHost) await startLocalServer()
 
   app.on('activate', () => {
     // macOS：点 Dock 图标时确保有窗口（优先最近聚焦，无则主窗口）

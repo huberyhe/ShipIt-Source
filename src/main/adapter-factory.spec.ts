@@ -50,6 +50,7 @@ function embeddedDeps (): EmbeddedDeps {
     serverConfigSave: async () => ({}),
     serverTokenRotate: async () => ({}),
     serverExport: async () => ({}),
+    saveProjectViewState: async () => undefined,
     deployService: {
       buildUploadPlan: async () => ({ tasks: [], skipped: [] }),
       deploy: async () => ({}),

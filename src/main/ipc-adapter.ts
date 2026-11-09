@@ -8,6 +8,7 @@
  * 注意：T9 必须整体切换，不能只转一部分 handler（否则会出现两个执行体）。
  */
 import type { ClientResult } from '../shared/http-client'
+import { applySecrets, cloneSecrets } from '../server/target-secrets'
 
 export interface IpcAdapter {
   filesTree(root: string): Promise<unknown>
@@ -35,6 +36,8 @@ export interface IpcAdapter {
   serverConfigSave(patch: any): Promise<unknown>
   serverTokenRotate(): Promise<unknown>
   serverExport(): Promise<unknown>
+  /** 项目视图状态写入（process 模式下必须走后端，P1-10） */
+  projectViewSave(project: string, patch: any): Promise<unknown>
   // 部署类（T9 批 3）
   deployPreview(files: string[], projectRoot: string, target: any): Promise<unknown>
   deployDirect(
@@ -91,6 +94,7 @@ export interface EmbeddedDeps {
   serverConfigSave: (patch: any) => Promise<unknown>
   serverTokenRotate: () => Promise<unknown>
   serverExport: () => Promise<unknown>
+  saveProjectViewState: (project: string, patch: any) => Promise<void>
   deployService: {
     buildUploadPlan: (files: string[], projectRoot: string, target: any) => Promise<unknown>
     deploy: (
@@ -126,9 +130,30 @@ export function createEmbeddedAdapter (deps: EmbeddedDeps): IpcAdapter {
       return deps.configStore.load()
     },
     targetSave: async (payload) => {
-      if (payload.op === 'add') await deps.configStore.addTarget(payload.target)
-      else if (payload.op === 'clone') await deps.configStore.addTarget(payload.target)
-      else await deps.configStore.updateTarget(String(payload.id), payload.updates)
+      // embedded 也必须遵守联秘密契约（P1-3）：否则清除/复制只在新模式下生效
+      const cfg = (await deps.configStore.load()) as { deploymentTargets: any[] }
+      const strip = (value: any) => {
+        const { password: _p, passphrase: _pp, ...rest } = value ?? {}
+        return rest
+      }
+      const missing = (label: string) => {
+        const error = new Error(label) as Error & { code?: string }
+        error.code = 'NO_TARGET'
+        return error
+      }
+
+      if (payload.op === 'add') {
+        await deps.configStore.addTarget(applySecrets(strip(payload.target), payload.secrets as any))
+      } else if (payload.op === 'clone') {
+        const source = cfg.deploymentTargets.find((item) => item.id === payload.sourceId)
+        if (!source) throw missing(`源目标不存在：${String(payload.sourceId)}`)
+        await deps.configStore.addTarget(cloneSecrets(source, strip(payload.target)))
+      } else {
+        const current = cfg.deploymentTargets.find((item) => item.id === payload.id)
+        if (!current) throw missing(`目标不存在：${String(payload.id)}`)
+        const merged = applySecrets({ ...current, ...strip(payload.updates) }, payload.secrets as any)
+        await deps.configStore.updateTarget(String(payload.id), merged)
+      }
       return null
     },
     targetRemove: async (id) => {
@@ -154,6 +179,10 @@ export function createEmbeddedAdapter (deps: EmbeddedDeps): IpcAdapter {
     serverConfigSave: (patch) => deps.serverConfigSave(patch),
     serverTokenRotate: () => deps.serverTokenRotate(),
     serverExport: () => deps.serverExport(),
+    projectViewSave: async (project, patch) => {
+      await deps.saveProjectViewState(project, patch)
+      return null
+    },
     deployPreview: (files, projectRoot, target) => deps.deployService.buildUploadPlan(files, projectRoot, target),
     deployDirect: async (payload, onProgress) => {
       const target = (await deps.configStore.load()).deploymentTargets.find(
@@ -193,11 +222,21 @@ export function createRemoteAdapter (host: RemoteHost): IpcAdapter {
     filesExpand: async (dir) => unwrapEnvelope(await host.post('/files/expand', { dir })),
     filesCollect: async (dir, maxFiles) => unwrapEnvelope(await host.post('/files/collect', { dir, maxFiles })),
     gitCheckRepo: async (dir) => unwrapEnvelope(await host.get('/git/check-repo', { project: dir })),
-    gitBranches: async (dir) => unwrapEnvelope(await host.get('/git/branches', { project: dir })),
+    // 桌面期望数组/完整视图：走管理端点的 -full 路由（P1-7）
+    gitBranches: async (dir) => unwrapEnvelope(await host.get('/git/branches-full', { project: dir })),
     gitAuthors: async (dir) => unwrapEnvelope(await host.get('/git/authors', { project: dir })),
-    gitStatus: async (dir) => unwrapEnvelope(await host.get('/git/status', { project: dir })),
-    gitLog: async (dir, options) =>
-      unwrapEnvelope(await host.get('/git/log', { project: dir, ...(options as Record<string, string> | undefined) })),
+    gitStatus: async (dir) => unwrapEnvelope(await host.get('/git/status-full', { project: dir })),
+    gitLog: async (dir, options) => {
+      const opts = (options ?? {}) as { branch?: string; author?: string; maxCount?: number }
+      return unwrapEnvelope(
+        await host.get('/git/log-full', {
+          project: dir,
+          ...(opts.branch ? { branch: opts.branch } : {}),
+          ...(opts.author ? { author: opts.author } : {}),
+          ...(opts.maxCount ? { maxCount: opts.maxCount } : {})
+        })
+      )
+    },
     gitDiff: async (dir, filePath) => unwrapEnvelope(await host.get('/git/diff', { project: dir, filePath })),
     gitCommitFiles: async (dir, rev) => unwrapEnvelope(await host.get('/git/commit-files', { project: dir, rev })),
     configLoad: async () => unwrapEnvelope(await host.get('/config')),
@@ -222,6 +261,8 @@ export function createRemoteAdapter (host: RemoteHost): IpcAdapter {
     serverConfigSave: async (patch) => unwrapEnvelope(await host.post('/server/config', { patch })),
     serverTokenRotate: async () => unwrapEnvelope(await host.post('/server/token')),
     serverExport: async () => unwrapEnvelope(await host.post('/server/export')),
+    projectViewSave: async (project, patch) =>
+      unwrapEnvelope(await host.post('/projects/view', { project, patch })),
     deployPreview: async (files, projectRoot, target) =>
       unwrapEnvelope(await host.post('/plan/preview', { files, projectRoot, target })),
     deployDirect: async (payload, onProgress) => {

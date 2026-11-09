@@ -53,6 +53,7 @@ describe('main/ipc-adapter', () => {
       serverConfigSave: async () => ({ enabled: false }),
       serverTokenRotate: async () => ({ token: 'new' }),
       serverExport: async () => ({ port: 4517 }),
+      saveProjectViewState: async () => undefined,
       deployService: {
         buildUploadPlan: async () => ({ tasks: [], skipped: [] }),
         deploy: async (_tasks, _target, onProgress) => {

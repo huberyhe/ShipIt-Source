@@ -42,7 +42,8 @@ export function createStatusMirror (deps: { post: (path: string, body: unknown) 
         ...item,
         focused: window.focused ? item.windowId === window.id : item.focused
       }))
-      if (window.focused && window.projectPath) current = window.projectPath
+      // 聚焦窗口是主窗口（无项目）时，current 也要清空（不能停在旧项目）
+      if (window.focused) current = window.projectPath
       push()
     },
 

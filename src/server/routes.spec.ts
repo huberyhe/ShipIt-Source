@@ -8,8 +8,8 @@ describe('server/routes', () => {
     expect(PUBLIC_ROUTES).toHaveLength(10)
   })
 
-  it('管理端点 = 公开 10 条 + 32 条桌面专属', () => {
-    expect(ADMIN_ROUTES).toHaveLength(42)
+  it('管理端点 = 公开 10 条 + 35 条桌面专属（含 3 条 -full 视图）', () => {
+    expect(ADMIN_ROUTES).toHaveLength(45)
     for (const route of PUBLIC_ROUTES) {
       expect(ADMIN_ROUTES).toContainEqual(route)
     }

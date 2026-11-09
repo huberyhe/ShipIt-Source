@@ -47,6 +47,8 @@ export interface ServerHandlerDeps {
   queue: DeployQueue
   /** 包版本（CON-3：取自包，禁止硬编码） */
   getVersion: () => string
+  /** 后端是否正在退出：退出期间拒绝新任务（P1-12） */
+  isDraining?: () => boolean
   /**
    * 完整状态快照（v3）：由 Runtime 提供，含 instanceId / published / revision。
    * 提供时 /status 直接返回它（与 SSE 共用同一份）；不提供则沿用旧的组装逻辑（embedded 兼容）。
@@ -355,6 +357,8 @@ export function planHandler(deps: ServerHandlerDeps): RouteHandler {
  */
 export function deployHandler(deps: ServerHandlerDeps): RouteHandler {
   return async (ctx) => {
+    // 退出中不再接受新任务（否则 final 后还有任务在跑，退出被拖死）
+    if (deps.isDraining?.()) return errEnvelope('BACKEND_UNAVAILABLE', '服务正在退出，已拒绝新的上传任务')
     const name = pickTargetName(ctx)
     if (!name) return usage('缺少目标名：deploy 需要 --target')
 

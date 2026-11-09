@@ -128,6 +128,7 @@ export function createRuntime (options: RuntimeOptions) {
     },
     queue,
     getVersion: () => options.appVersion,
+    isDraining: () => draining,
     snapshot: () => statusSnapshot(),
     deploy: (tasks, target, onProgress, ctx) =>
       deployService.deploy(tasks, target, onProgress, 'queue', { signal: ctx?.signal })

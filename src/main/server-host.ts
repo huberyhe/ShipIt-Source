@@ -42,14 +42,22 @@ export interface ServerHost {
 /** 跨实例 revision 转换：旧实例迟到事件丢弃，新实例从当前计数继续递增 */
 export function createRevisionBridge () {
   let instanceId: string | null = null
+  /** 当前实例内已接收的最大 revision（切换实例时归零） */
+  let instanceRevision = 0
+  /** 输出给 renderer 的跨实例单调序号 */
   let revision = 0
   return {
     setInstance (id: string) {
       instanceId = id
+      instanceRevision = 0
     },
     translate (incomingInstanceId: string, payloadRevision: number): { accepted: boolean; revision: number } {
+      // 旧实例的迟到事件：丢弃
       if (instanceId !== null && incomingInstanceId !== instanceId) return { accepted: false, revision }
-      instanceId = incomingInstanceId
+      if (instanceId === null) instanceId = incomingInstanceId
+      // 同实例的旧序号（重连补发、GET/SSE 乱序）：丢弃（P2）
+      if (payloadRevision <= instanceRevision) return { accepted: false, revision }
+      instanceRevision = payloadRevision
       revision = Math.max(revision + 1, payloadRevision)
       return { accepted: true, revision }
     },
@@ -116,6 +124,7 @@ export function createServerHost (options: HostOptions): ServerHost {
   let sseRequest: ReturnType<typeof https.get> | null = null
   let sseTimer: NodeJS.Timeout | null = null
   let stopped = false
+  let restartAttempts = 0
   const handlers = new Map<string, Array<(data: unknown) => void>>()
   const bridge = createRevisionBridge()
   let admin: { port: number; token: string; fingerprint: string } | null = null
@@ -128,6 +137,20 @@ export function createServerHost (options: HostOptions): ServerHost {
         // 回调抛错不得击穿事件流
       }
     }
+  }
+
+  /** 清理 SSE 连接与重连定时器（崩溃/重启/停止时必须调用） */
+  function cleanupSse (): void {
+    if (sseTimer) {
+      clearTimeout(sseTimer)
+      sseTimer = null
+    }
+    try {
+      sseRequest?.destroy()
+    } catch {
+      // 已断开
+    }
+    sseRequest = null
   }
 
   /** SSE 订阅：校验指纹（INV-11），断线 1s 重连 */
@@ -193,8 +216,23 @@ export function createServerHost (options: HostOptions): ServerHost {
     get revision () { return bridge.snapshot().revision },
 
     async start () {
-      child = forkChild(options, process.pid)
-      const ready = await waitReady(child, 8000)
+      if (stopped) throw new Error('后端宿主已停止')
+      const current = forkChild(options, process.pid)
+      child = current
+      // 崩溃监督（P1-11）：清理旧 SSE → 重启一次；再退则上报 fatal，避免无限循环
+      current.on('exit', () => {
+        if (stopped) return
+        cleanupSse()
+        if (restartAttempts >= 1) {
+          emit('fatal', { message: '后端连续退出，已放弃自动重启' })
+          return
+        }
+        restartAttempts += 1
+        setTimeout(() => {
+          void this.start().catch((error) => emit('fatal', { message: String(error) }))
+        }, 500)
+      })
+      const ready = await waitReady(current, 8000)
       bridge.setInstance(ready.instanceId)
       admin = ready.admin
       client = createHttpClient({
@@ -240,6 +278,8 @@ export function createServerHost (options: HostOptions): ServerHost {
     },
 
     forceStop () {
+      stopped = true
+      cleanupSse()
       return this.post('/shutdown', { phase: 'force' })
     }
   }

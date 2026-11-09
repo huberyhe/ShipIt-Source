@@ -20,7 +20,8 @@ export async function createAdapter (options: {
     return {
       adapter: createRemoteAdapter({
         get: (path, query) => host.get(path, query),
-        post: (path, body) => host.post(path, body),
+        // 透传逐请求超时（F3/P1-6）：否则直连上传仍是 30s
+        post: (path, body, timeoutMs) => host.post(path, body, timeoutMs),
         on: (event, fn) => host.on(event, fn)
       }),
       host

@@ -43,6 +43,10 @@ const ADMIN_ONLY_ROUTES: readonly RouteDefinition[] = [
   { method: 'GET',  path: '/git/authors', handler: 'gitAuthors' },
   { method: 'GET',  path: '/git/diff', handler: 'gitDiff' },
   { method: 'GET',  path: '/git/commit-files', handler: 'gitCommitFiles' },
+  // 桌面专用完整视图（公开端点保持旧契约，P1-7）
+  { method: 'GET',  path: '/git/status-full', handler: 'gitStatusFull' },
+  { method: 'GET',  path: '/git/log-full', handler: 'gitLogFull' },
+  { method: 'GET',  path: '/git/branches-full', handler: 'gitBranchesFull' },
 
   // ---- 草稿目标与桌面直连（4）----
   { method: 'POST', path: '/plan/preview', handler: 'planPreview' },
