@@ -90,7 +90,7 @@ describe('main/ipc-adapter', () => {
 
     const adapter = createRemoteAdapter({
       get: async (path) => {
-        if (path === '/git/status') return ok({ changes: [{ relativePath: 'a.ts' }] })
+        if (path === '/git/status-full') return ok({ changes: [{ relativePath: 'a.ts' }] })
         if (path === '/config') return ok({ deploymentTargets: [{ name: 'dev' }] })
         if (path === '/server/config') return fail('BACKEND_UNAVAILABLE', '服务未发布')
         return ok(null)
