@@ -50,6 +50,8 @@ export interface RequestContext {
   /** 调用方标识：cli / mcp；桌面界面为内部调用，不带该头（D-25） */
   origin: Origin
   remoteAddress: string
+  /** 仅 raw 路由提供：SSE / 流式响应使用 */
+  raw?: { req: IncomingMessage; res: ServerResponse }
 }
 
 export type RouteHandler = (ctx: RequestContext) => Promise<Envelope> | Envelope
@@ -58,8 +60,10 @@ export interface RouteDefinition {
   method: 'GET' | 'POST'
   /** 以 `:` 前缀的段落为路径参数 */
   path: string
-  /** handlers 中的键名 */
-  handler: keyof Handlers
+  /** handlers 中的键名（允许内部路由注册额外处理器） */
+  handler: string
+  /** true：handler 直接接管响应（不读 body、不写信封） */
+  raw?: boolean
 }
 
 export interface Handlers {
@@ -73,6 +77,8 @@ export interface Handlers {
   gitLog: RouteHandler
   gitBranches: RouteHandler
   task: RouteHandler
+  /** 内部路由注册的额外处理器（未注册即为 undefined） */
+  [extra: string]: RouteHandler | undefined
 }
 
 export type StartResult =
@@ -97,6 +103,14 @@ export interface LocalServerOptions {
   dataDir: string
   /** 可选处理器注入；未注入的路由视为未启用（后续任务逐个绑定） */
   handlers?: Partial<Handlers>
+  /** 是否监听：默认 true。管理端点恒 true；公开端点由调用方按 enabled 传入 */
+  listen?: boolean
+  /** 是否写连接信息文件：默认 = config.enabled。管理端点必须 false */
+  publish?: boolean
+  /** 覆盖鉴权 token（管理端点用宿主 token） */
+  tokenOverride?: string
+  /** 路由表：默认 ROUTES */
+  routes?: readonly RouteDefinition[]
   /** 每次请求后回调（供界面日志与来源标注使用） */
   onRequest?: (info: { path: string; origin: Origin; remoteAddress: string; status: number; code?: ErrorCode }) => void
   /**
@@ -137,8 +151,8 @@ type RouteMatch =
   | { ok: true; route: RouteDefinition; params: Record<string, string> }
   | { ok: false; reason: 'no-route' | 'bad-param' }
 
-function matchRoute(method: string, pathname: string): RouteMatch {
-  for (const route of ROUTES) {
+function matchRoute(method: string, pathname: string, routes: readonly RouteDefinition[] = ROUTES): RouteMatch {
+  for (const route of routes) {
     if (route.method !== method) continue
     const want = route.path.split('/')
     const got = pathname.split('/')
@@ -352,7 +366,7 @@ export function createLocalServer(options: LocalServerOptions): LocalServer {
 
     // 1) 鉴权（先于协议版本，避免未授权方探测协议）
     const token = headerValue(req, HEADER.token)
-    if (!tokenMatches(config.token, token)) {
+    if (!tokenMatches(options.tokenOverride ?? config.token, token)) {
       fail(res, 'INVALID_TOKEN', '鉴权失败：令牌缺失或不正确', '请在桌面版设置中查看或重新生成令牌')
       report(401, 'INVALID_TOKEN')
       return
@@ -374,7 +388,7 @@ export function createLocalServer(options: LocalServerOptions): LocalServer {
     }
 
     // 3) 路由
-    const hit = matchRoute(req.method ?? 'GET', url.pathname)
+    const hit = matchRoute(req.method ?? 'GET', url.pathname, options.routes ?? ROUTES)
     if (!hit.ok) {
       const badParam = hit.reason === 'bad-param'
       fail(
@@ -391,6 +405,27 @@ export function createLocalServer(options: LocalServerOptions): LocalServer {
     if (!handler) {
       fail(res, 'USAGE', `接口未启用：${req.method ?? 'GET'} ${url.pathname}`, undefined, 404)
       report(404, 'USAGE')
+      return
+    }
+
+    // raw 路由（SSE）：handler 直接写响应，不读 body、不写信封
+    if (hit.route.raw) {
+      try {
+        await handler({
+          method: req.method ?? 'GET',
+          path: url.pathname,
+          params: hit.params,
+          query: url.searchParams,
+          body: undefined,
+          origin,
+          remoteAddress,
+          raw: { req, res }
+        })
+        report(res.statusCode ?? 200)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        if (!res.headersSent) fail(res, 'BACKEND_UNAVAILABLE', `流式响应失败：${message}`)
+      }
       return
     }
 
@@ -429,13 +464,16 @@ export function createLocalServer(options: LocalServerOptions): LocalServer {
 
   return {
     async start(): Promise<StartResult> {
-      if (!config.enabled) return { listening: false }
+      // 「是否监听」与「是否发布」拆开（V5）：管理端点 listen=true/publish=false
+      const shouldListen = options.listen ?? true
+      if (!shouldListen) return { listening: false }
+      const published = options.publish ?? config.enabled
 
       // 重入保护：同实例重复 start 前先停掉既有监听器；否则旧引用被覆盖、
       // 监听器无人回收，端口会一直被占用到进程退出。
       if (server) await this.stop()
 
-      const host = config.bind === 'lan' ? '0.0.0.0' : '127.0.0.1'
+      const host = published && config.bind === 'lan' ? '0.0.0.0' : '127.0.0.1'
       let tls: Awaited<ReturnType<typeof ensureSelfSignedCert>>
       try {
         tls = await ensureSelfSignedCert(dataDir)
@@ -494,6 +532,9 @@ export function createLocalServer(options: LocalServerOptions): LocalServer {
 
       activePort = listening.port
       activeFingerprint = listening.fingerprint
+
+      // 管理端点（publish=false）绝不写 server.json，避免 CLI 发现管理端口
+      if (!published) return listening
 
       try {
         await writeConnectionInfo(listening.port, listening.fingerprint)

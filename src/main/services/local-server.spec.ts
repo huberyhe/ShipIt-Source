@@ -27,12 +27,14 @@ const cfg = (patch: Partial<ServerConfig> = {}): ServerConfig => ({
   ...patch
 })
 
-function start(options: { config?: ServerConfig; handlers?: Record<string, unknown> } = {}): LocalServer {
-  const srv = createLocalServer({
-    config: options.config ?? cfg(),
-    dataDir: dir,
-    handlers: options.handlers as never
-  })
+  function start(options: { config?: ServerConfig; handlers?: Record<string, unknown>; listen?: boolean; publish?: boolean } = {}): LocalServer {
+    const srv = createLocalServer({
+      config: options.config ?? cfg(),
+      dataDir: dir,
+      handlers: options.handlers as never,
+      listen: options.listen,
+      publish: options.publish
+    })
   servers.push(srv)
   return srv
 }
@@ -140,10 +142,27 @@ afterEach(async () => {
 })
 
 describe('local-server', () => {
-  it('AC-017 / DFX-SEC-002 未开启时不监听任何地址，且不写连接信息文件（INV-4：默认不开启、暴露面收敛）', async () => {
+  it('AC-017 / INV-4（v3）未开启时仍可监听（管理端点），但不写连接信息文件', async () => {
     const srv = start({ config: cfg({ enabled: false }) })
     const res = await srv.start()
+    expect(res.listening).toBe(true)                      // listen 默认 true；enabled 只管发布
+    expect(existsSync(join(dir, CONNECTION_FILE))).toBe(false)
+    await srv.stop()
+  })
+
+  it('listen:false 时不监听（管理端点的 opt-out）', async () => {
+    const srv = start({ config: cfg({ enabled: true }), listen: false })
+    const res = await srv.start()
     expect(res).toMatchObject({ listening: false })
+    expect(existsSync(join(dir, CONNECTION_FILE))).toBe(false)
+  })
+
+  it('publish:true 可覆盖 enabled:false（发布语义与监听语义拆开）', async () => {
+    const srv = start({ config: cfg({ enabled: false }), publish: true })
+    const res = await srv.start()
+    expect(res.listening).toBe(true)
+    expect(existsSync(join(dir, CONNECTION_FILE))).toBe(true)
+    await srv.stop()
     expect(existsSync(join(dir, CONNECTION_FILE))).toBe(false)
   })
 
