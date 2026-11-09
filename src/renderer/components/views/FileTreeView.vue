@@ -12,6 +12,7 @@ import FileTreeNode from '../filetree/FileTreeNode.vue'
 import EmptyState from '../common/EmptyState.vue'
 import ViewHeader from '../common/ViewHeader.vue'
 import IconButton from '../common/IconButton.vue'
+import RefreshStamp from '../common/RefreshStamp.vue'
 import ContextMenu from '../common/ContextMenu.vue'
 import ServerTargetMenu from '../common/ServerTargetMenu.vue'
 import { useDeployHotkeys } from '../../composables/useDeployHotkeys'
@@ -210,7 +211,6 @@ function handleExpandAll() { expandAllFlag.value = true }
 
 /** 刷新中：只管按钮禁用态，不改表头文案（避免文字长短变化引来额外视觉跳动） */
 const isRefreshing = ref(false)
-const snapshotAt = ref<Date | null>(null)
 /**
  * 刷新序号：参与行 key，强制节点重建。
  *
@@ -219,23 +219,8 @@ const snapshotAt = ref<Date | null>(null)
  */
 const refreshSeq = ref(0)
 
-/** `HH:mm:ss`（秒级足够核验；等宽数字避免每跳一秒就把后面的内容推一下） */
-function formatClock(d: Date): string {
-  const pad = (n: number): string => String(n).padStart(2, '0')
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
-}
-
-function formatStamp(d: Date): string {
-  const pad = (n: number): string => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${formatClock(d)}`
-}
-
-const snapshotLabel = computed(() => (snapshotAt.value ? `${formatClock(snapshotAt.value)} 刷新` : ''))
-const snapshotTitle = computed(() =>
-  snapshotAt.value
-    ? `这份文件树的数据快照：${formatStamp(snapshotAt.value)}（切回本窗口会自动刷新，也可按 F5 或点右上角刷新）`
-    : ''
-)
+/** 表头提示：时间的含义是「上次真正拉取数据的时刻」（快照时刻存在 store 里） */
+const refreshHint = '切回本窗口会自动刷新，也可按 F5 或点右上角刷新'
 
 /**
  * 重新加载根目录。
@@ -254,8 +239,7 @@ async function refresh(): Promise<void> {
   try {
     await filesStore.loadFileTree(root)
     refreshSeq.value++
-    // 只在本视图真正加载过之后才显示时间：表头里的时间必须对应屏幕上这批数据
-    snapshotAt.value = new Date()
+    // 时刻由 store 在数据落到 state 时记录（表头的时间必须对应屏幕上这批数据）
     if (focusedPath) {
       await nextTick()
       // 用 dataset 逐个比，不拼选择器（路径里有反斜杠/冒号，转义容易出错）
@@ -284,7 +268,7 @@ function onRefreshView(): void {
  * 为什么只做聚焦刷新、不做轮询：目录树每展开一层都是一次 readdir，轮询纯属白烧 IO；
  * 而真正需要看到新文件的时刻，几乎都是"我刚在外面改完切回来"。
  * 这样三视图的新鲜度策略一致：Git 变更 / 提交历史是 60s 轮询 + 聚焦刷新，文件树是聚焦刷新。
- * 表头的「HH:mm:ss 刷新」因此有了确切含义：上次真正拉取数据的时刻。
+ * 表头的「刚刚刷新 / N分钟前刷新」因此有了确切含义：上次真正拉取数据的时刻。
  */
 function onWindowFocus(): void {
   // 只有本窗口真的拿到焦点才刷（焦点可能落到别的窗口上，此时不该动树）
@@ -348,7 +332,7 @@ const selectionText = computed(() => {
       <template #meta>
         <span class="file-count" v-if="filesStore.fileTree" :title="`已加载 ${loadedFiles} 个文件、${loadedDirs} 个目录`">{{ loadedFiles }} 文件 · {{ loadedDirs }} 目录</span>
         <!-- 快照时间：回答"这批是什么时候的"；宽度用等宽数字稳定，右侧用 flex 位置固定（出现/消失不推邻元素） -->
-        <span v-if="snapshotLabel" class="snapshot-time" :title="snapshotTitle">{{ snapshotLabel }}</span>
+        <RefreshStamp :at="filesStore.treeUpdatedAt" :hint="refreshHint" />
         <span class="selection-meta" :title="selectionText ? 'Ctrl+X / 右键「快速上传」上传的是这些选中项' : ''">{{ selectionText }}</span>
       </template>
       <template #actions>
@@ -389,8 +373,6 @@ const selectionText = computed(() => {
 .filetree-view:focus-visible { outline: none; }
 .filetree-view { display: flex; flex-direction: column; height: 100%; }
 .file-count { color: var(--fg2); font-size: 11px; }
-/* 快照时间：等宽数字（每秒跳变不改变自身宽度，不推后面的元素） */
-.snapshot-time { color: var(--fg2); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 /* 选区规模占了"剩余宽度"并右对齐：出现/消失都不移动左侧计数与右侧按钮（防抖动） */
 .selection-meta {
   flex: 1;

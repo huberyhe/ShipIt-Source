@@ -15,6 +15,7 @@ import GitChangeTreeNode from '../git/GitChangeTreeNode.vue'
 import EmptyState from '../common/EmptyState.vue'
 import ViewHeader from '../common/ViewHeader.vue'
 import IconButton from '../common/IconButton.vue'
+import RefreshStamp from '../common/RefreshStamp.vue'
 import type { ChangeTreeNode } from '../../types/git'
 import ContextMenu from '../common/ContextMenu.vue'
 import ServerTargetMenu from '../common/ServerTargetMenu.vue'
@@ -27,6 +28,8 @@ const deployStore = useDeployStore()
 const projectStore = useProjectStore()
 
 const AUTO_REFRESH_MS = 60000
+/** 表头时间的含义：上次真正拿到 Git 状态的时刻（不是点刷新的时刻） */
+const refreshHint = `每 ${AUTO_REFRESH_MS / 1000} 秒静默刷新；切回本窗口也会立即刷新，也可按 F5 或点右侧刷新`
 
 // 服务器选择菜单（Ctrl+Shift+X 唤起，数字键或鼠标选择）
 const uiStore = useUiStore()
@@ -594,6 +597,8 @@ const selectionText = computed(() => {
         <!-- 仓库过多时不能静默少列：给出固定文案的提示（不插行，不引发布局跳动） -->
         <span v-if="gitStore.reposTruncated" class="truncated-hint" title="项目内仓库数量超过上限，只展示了前几个；请直接打开对应子仓库">仓库数超出上限，仅显示部分</span>
         <span v-else-if="gitStore.reposScanTruncated" class="truncated-hint" title="目录过多，仓库扫描已提前结束；可能有更深的仓库未显示">仓库扫描未完成</span>
+        <!-- 刷新时间：回答"这批变更是什么时候的"；失败刷新不会把旧数据标成刚刚 -->
+        <RefreshStamp :at="gitStore.statusUpdatedAt" :hint="refreshHint" />
         <!-- 选区规模占"剩余宽度"并右对齐：出现/消失不推动左侧标题与右侧按钮（防抖动） -->
         <span class="selection-meta" :title="selectionText ? 'Ctrl+X / 右键「快速上传」上传的是这些选中项' : ''">{{ selectionText }}</span>
       </template>

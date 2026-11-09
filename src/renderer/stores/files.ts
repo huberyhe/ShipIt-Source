@@ -16,6 +16,12 @@ export interface FileEntry {
 
 export const useFilesStore = defineStore('files', () => {
   const fileTree = ref<any>(null)
+  /**
+   * 文件树快照时刻：只有真正落到 state 的那次加载才更新（失败/过期响应不动），
+   * 表头的「刚刚刷新 / N分钟前刷新」据此计算 —— 它必须对应屏幕上这批数据，
+   * 而不是「点了一下刷新按钮」这个动作。
+   */
+  const treeUpdatedAt = ref<Date | null>(null)
   const selectedFiles = ref<Set<string>>(new Set())
   const isLoading = ref(false)
   /** 服务器菜单（Ctrl+Shift+X）作用的选中项（点击行时设置） */
@@ -145,6 +151,8 @@ export const useFilesStore = defineStore('files', () => {
 
   async function loadFileTree(rootPath: string) {
     const seq = ++treeSeq
+    // 换项目：旧项目的时刻对新树没有意义，先置空（加载失败也不该显示上个项目的时间）
+    if (rootPath !== treeRoot.value) treeUpdatedAt.value = null
     isLoading.value = true
     try {
       const tree = await window.deployApi.getFileTree(rootPath)
@@ -155,6 +163,7 @@ export const useFilesStore = defineStore('files', () => {
         clearDirChildren()
       }
       fileTree.value = tree
+      treeUpdatedAt.value = new Date()
     } finally {
       if (seq === treeSeq) isLoading.value = false
     }
@@ -192,6 +201,7 @@ export const useFilesStore = defineStore('files', () => {
 
   return {
     fileTree,
+    treeUpdatedAt,
     selectedFiles,
     isLoading,
     selectedDeployEntry,

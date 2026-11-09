@@ -34,6 +34,16 @@ const reposScanTruncated = ref(false)
   /** 正在分析 Git 状态（进入项目时的耗时操作） */
   const isAnalyzing = ref(false)
 
+  /**
+   * 数据快照时刻：只有**最新一次成功响应真正落到 state** 才更新。
+   *
+   * 表头的「刚刚刷新 / N分钟前刷新」据此计算，因此不能在调用前先写时间：
+   * 失败（或过期响应被丢弃）时数据仍是上一批，时间却跳到现在的话，
+   * 旧数据会被标成「刚刚刷新」——比不显示时间更误导。
+   */
+  const statusUpdatedAt = ref<Date | null>(null)
+  const logUpdatedAt = ref<Date | null>(null)
+
   // 筛选状态
     /** 筛选被重置的信号（每次 resetLogFilters 自增）：
    *  挂载中的日志视图据此清空本地选择并重新加载，不依赖 projectPath 是否发生“变化” */
@@ -78,6 +88,9 @@ const reposScanTruncated = ref(false)
   let statusSeq = 0
   let refsSeq = 0
   let logSeq = 0
+  // 两批数据各自归属的目录：换项目时把时刻置空（旧项目的时间对新项目无意义）
+  let statusDir = ''
+  let logDir = ''
   // 在途的非静默请求计数（>0 时界面显示“分析中 / 加载中”）
   let statusPending = 0
   let logPending = 0
@@ -87,6 +100,10 @@ const reposScanTruncated = ref(false)
    * @param silent 静默刷新（自动轮询）：不触发状态栏"分析中"提示
    */
   async function loadGitStatus(dir: string, silent = false) {
+    if (dir !== statusDir) {
+      statusDir = dir
+      statusUpdatedAt.value = null
+    }
     if (statusInFlight.has(dir)) return
     statusInFlight.add(dir)
     const seq = ++statusSeq
@@ -99,6 +116,8 @@ const reposScanTruncated = ref(false)
         repos.value = []
         reposTruncated.value = false
   reposScanTruncated.value = false
+        // 「不是 git 仓库」也是本次刷新的结果，同样算一次有效快照
+        statusUpdatedAt.value = new Date()
         return
       }
 
@@ -115,6 +134,7 @@ const reposScanTruncated = ref(false)
       repos.value = Array.isArray(statusView.repos) ? statusView.repos : []
       reposTruncated.value = statusView.truncated === true
   reposScanTruncated.value = statusView.scanTruncated === true
+      statusUpdatedAt.value = new Date()
     } catch (error) {
       reportError('加载 Git 状态失败', error)
     } finally {
@@ -136,6 +156,10 @@ const reposScanTruncated = ref(false)
   ) {
     const maxCount = opts.maxCount ?? 50
     const silent = opts.silent ?? false
+    if (dir !== logDir) {
+      logDir = dir
+      logUpdatedAt.value = null
+    }
     if (logInFlight.has(dir)) return
     logInFlight.add(dir)
     const seq = ++logSeq
@@ -151,6 +175,7 @@ const reposScanTruncated = ref(false)
       if (seq !== logSeq) return // 已有更新的请求，丢弃本次响应
       commits.value = list
       logExhausted.value = list.length < maxCount
+      logUpdatedAt.value = new Date()
     } catch (error) {
       // 失败必须可见；**保留已有列表**（「加载更多」失败时清空会被读成「没有提交」）
       if (seq === logSeq) reportError('加载提交历史失败', error)
@@ -210,6 +235,8 @@ const reposScanTruncated = ref(false)
     authors,
     isLoading,
     isAnalyzing,
+    statusUpdatedAt,
+    logUpdatedAt,
     logFilterResetToken,
     loadGitStatus,
     loadGitLog,

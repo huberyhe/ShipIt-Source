@@ -10,6 +10,7 @@ import ServerTargetMenu from '../common/ServerTargetMenu.vue'
 import EmptyState from '../common/EmptyState.vue'
 import ViewHeader from '../common/ViewHeader.vue'
 import IconButton from '../common/IconButton.vue'
+import RefreshStamp from '../common/RefreshStamp.vue'
 import StatusBadge from '../common/StatusBadge.vue'
 import { useDeployHotkeys } from '../../composables/useDeployHotkeys'
 import { useServerMenu } from '../../composables/useServerMenu'
@@ -95,6 +96,8 @@ const projectStore = useProjectStore()
 const deployStore = useDeployStore()
 
 const AUTO_REFRESH_MS = 60000
+/** 表头时间的含义：上次真正拿到提交列表的时刻（不是点刷新的时刻） */
+const refreshHint = `每 ${AUTO_REFRESH_MS / 1000} 秒静默刷新；切回本窗口也会立即刷新，也可按 F5 或点右侧刷新`
 
 // 初始值来自按项目记忆的界面状态（App.vue 在打开项目时已写入 ui store）
 // 筛选状态**单一来源** = uiStore（按项目持久化）；视图不再维护本地副本，
@@ -453,6 +456,8 @@ async function deployCommitFiles(targetId?: string) {
       <template #meta>
         <!-- 这是"已加载条数"（分页加载），不是总数：明确写出来，避免读成"共 N 条" -->
         <span class="result-count" v-if="gitStore.commits.length">已加载 {{ gitStore.commits.length }} 条</span>
+        <!-- 刷新时间：回答"这批提交是什么时候的"；失败刷新不会把旧列表标成刚刚 -->
+        <RefreshStamp :at="gitStore.logUpdatedAt" :hint="refreshHint" />
         <!-- 单选结果占"剩余宽度"并右对齐：出现/消失不移动左侧计数与右侧按钮 -->
         <span class="selection-meta" :title="selectionText ? 'Ctrl+X / 右键「快速上传」上传的是这条提交的文件' : ''">{{ selectionText }}</span>
       </template>
