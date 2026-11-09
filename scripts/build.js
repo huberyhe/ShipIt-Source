@@ -31,6 +31,9 @@ try {
   // CLI 入口随安装包提供（spec：三平台产物含 CLI 入口），放在安装目录的 cli/（与可执行文件同级）
   execSync('node scripts/build-cli.js', { stdio: 'inherit', env })
 
+  console.log('Building backend bundle...')
+  execSync('node scripts/build-server.js', { stdio: 'inherit', env })
+
   console.log('Building Vite...')
   execSync('vite build', { stdio: 'inherit', env })
 

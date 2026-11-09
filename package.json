@@ -10,10 +10,11 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
+    "build:server": "node scripts/build-server.js",
     "preview": "vite preview",
     "test": "vitest run",
     "type-check": "vue-tsc --noEmit",
-    "electron:dev": "cross-env NODE_ENV=development vite",
+    "electron:dev": "npm run build:server && cross-env NODE_ENV=development vite",
     "electron:build": "node scripts/build.js",
     "build:cli": "node scripts/build-cli.js",
     "publish:cli": "npm run build:cli && npm publish ./dist-cli --access public",
@@ -54,6 +55,12 @@
     "directories": {
       "output": "release"
     },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "dist-server/**/*",
+      "package.json"
+    ],
     "win": {
       "target": [
         "nsis"
