@@ -52,7 +52,13 @@ describe('main/ipc-adapter', () => {
       serverStatus: () => ({ listening: false }),
       serverConfigSave: async () => ({ enabled: false }),
       serverTokenRotate: async () => ({ token: 'new' }),
-      serverExport: async () => ({ port: 4517 })
+      serverExport: async () => ({ port: 4517 }),
+      deployService: {
+        buildUploadPlan: async () => ({ tasks: [], skipped: [] }),
+        deploy: async () => ({ totalFiles: 0 }),
+        abort: () => undefined,
+        testConnection: async () => ({ success: true })
+      }
     })
 
     expect(await adapter.filesTree(dir)).toMatchObject({ name: 'root' })
@@ -60,6 +66,8 @@ describe('main/ipc-adapter', () => {
     expect(await adapter.serverStatus()).toEqual({ listening: false })
     expect(await adapter.configSave({ theme: 'dark' })).toEqual({ deploymentTargets: [{ name: 'dev' }] })
     expect(await adapter.targetRemove('t1')).toBeNull()
+    expect(await adapter.deployPreview([], 'D:/proj', {})).toEqual({ tasks: [], skipped: [] })
+    expect(await adapter.testConnectionDraft({})).toEqual({ success: true })
   })
 
   it('remote：返回数据解包，失败抛带 code 的 Error', async () => {

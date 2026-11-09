@@ -35,6 +35,11 @@ export interface IpcAdapter {
   serverConfigSave(patch: unknown): Promise<unknown>
   serverTokenRotate(): Promise<unknown>
   serverExport(): Promise<unknown>
+  // 部署类（T9 批 3）
+  deployPreview(files: string[], projectRoot: string, target: unknown): Promise<unknown>
+  deployDirect(payload: { windowId: number; tasks: unknown[]; targetName: string; projectRoot?: string }): Promise<unknown>
+  deployCancel(windowId: number): Promise<unknown>
+  testConnectionDraft(target: unknown): Promise<unknown>
 }
 
 /** 信封解包：失败统一抛带 code 的 Error（与 renderer 现有 catch 口径一致） */
@@ -83,6 +88,18 @@ export interface EmbeddedDeps {
   serverConfigSave: (patch: unknown) => Promise<unknown>
   serverTokenRotate: () => Promise<unknown>
   serverExport: () => Promise<unknown>
+  deployService: {
+    buildUploadPlan: (files: string[], projectRoot: string, target: unknown) => Promise<unknown>
+    deploy: (
+      tasks: unknown[],
+      target: unknown,
+      onProgress: (current: number, total: number, file: string) => void,
+      owner: 'desktop',
+      options: { windowId: number }
+    ) => Promise<unknown>
+    abort: (owner: 'desktop', windowId: number) => void
+    testConnection: (target: unknown) => Promise<unknown>
+  }
 }
 
 export function createEmbeddedAdapter (deps: EmbeddedDeps): IpcAdapter {
@@ -133,7 +150,24 @@ export function createEmbeddedAdapter (deps: EmbeddedDeps): IpcAdapter {
     },
     serverConfigSave: (patch) => deps.serverConfigSave(patch),
     serverTokenRotate: () => deps.serverTokenRotate(),
-    serverExport: () => deps.serverExport()
+    serverExport: () => deps.serverExport(),
+    deployPreview: (files, projectRoot, target) => deps.deployService.buildUploadPlan(files, projectRoot, target),
+    deployDirect: async (payload) => {
+      const target = (await deps.configStore.load()).deploymentTargets.find(
+        (item) => (item as { name?: string }).name === payload.targetName
+      )
+      if (!target) {
+        const error = new Error(`目标不存在：${payload.targetName}`) as Error & { code?: string }
+        error.code = 'NO_TARGET'
+        throw error
+      }
+      return deps.deployService.deploy(payload.tasks, target, () => undefined, 'desktop', { windowId: payload.windowId })
+    },
+    deployCancel: async (windowId) => {
+      deps.deployService.abort('desktop', windowId)
+      return null
+    },
+    testConnectionDraft: (target) => deps.deployService.testConnection(target)
   }
 }
 
@@ -176,6 +210,11 @@ export function createRemoteAdapter (host: RemoteHost): IpcAdapter {
       unwrapEnvelope(await host.post('/mappings/remove', { targetId, mappingId })),
     serverConfigSave: async (patch) => unwrapEnvelope(await host.post('/server/config', { patch })),
     serverTokenRotate: async () => unwrapEnvelope(await host.post('/server/token')),
-    serverExport: async () => unwrapEnvelope(await host.post('/server/export'))
+    serverExport: async () => unwrapEnvelope(await host.post('/server/export')),
+    deployPreview: async (files, projectRoot, target) =>
+      unwrapEnvelope(await host.post('/plan/preview', { files, projectRoot, target })),
+    deployDirect: async (payload) => unwrapEnvelope(await host.post('/deploy/direct', payload)),
+    deployCancel: async (windowId) => unwrapEnvelope(await host.post('/deploy/cancel', { windowId })),
+    testConnectionDraft: async (target) => unwrapEnvelope(await host.post('/test-connection/draft', { target }))
   }
 }
