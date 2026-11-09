@@ -20,7 +20,8 @@ export async function createAdapter (options: {
     return {
       adapter: createRemoteAdapter({
         get: (path, query) => host.get(path, query),
-        post: (path, body) => host.post(path, body)
+        post: (path, body) => host.post(path, body),
+        on: (event, fn) => host.on(event, fn)
       }),
       host
     }

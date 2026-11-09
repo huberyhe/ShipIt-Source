@@ -55,7 +55,10 @@ describe('main/ipc-adapter', () => {
       serverExport: async () => ({ port: 4517 }),
       deployService: {
         buildUploadPlan: async () => ({ tasks: [], skipped: [] }),
-        deploy: async () => ({ totalFiles: 0 }),
+        deploy: async (_tasks, _target, onProgress) => {
+          onProgress(1, 1, 'a.txt')
+          return { totalFiles: 0 }
+        },
         abort: () => undefined,
         testConnection: async () => ({ success: true })
       }
@@ -68,6 +71,13 @@ describe('main/ipc-adapter', () => {
     expect(await adapter.targetRemove('t1')).toBeNull()
     expect(await adapter.deployPreview([], 'D:/proj', {})).toEqual({ tasks: [], skipped: [] })
     expect(await adapter.testConnectionDraft({})).toEqual({ success: true })
+
+    const progress: string[] = []
+    await adapter.deployDirect(
+      { windowId: 1, tasks: [], targetName: 'dev' },
+      (_current, _total, file) => progress.push(file)
+    )
+    expect(progress).toEqual(['a.txt'])
   })
 
   it('remote：返回数据解包，失败抛带 code 的 Error', async () => {

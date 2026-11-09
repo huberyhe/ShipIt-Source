@@ -37,7 +37,10 @@ export interface IpcAdapter {
   serverExport(): Promise<unknown>
   // 部署类（T9 批 3）
   deployPreview(files: string[], projectRoot: string, target: unknown): Promise<unknown>
-  deployDirect(payload: { windowId: number; tasks: unknown[]; targetName: string; projectRoot?: string }): Promise<unknown>
+  deployDirect(
+    payload: { windowId: number; tasks: unknown[]; targetName: string; projectRoot?: string },
+    onProgress?: (current: number, total: number, file: string) => void
+  ): Promise<unknown>
   deployCancel(windowId: number): Promise<unknown>
   testConnectionDraft(target: unknown): Promise<unknown>
 }
@@ -152,7 +155,7 @@ export function createEmbeddedAdapter (deps: EmbeddedDeps): IpcAdapter {
     serverTokenRotate: () => deps.serverTokenRotate(),
     serverExport: () => deps.serverExport(),
     deployPreview: (files, projectRoot, target) => deps.deployService.buildUploadPlan(files, projectRoot, target),
-    deployDirect: async (payload) => {
+    deployDirect: async (payload, onProgress) => {
       const target = (await deps.configStore.load()).deploymentTargets.find(
         (item) => (item as { name?: string }).name === payload.targetName
       )
@@ -161,7 +164,13 @@ export function createEmbeddedAdapter (deps: EmbeddedDeps): IpcAdapter {
         error.code = 'NO_TARGET'
         throw error
       }
-      return deps.deployService.deploy(payload.tasks, target, () => undefined, 'desktop', { windowId: payload.windowId })
+      return deps.deployService.deploy(
+        payload.tasks,
+        target,
+        onProgress ?? (() => undefined),
+        'desktop',
+        { windowId: payload.windowId }
+      )
     },
     deployCancel: async (windowId) => {
       deps.deployService.abort('desktop', windowId)
@@ -174,6 +183,8 @@ export function createEmbeddedAdapter (deps: EmbeddedDeps): IpcAdapter {
 export interface RemoteHost {
   get(path: string, query?: Record<string, string | number | boolean | undefined>): Promise<ClientResult>
   post(path: string, body?: unknown): Promise<ClientResult>
+  /** 订阅后端事件（SSE）；返回取消订阅函数 */
+  on?(event: string, fn: (data: unknown) => void): () => void
 }
 
 export function createRemoteAdapter (host: RemoteHost): IpcAdapter {
@@ -213,7 +224,19 @@ export function createRemoteAdapter (host: RemoteHost): IpcAdapter {
     serverExport: async () => unwrapEnvelope(await host.post('/server/export')),
     deployPreview: async (files, projectRoot, target) =>
       unwrapEnvelope(await host.post('/plan/preview', { files, projectRoot, target })),
-    deployDirect: async (payload) => unwrapEnvelope(await host.post('/deploy/direct', payload)),
+    deployDirect: async (payload, onProgress) => {
+      const off = onProgress && host.on
+        ? host.on('deploy.progress', (data) => {
+            const progress = data as { windowId?: number; current: number; total: number; file: string }
+            if (progress?.windowId === payload.windowId) onProgress(progress.current, progress.total, progress.file)
+          })
+        : null
+      try {
+        return unwrapEnvelope(await host.post('/deploy/direct', payload))
+      } finally {
+        off?.()
+      }
+    },
     deployCancel: async (windowId) => unwrapEnvelope(await host.post('/deploy/cancel', { windowId })),
     testConnectionDraft: async (target) => unwrapEnvelope(await host.post('/test-connection/draft', { target }))
   }

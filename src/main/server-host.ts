@@ -30,7 +30,7 @@ export interface ServerHost {
   start(): Promise<{ instanceId: string; admin: { port: number; token: string; fingerprint: string }; version: string }>
   get(path: string, query?: Query): Promise<ClientResult>
   post(path: string, body?: unknown, timeoutMs?: number): Promise<ClientResult>
-  on(event: string, fn: (data: unknown) => void): void
+  on(event: string, fn: (data: unknown) => void): () => void
   prepareStop(deadlineMs?: number): Promise<ClientResult>
   finalizeStop(deadlineMs?: number): Promise<ClientResult>
   forceStop(): Promise<ClientResult>
@@ -218,6 +218,9 @@ export function createServerHost (options: HostOptions): ServerHost {
       const list = handlers.get(event) ?? []
       list.push(fn)
       handlers.set(event, list)
+      return () => {
+        handlers.set(event, (handlers.get(event) ?? []).filter((item) => item !== fn))
+      }
     },
 
     prepareStop (deadlineMs = 5000) {
