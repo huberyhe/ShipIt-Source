@@ -182,7 +182,7 @@ export function createEmbeddedAdapter (deps: EmbeddedDeps): IpcAdapter {
 
 export interface RemoteHost {
   get(path: string, query?: Record<string, string | number | boolean | undefined>): Promise<ClientResult>
-  post(path: string, body?: any): Promise<ClientResult>
+  post(path: string, body?: any, timeoutMs?: number): Promise<ClientResult>
   /** 订阅后端事件（SSE）；返回取消订阅函数 */
   on?(event: string, fn: (data: any) => void): () => void
 }
@@ -232,7 +232,8 @@ export function createRemoteAdapter (host: RemoteHost): IpcAdapter {
           })
         : null
       try {
-        return unwrapEnvelope(await host.post('/deploy/direct', payload))
+        // 直连上传可能远超 30s：单独超时（F3）
+        return unwrapEnvelope(await host.post('/deploy/direct', payload, 30 * 60 * 1000))
       } finally {
         off?.()
       }

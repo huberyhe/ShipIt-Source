@@ -53,11 +53,13 @@ export interface HttpClientOptions {
   timeoutMs?: number
 }
 
-export interface HttpClient {
-  get(path: string, query?: Query): Promise<ClientResult>
-  post(path: string, body?: unknown, query?: Query): Promise<ClientResult>
-  readonly endpoint: ClientEndpoint
-}
+  export interface HttpClient {
+    get(path: string, query?: Query): Promise<ClientResult>
+    post(path: string, body?: unknown, query?: Query): Promise<ClientResult>
+    /** 逐请求覆盖 socket 超时（长上传用） */
+    postWithTimeout(path: string, body: unknown, requestTimeoutMs: number): Promise<ClientResult>
+    readonly endpoint: ClientEndpoint
+  }
 
 /** query 值域：布尔用于开关类参数（序列化时按 `String()` 落字面量） */
 export type Query = Record<string, string | number | boolean | undefined>
@@ -94,7 +96,7 @@ export function createHttpClient (options: HttpClientOptions): HttpClient {
   const { endpoint, client } = options
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
 
-  function send(method: 'GET' | 'POST', path: string, body?: unknown, query?: Query): Promise<ClientResult> {
+  function send(method: 'GET' | 'POST', path: string, body?: unknown, query?: Query, requestTimeoutMs?: number): Promise<ClientResult> {
     // 处理前本地把关协议版本（INV-8）
     if (endpoint.protocolVersion !== PROTOCOL_VERSION) {
       return Promise.resolve({
@@ -170,7 +172,7 @@ export function createHttpClient (options: HttpClientOptions): HttpClient {
             method,
             // 自签证书不被系统信任，信任锚点由固定指纹承担（下方 secureConnect 校验）
             rejectUnauthorized: false,
-            timeout: timeoutMs,
+            timeout: requestTimeoutMs ?? timeoutMs,
             agent,
             headers: {
               [HEADER.token]: endpoint.token,
@@ -303,7 +305,9 @@ export function createHttpClient (options: HttpClientOptions): HttpClient {
   return {
     endpoint,
     get: (path, query) => send('GET', path, undefined, query),
-    post: (path, body, query) => send('POST', path, body, query)
+    post: (path, body, query) => send('POST', path, body, query),
+    /** 长请求（如直连上传）使用独立超时；不传则沿用客户端默认值 */
+    postWithTimeout: (path, body, requestTimeoutMs) => send('POST', path, body, undefined, requestTimeoutMs)
   }
 }
 

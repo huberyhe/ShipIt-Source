@@ -208,10 +208,10 @@ export function createServerHost (options: HostOptions): ServerHost {
       return client.get(path, query)
     },
 
-    post (path, body) {
+    post (path, body, timeoutMs) {
       if (!client) return Promise.resolve({ ok: false, error: { code: 'BACKEND_UNAVAILABLE', message: '后端未启动' } }) as Promise<ClientResult>
-      // 逐请求超时（F3）在 shared/http-client 扩展后启用；当前沿用默认 30s
-      return client.post(path, body)
+      // 长请求（直连上传）显式覆盖超时；普通调用沿用默认 30s
+      return timeoutMs ? client.postWithTimeout(path, body, timeoutMs) : client.post(path, body)
     },
 
     on (event, fn) {
