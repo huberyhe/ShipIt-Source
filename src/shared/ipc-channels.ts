@@ -39,6 +39,8 @@ export const IpcChannels = {
   TARGET_UPDATE: 'target:update',
   TARGET_REMOVE: 'target:remove',
   TARGET_REORDER: 'target:reorder',
+  /** 目标写入（add/update/clone，含 secrets）：F1 */
+  TARGET_SAVE: 'target:save',
 
   // 映射管理
   MAPPING_ADD: 'mapping:add',

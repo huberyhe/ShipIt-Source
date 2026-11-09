@@ -144,7 +144,20 @@ export function buildAdminHandlers (rt: Runtime, events: EventHub): Record<strin
       return ok(await rt.deployService.buildUploadPlan(files ?? [], projectRoot, target))
     },
 
-    testConnDraft: async (ctx) => ok(await rt.deployService.testConnection(body(ctx).target)),
+    testConnDraft: async (ctx) => {
+      const { target, targetId } = body(ctx)
+      let resolved = target
+      // 草稿测试已存目标：表单留空的密码沿用已存值（F1）
+      if (targetId) {
+        const saved = (await rt.configStore.load()).deploymentTargets.find((item) => item.id === targetId)
+        if (saved) {
+          resolved = { ...saved, ...target }
+          if (!target?.password) resolved.password = saved.password
+          if (!target?.passphrase) resolved.passphrase = saved.passphrase
+        }
+      }
+      return ok(await rt.deployService.testConnection(resolved))
+    },
 
     deployDirect: async (ctx) => {
       const { windowId, tasks, targetName } = body(ctx)

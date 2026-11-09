@@ -179,6 +179,13 @@ export const useDeployStore = defineStore('deploy', () => {
     await loadTargets()
   }
 
+  /** 目标写入（add/update/clone + secrets）：F1 */
+  async function saveTarget (payload: any) {
+    const saved = await window.deployApi.saveTarget(JSON.parse(JSON.stringify(payload)))
+    await loadTargets()
+    return saved
+  }
+
   async function removeTarget(id: string) {
     await window.deployApi.removeTarget(id)
     await loadTargets()
@@ -405,6 +412,7 @@ export const useDeployStore = defineStore('deploy', () => {
     loadTargets,
     addTarget,
     updateTarget,
+    saveTarget,
     removeTarget,
     reorderTargets,
     addMapping,

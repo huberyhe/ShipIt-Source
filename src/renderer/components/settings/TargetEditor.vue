@@ -54,6 +54,33 @@ const editingMappings = ref<any[]>([]) // 编辑中的映射列表
  * 弹窗直接写盘会让「取消」无法整体回滚（改了一半再取消，前面几次已经写进去了）。
  */
 const draftTargets = ref<DraftTarget[]>([])
+/** 密码/口令的操作意图（F1）：keep=保留已存值，set=改为输入值，clear=显式清除 */
+const passwordOp = ref<'keep' | 'set' | 'clear'>('keep')
+const passphraseOp = ref<'keep' | 'set' | 'clear'>('keep')
+/** 复制来源：保存时交给服务端复制秘密（renderer 不持有明文） */
+const copySourceId = ref<string | null>(null)
+/** 当前编辑目标是否已有保存的密码（决定提示与“清除”按钮） */
+const originalHadPassword = ref(false)
+function hasSavedPassword (): boolean {
+  return editingMode.value === 'edit' && originalHadPassword.value
+}
+function clearPassword (): void {
+  if (passwordOp.value === 'clear') {
+    passwordOp.value = editingForm.value.password ? 'set' : 'keep'
+    return
+  }
+  passwordOp.value = 'clear'
+  editingForm.value.password = ''
+}
+// 输入密码即视为“设置新值”；清空则回到“保留已存值”（除非点了清除）
+watch(() => editingForm.value.password, (value) => {
+  if (passwordOp.value === 'clear') return
+  passwordOp.value = value ? 'set' : 'keep'
+})
+watch(() => editingForm.value.passphrase, (value) => {
+  if (passphraseOp.value === 'clear') return
+  passphraseOp.value = value ? 'set' : 'keep'
+})
 /** 草稿与已落盘列表是否不一致（由它驱动未保存提示与关窗守门） */
 const draftDirty = ref(false)
 
@@ -136,6 +163,10 @@ watch(
 function startAdd() {
   editingMode.value = 'create'
   editingId.value = null
+  passwordOp.value = 'keep'
+  passphraseOp.value = 'keep'
+  copySourceId.value = null
+  originalHadPassword.value = false
   resetFormFeedback()
   lastActivePostUpload.value = null
   originalStash.value = null
@@ -152,6 +183,11 @@ function startAdd() {
 function startEdit(target: any) {
   editingMode.value = 'edit'
   editingId.value = target.id
+  // 不回填明文：输入框是“待设置值”，留空即保留已存密码
+  passwordOp.value = 'keep'
+  passphraseOp.value = 'keep'
+  copySourceId.value = null
+  originalHadPassword.value = !!target.hasPassword
   resetFormFeedback()
   // 不执行状态下，把上次的脚本/命令回填到对应输入框（切回对应方式时内容还在）
   const stash = target.postUploadStash ?? null
@@ -160,8 +196,8 @@ function startEdit(target: any) {
   editingForm.value = {
     name: target.name, protocol: target.protocol, host: target.host,
     port: target.port || defaultPort(target.protocol),
-    username: target.username, password: target.password || '',
-    privateKeyPath: target.privateKeyPath || '', passphrase: target.passphrase || '',
+    username: target.username, password: '',
+    privateKeyPath: target.privateKeyPath || '', passphrase: '',
     postUploadKind: target.postUpload?.kind ?? (target.postUploadScript ? 'script' : 'none'),
     postUploadScript: target.postUpload?.kind === 'script'
       ? target.postUpload.value
@@ -232,6 +268,7 @@ function copyTarget(target: any): void {
   startEdit(target)                    // 复用字段映射（含上传后执行 / stash / 映射列表）
   editingMode.value = 'copy'           // 标题叫「复制目标」，但保存语义同新增
   editingId.value = null               // 当成「新增」：保存时不会覆盖源目标
+  copySourceId.value = target.id       // 服务端按源 id 复制秘密
   editingForm.value.name = copyNameOf(target.name, draftTargets.value.map((t: any) => t.name))
   baseline.value = currentSnapshot()   // 预填后不应一开始就是“未保存”
 }
@@ -265,14 +302,23 @@ async function saveTarget(): Promise<boolean> {
     }))
   }))
 
+  // F1：把“保留/设置/清除”的意图与复制来源一并带到草稿
+  const secrets: any = {}
+  if (passwordOp.value === 'set' && editingForm.value.password) secrets.password = { op: 'set', value: editingForm.value.password }
+  else if (passwordOp.value === 'clear') secrets.password = { op: 'clear' }
+  if (passphraseOp.value === 'set' && editingForm.value.passphrase) secrets.passphrase = { op: 'set', value: editingForm.value.passphrase }
+  else if (passphraseOp.value === 'clear') secrets.passphrase = { op: 'clear' }
+  const extra: any = { secrets }
+  if (copySourceId.value) extra.cloneFrom = copySourceId.value
+
   try {
     // 暂存到草稿（等待设置窗口统一保存），不落盘
     if (editingId.value) {
       const idx = draftTargets.value.findIndex((t) => t.id === editingId.value)
-      if (idx >= 0) draftTargets.value[idx] = { ...data, id: editingId.value }
-      else draftTargets.value.push({ ...data, id: editingId.value })
+      if (idx >= 0) draftTargets.value[idx] = { ...data, id: editingId.value, ...extra } as any
+      else draftTargets.value.push({ ...data, id: editingId.value, ...extra } as any)
     } else {
-      draftTargets.value.push({ ...data, id: `draft-${Date.now().toString(36)}` })
+      draftTargets.value.push({ ...data, id: `draft-${Date.now().toString(36)}`, ...extra } as any)
     }
     draftDirty.value = true
     editingId.value = undefined
@@ -307,12 +353,13 @@ async function persistDraft(): Promise<boolean> {
     }
     for (const t of draftTargets.value) {
       const before = persisted.find((p) => p.id === t.id)
+      // secrets/cloneFrom/hasPassword 只用于本次写入，不进入配置
+      const { secrets, cloneFrom, hasPassword, hasPassphrase, ...fields } = t as any
       if (!before) {
-        const { id, ...rest } = t
-        void id
-        await deployStore.addTarget(JSON.parse(JSON.stringify(rest)))
+        if (cloneFrom) await deployStore.saveTarget({ op: 'clone', sourceId: cloneFrom, target: fields })
+        else await deployStore.saveTarget({ op: 'add', target: fields, secrets })
       } else if (JSON.stringify(before) !== JSON.stringify(t)) {
-        await deployStore.updateTarget(t.id, JSON.parse(JSON.stringify(t)))
+        await deployStore.saveTarget({ op: 'update', id: t.id, updates: fields, secrets })
       }
     }
     await deployStore.loadTargets()
@@ -446,9 +493,11 @@ async function testFormConnection() {
 }
 
 // 从编辑表单构建临时目标对象用于测试
-function buildTestTarget() {
-  return {
-    name: editingForm.value.name || '临时',
+  function buildTestTarget() {
+    return {
+      // 已存目标：后端按 id 取已存秘密；新目标则用表单里的明文
+      id: editingId.value ?? undefined,
+      name: editingForm.value.name || '临时',
     protocol: editingForm.value.protocol,
     host: editingForm.value.host,
     port: editingForm.value.port,
@@ -670,7 +719,21 @@ function removeTempMapping(idx: number) {
             <input id="tgt-user" v-model="editingForm.username" :class="{ invalid: invalid.username }" :aria-invalid="invalid.username || undefined" aria-required="true" placeholder="root" />
           </FormField>
           <FormField label="密码" for="tgt-pass">
-            <input id="tgt-pass" v-model="editingForm.password" type="password" placeholder="（可选，留空使用密钥）" />
+            <div class="secret-row">
+              <input
+                id="tgt-pass"
+                v-model="editingForm.password"
+                type="password"
+                :disabled="passwordOp === 'clear'"
+                :placeholder="passwordOp === 'clear' ? '（保存后将清除已存密码）' : (hasSavedPassword() ? '已保存密码（留空不修改）' : '（可选，留空使用密钥）')"
+              />
+              <button
+                v-if="hasSavedPassword() || passwordOp === 'clear'"
+                type="button"
+                class="secret-clear"
+                @click="clearPassword"
+              >{{ passwordOp === 'clear' ? '撤销清除' : '清除' }}</button>
+            </div>
           </FormField>
         </div>
 

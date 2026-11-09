@@ -102,6 +102,8 @@ export interface DeployApi {
   getTargetList: () => Promise<any[]>
   addTarget: (target: any) => Promise<void>
   updateTarget: (id: string, updates: any) => Promise<void>
+  /** 目标写入（add/update/clone + secrets）：F1 */
+  saveTarget: (payload: any) => Promise<unknown>
   removeTarget: (id: string) => Promise<void>
   /** 按 id 顺序重排上传目标（菜单/下拉的顺序就是这里的顺序） */
   reorderTargets: (ids: string[]) => Promise<void>

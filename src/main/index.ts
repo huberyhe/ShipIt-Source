@@ -975,6 +975,13 @@ function registerIpcHandlers() {
     broadcastConfigChanged()
   })
 
+  // 目标写入（add/update/clone + secrets）：F1
+  ipcMain.handle(IpcChannels.TARGET_SAVE, async (_event, payload: any) => {
+    const saved = await ipcAdapter.targetSave(payload)
+    broadcastConfigChanged()
+    return saved
+  })
+
   ipcMain.handle(IpcChannels.MAPPING_ADD, async (_event, targetId: string, mapping: any) => {
     await ipcAdapter.mappingAdd(targetId, mapping)
     broadcastConfigChanged()
