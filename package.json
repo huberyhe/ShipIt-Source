@@ -11,6 +11,8 @@
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
     "build:server": "node scripts/build-server.js",
+    "build:green": "node scripts/build-green.js",
+    "build:portable": "npm run build:server && npx vite build && npx electron-builder --win portable",
     "preview": "vite preview",
     "test": "vitest run",
     "type-check": "vue-tsc --noEmit",

@@ -1,7 +1,7 @@
 import { app, BrowserWindow, globalShortcut, ipcMain, dialog, Menu, nativeTheme, shell } from 'electron'
 import { join, dirname } from 'path'
 import { networkInterfaces } from 'os'
-import { promises as fsPromises } from 'fs'
+import { promises as fsPromises, existsSync, mkdirSync } from 'fs'
 import { GitService } from './services/git-service'
 import { DeployService } from './services/deploy-service'
 import { ConfigStore } from './services/config-store'
@@ -36,6 +36,29 @@ import {
   type WindowRole
 } from './window-manager'
 import { PROTOCOL_VERSION } from '../shared/cli-contract'
+
+/**
+ * 便携（绿色）模式：数据目录跟随程序目录，不写 %APPDATA%。
+ *
+ * - electron-builder 的 `portable` target 会注入 `PORTABLE_EXECUTABLE_DIR`
+ * - 目录免安装（zip）包：在 exe 同目录放一个 `portable.txt` 即触发
+ *
+ * 必须在任何 `app.getPath('userData')` 之前执行；目录不可写（只读介质）时回退默认值。
+ */
+function applyPortableDataDir (): void {
+  const exeDir = dirname(app.getPath('exe'))
+  const portableDir =
+    process.env.PORTABLE_EXECUTABLE_DIR || (existsSync(join(exeDir, 'portable.txt')) ? exeDir : '')
+  if (!portableDir) return
+  try {
+    const target = join(portableDir, 'shipit-data')
+    mkdirSync(target, { recursive: true })
+    app.setPath('userData', target)
+  } catch {
+    // 只读介质：继续用默认 userData，不阻塞启动
+  }
+}
+applyPortableDataDir()
 import { createAdapter } from './adapter-factory'
 import { createEmbeddedAdapter } from './ipc-adapter'
 import type { IpcAdapter } from './ipc-adapter'
