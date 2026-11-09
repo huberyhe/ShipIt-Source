@@ -424,3 +424,19 @@ export interface ServerConfig {
    */
   allowedRoots: string[]
 }
+/** 目标秘密操作（F1）：保留 / 设置 / 清除 */
+export type SecretOp =
+  | { op: 'keep' }
+  | { op: 'set'; value: string }
+  | { op: 'clear' }
+
+export interface TargetSecrets {
+  password?: SecretOp
+  passphrase?: SecretOp
+}
+
+/** 目标对外视图：永不包含明文秘密 */
+export interface TargetView extends Omit<DeployTarget, 'password' | 'passphrase'> {
+  hasPassword: boolean
+  hasPassphrase: boolean
+}

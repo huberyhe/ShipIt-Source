@@ -15,7 +15,7 @@ import { GitService } from '../main/services/git-service'
 import { FileService } from '../main/services/file-service'
 import { ProjectContext } from '../main/services/project-context'
 import { createServerHandlers } from '../main/services/server-handlers'
-import { createLocalServer } from '../main/services/local-server'
+import { createLocalServer, type RouteHandler } from '../main/services/local-server'
 import { loadServerConfig } from '../main/services/server-config'
 import { PROTOCOL_VERSION } from '../shared/cli-contract'
 import { ADMIN_ROUTES, PUBLIC_ROUTES } from './routes'
@@ -61,6 +61,7 @@ export function createRuntime (options: RuntimeOptions) {
   let adminState = { listening: false, port: null as number | null, bound: '', error: undefined as string | undefined }
   let publicState: PublicState = { listening: false, port: null, bound: '', error: undefined }
   let serverConfigCache: { bind: 'local' | 'lan'; allowedRoots: string[] } = { bind: 'local', allowedRoots: [] }
+  let extraHandlers: Record<string, RouteHandler> = {}
   let revision = 0
 
   /** 快照含 instanceId：main 用它丢弃旧实例的迟到事件（R2） */
@@ -139,7 +140,7 @@ export function createRuntime (options: RuntimeOptions) {
     adminServer = createLocalServer({
       config: { ...config, enabled: false, port: 0, bind: 'local' },
       dataDir: options.dataDir,
-      handlers,
+      handlers: { ...handlers, ...extraHandlers },
       listen: true,
       publish: false,
       routes: ADMIN_ROUTES,
@@ -219,6 +220,10 @@ export function createRuntime (options: RuntimeOptions) {
     handlers,
     startAdminListener,
     syncPublicListener,
+    /** 注入管理端点专有的 handler（由入口用 buildAdminHandlers 组装，避免循环依赖） */
+    setExtraHandlers (map: Record<string, RouteHandler>) {
+      extraHandlers = map
+    },
     statusSnapshot,
     serverState: () => snapshotState(),
     adminPort: () => adminState.port,
