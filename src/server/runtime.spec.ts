@@ -35,7 +35,10 @@ function adminClient (rt: Runtime) {
 }
 
 afterEach(async () => {
-  for (const rt of runtimes.splice(0)) await rt.shutdown('force', 0).catch(() => undefined)
+  for (const rt of runtimes.splice(0)) {
+    await rt.shutdown('force', 0).catch(() => undefined)
+    await rt.finalize().catch(() => undefined)
+  }
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true })
 })
 
@@ -90,6 +93,7 @@ describe('server/runtime', () => {
     await rt.startAdminListener()
     await rt.syncPublicListener()
     await rt.shutdown('force', 0)
+    await rt.finalize()
     expect(rt.adminPort()).toBeNull()
     expect(rt.publicPort()).toBeNull()
   })

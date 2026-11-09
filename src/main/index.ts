@@ -36,6 +36,10 @@ import {
   type WindowRole
 } from './window-manager'
 import { PROTOCOL_VERSION } from '../shared/cli-contract'
+import { createAdapter } from './adapter-factory'
+import type { IpcAdapter } from './ipc-adapter'
+import { createStatusMirror } from './status-mirror'
+import type { ServerHost } from './server-host'
 import { queueTextOf } from '../shared/queue-text'
 import type { ServerConfig } from '../shared/types'
 
@@ -147,6 +151,10 @@ let configStore: ConfigStore
 let fileService: FileService
 let gitService: GitService
 let deployService: DeployService
+/** IPC 适配器：embedded=进程内服务；process=独立后端管理端点 */
+let ipcAdapter: IpcAdapter
+let serverHost: ServerHost | null = null
+let statusMirror: ReturnType<typeof createStatusMirror> | null = null
 /** 桌面当前项目（仅内存，随打开/关闭项目同步；策略 D） */
 const projectContext = new ProjectContext()
 /** 上传互斥队列（单会话串行；任务状态仅内存，CON-10） */
@@ -833,18 +841,18 @@ function registerIpcHandlers() {
     } catch {
       throw new Error(`目录不存在或无法访问：${rootPath}`)
     }
-    return fileService.buildTree(rootPath)
+    return ipcAdapter.filesTree(rootPath)
   })
 
   ipcMain.handle(IpcChannels.FILE_EXPAND_DIR, async (_event, dirPath: string) => {
-    return fileService.expandDirectory(dirPath)
+    return ipcAdapter.filesExpand(dirPath)
   })
 
   // 上传取文件：**必须**用 collectFilesForUpload。
   // 它只跳 `.git` / `node_modules`，保留 dist/build/target/vendor 等构建产物；
   // 曾误用浏览用的 collectAllFiles → 选目录发 dist 时一个文件都不会上传，且不报错。
   ipcMain.handle(IpcChannels.FILE_COLLECT_FILES, async (_event, dirPath: string) => {
-    return fileService.collectFilesForUpload(dirPath)
+    return ipcAdapter.filesCollect(dirPath)
   })
 
   // ========== Git 状态 ==========
@@ -852,31 +860,31 @@ function registerIpcHandlers() {
   // 因此这里用比 isGitRepo 更宽的判定（内层仓库也算）。
   // CLI/MCP 的 NOT_A_REPO 判定走 isGitRepo，不受影响。
   ipcMain.handle(IpcChannels.GIT_CHECK_REPO, async (_event, dir: string) => {
-    return gitService.hasAnyRepository(dir)
+    return ipcAdapter.gitCheckRepo(dir)
   })
 
   ipcMain.handle(IpcChannels.GIT_BRANCHES, async (_event, dir: string) => {
-    return gitService.getBranches(dir)
+    return ipcAdapter.gitBranches(dir)
   })
 
   ipcMain.handle(IpcChannels.GIT_AUTHORS, async (_event, dir: string) => {
-    return gitService.getAuthors(dir)
+    return ipcAdapter.gitAuthors(dir)
   })
 
   ipcMain.handle(IpcChannels.GIT_STATUS, async (_event, dir: string) => {
-    return gitService.getStatusView(dir)
+    return ipcAdapter.gitStatus(dir)
   })
 
   ipcMain.handle(IpcChannels.GIT_LOG, async (_event, dir: string, options?: { branch?: string; author?: string; maxCount?: number }) => {
-    return gitService.getLogView(dir, options)
+    return ipcAdapter.gitLog(dir, options)
   })
 
   ipcMain.handle(IpcChannels.GIT_DIFF, async (_event, dir: string, filePath: string) => {
-    return gitService.getFileDiff(dir, filePath)
+    return ipcAdapter.gitDiff(dir, filePath)
   })
 
   ipcMain.handle(IpcChannels.GIT_COMMIT_FILES, async (_event, dir: string, hash: string) => {
-    return gitService.getCommitFiles(dir, hash)
+    return ipcAdapter.gitCommitFiles(dir, hash)
   })
 
   ipcMain.handle(IpcChannels.DIALOG_OPEN_FILE, async (_event, options: any) => {
@@ -888,27 +896,23 @@ function registerIpcHandlers() {
 
   // ========== 部署 ==========
   ipcMain.handle(IpcChannels.DEPLOY_TEST_CONN, async (_event, target: any) => {
-    return deployService.testConnection(target)
+    return ipcAdapter.testConnectionDraft(target)
   })
 
   // 预览：主进程计算实际要上传的任务列表 + 被跳过的条目（含真实原因），供弹窗展示，保证与实际一致
   ipcMain.handle(IpcChannels.DEPLOY_PREVIEW, async (_event, files: string[], projectRoot: string, target: any) => {
-    return deployService.buildUploadPlan(files, projectRoot, target)
+    return ipcAdapter.deployPreview(files, projectRoot, target)
   })
 
   // 执行：直接上传已确认的任务列表（与预览完全一致）
   ipcMain.handle(IpcChannels.DEPLOY_UPLOAD, async (_event, tasks: any[], target: any, projectRoot?: string) => {
-    const result = await deployService.deploy(
-      tasks,
-      target,
-      (_current: number, _total: number, _file: string) => {
+    const result = (await ipcAdapter.deployDirect(
+      { windowId: _event.sender.id, tasks, targetName: target?.name, projectRoot },
+      (current: number, total: number, file: string) => {
         // 逐文件进度只回发起窗口（进度条属于该窗口的会话）
-        sendToWindow(_event.sender.id, IpcChannels.DEPLOY_PROGRESS, { current: _current, total: _total, file: _file })
-      },
-      'desktop', // 来源标注：取消只作用于桌面自身的上传
-      // 窗口粒度：多窗口下 B 窗口点「取消」不得打断 A 窗口正在跑的上传
-      { windowId: _event.sender.id }
-    )
+        sendToWindow(_event.sender.id, IpcChannels.DEPLOY_PROGRESS, { current, total, file })
+      }
+    )) as any
     // 桌面直连上传不进队列，其他窗口的日志面板默认看不到这次上传：
     // 结果统一广播（发起窗口按 taskId 去重），与 CLI/MCP 任务的可见性保持一致。
     broadcast(IpcChannels.DEPLOY_LOG_ENTRY, {
@@ -931,70 +935,59 @@ function registerIpcHandlers() {
 
   // 取消当前部署（只取消**本窗口**发起的桌面会话，不误伤 CLI/MCP 与其他窗口）
   ipcMain.handle(IpcChannels.DEPLOY_CANCEL, async (_event) => {
-    deployService.abort('desktop', _event.sender.id)
+    await ipcAdapter.deployCancel(_event.sender.id)
   })
 
   // ========== 配置管理 ==========
   ipcMain.handle(IpcChannels.CONFIG_LOAD, async () => {
-    return configStore.load()
+    return ipcAdapter.configLoad()
   })
 
   ipcMain.handle(IpcChannels.CONFIG_SAVE, async (_event, config: any) => {
-    if (config && typeof config === 'object') {
-      // 用 patchOwned 而不是 replace+save：
-      // 渲染层既会发"整份 config"（主题等），也会发"单字段"（切换当前目标）；
-      // patchOwned 在写锁内只合并独占键，单字段保存不会把 targets/最近项目写成空。
-      await configStore.patchOwned(config as Parameters<typeof configStore.patchOwned>[0])
-    }
+    // 用 patchOwned 语义（adapter 内部实现）：单字段保存不会把 targets/最近项目写成空
+    const saved = await ipcAdapter.configSave(config)
     broadcastConfigChanged()
-    return configStore.load()
+    return saved
   })
 
   // ========== 目标管理 ==========
   ipcMain.handle(IpcChannels.TARGET_LIST, async () => {
-    const config = await configStore.load()
-    return config.deploymentTargets
+    return ipcAdapter.targetList()
   })
 
   ipcMain.handle(IpcChannels.TARGET_ADD, async (_event, target: any) => {
-    const saved = await configStore.addTarget(target)
+    await ipcAdapter.targetSave({ op: 'add', target })
     broadcastConfigChanged()
-    return saved
   })
 
   ipcMain.handle(IpcChannels.TARGET_UPDATE, async (_event, id: string, updates: any) => {
-    const saved = await configStore.updateTarget(id, updates)
+    await ipcAdapter.targetSave({ op: 'update', id, updates })
     broadcastConfigChanged()
-    return saved
   })
 
   ipcMain.handle(IpcChannels.TARGET_REMOVE, async (_event, id: string) => {
-    const saved = await configStore.removeTarget(id)
+    await ipcAdapter.targetRemove(id)
     broadcastConfigChanged()
-    return saved
   })
 
   ipcMain.handle(IpcChannels.TARGET_REORDER, async (_event, ids: string[]) => {
-    await configStore.reorderTargets(ids)
+    await ipcAdapter.targetReorder(ids)
     broadcastConfigChanged()
   })
 
   ipcMain.handle(IpcChannels.MAPPING_ADD, async (_event, targetId: string, mapping: any) => {
-    const saved = await configStore.addMapping(targetId, mapping)
+    await ipcAdapter.mappingAdd(targetId, mapping)
     broadcastConfigChanged()
-    return saved
   })
 
   ipcMain.handle(IpcChannels.MAPPING_UPDATE, async (_event, targetId: string, mappingId: string, updates: any) => {
-    const saved = await configStore.updateMapping(targetId, mappingId, updates)
+    await ipcAdapter.mappingUpdate(targetId, mappingId, updates)
     broadcastConfigChanged()
-    return saved
   })
 
   ipcMain.handle(IpcChannels.MAPPING_REMOVE, async (_event, targetId: string, mappingId: string) => {
-    const saved = await configStore.removeMapping(targetId, mappingId)
+    await ipcAdapter.mappingRemove(targetId, mappingId)
     broadcastConfigChanged()
-    return saved
   })
 
   // ========== 本地服务端 ==========
@@ -1021,63 +1014,75 @@ function registerIpcHandlers() {
   })
 
   ipcMain.handle(IpcChannels.SERVER_GET_CONFIG, async () => {
-    return loadServerConfig(configStore.path)
+    return ipcAdapter.serverConfig()
   })
 
   ipcMain.handle(IpcChannels.SERVER_SAVE_CONFIG, async (_event, patch: Partial<ServerConfig>) => {
     // 令牌门槛由配置模块把关（主进程是可信边界，渲染层校验只是提示）：
     // 不可用令牌（空串/过短）在这里被拒绝，不会落盘。
-    const saved = await saveServerConfig(configStore.path, patch ?? {})
+    const saved = (await ipcAdapter.serverConfigSave(patch ?? {})) as {
+      ok: boolean
+      reason?: string
+      config: ServerConfig
+    }
     if (!saved.ok) return { ok: false as const, reason: saved.reason }
-    serverConfigCache = { enabled: saved.config.enabled, bind: saved.config.bind, allowedRoots: saved.config.allowedRoots }
-    await startLocalServer()
+    // embedded：由主进程重启监听；process：适配层已让后端重启公开端点
+    if (!serverHost) {
+      serverConfigCache = { enabled: saved.config.enabled, bind: saved.config.bind, allowedRoots: saved.config.allowedRoots }
+      await startLocalServer()
+    }
     broadcastConfigChanged()
     return { ok: true as const, config: saved.config, status: serverSnapshot }
   })
 
   ipcMain.handle(IpcChannels.SERVER_GET_STATUS, async () => {
-    const config = await loadServerConfig(configStore.path)
-    // 下面的读取全部在 await 之后同步完成：快照与 revision 必须同一拍，
-    // 否则会出现「旧数据 + 新版本号」，渲染层会把旧数据当成最新状态接受。
+    // 两种形态统一：状态与配置都由适配层取，返回结构保持旧口径
+    const status = (await ipcAdapter.serverStatus()) as any
+    const config = (await ipcAdapter.serverConfig()) as any
     return {
-      listening: serverSnapshot.listening,
-      port: serverSnapshot.port,
-      bound: serverSnapshot.bound,
-      error: serverSnapshot.error,
-      enabled: config.enabled,
-      bind: config.bind,
+      listening: status?.listening ?? false,
+      port: status?.port ?? null,
+      bound: status?.bound ?? '',
+      error: status?.error,
+      enabled: config?.enabled ?? false,
+      bind: config?.bind ?? 'local',
       protocolVersion: PROTOCOL_VERSION,
-      fingerprint: localServer?.fingerprint() ?? null,
-      connectionFile: localServer?.connectionFilePath() ?? null,
-      // 队列与当前项目：界面与状态接口口径一致（FR-011 / FR-012）
-      queue: deployQueue.snapshot(),
-      currentProject: projectContext.getCurrent(),
-      revision: nextStatusRevision()
+      fingerprint: status?.fingerprint ?? null,
+      connectionFile: status?.connectionFile ?? null,
+      queue: status?.queue,
+      currentProject: status?.currentProject ?? null,
+      revision: status?.revision ?? 0
     }
   })
 
   ipcMain.handle(IpcChannels.SERVER_EXPORT_CONNECTION, async () => {
-    const config = await loadServerConfig(configStore.path)
-    const fingerprint = localServer?.fingerprint() ?? null
-    const port = serverSnapshot.port
-    if (!serverSnapshot.listening || !fingerprint || port === null) {
+    const exported = (await ipcAdapter.serverExport()) as any
+    if (!exported?.port || !exported?.fingerprint) {
       return { ok: false as const, reason: '服务未运行，无法导出连接串' }
     }
     // 局域网绑定时给出本机可被对端访问的 IPv4，否则明确为回环地址
     let host = '127.0.0.1'
-    if (config.bind === 'lan') {
+    if (exported.bind === 'lan') {
       const candidates = Object.values(networkInterfaces())
         .flat()
         .filter((info): info is NonNullable<typeof info> => !!info && info.family === 'IPv4' && !info.internal)
       host = candidates[0]?.address ?? '127.0.0.1'
     }
-    const connection: ExportedConnection = { host, port, token: config.token, protocolVersion: PROTOCOL_VERSION, fingerprint }
+    const connection: ExportedConnection = {
+      host,
+      port: exported.port,
+      token: exported.token,
+      protocolVersion: exported.protocolVersion,
+      fingerprint: exported.fingerprint
+    }
     return { ok: true as const, connection, text: connectionString(connection) }
   })
 
   ipcMain.handle(IpcChannels.SERVER_REGENERATE_TOKEN, async () => {
-    const config = await rotateToken(configStore.path)
-    await startLocalServer() // 令牌变更后重启监听，连接信息文件同步刷新
+    const config = await ipcAdapter.serverTokenRotate()
+    // embedded：重启监听；process：后端已重启公开端点
+    if (!serverHost) await startLocalServer()
+    broadcastConfigChanged()
     return { config }
   })
 }
@@ -1087,6 +1092,68 @@ app.whenReady().then(async () => {
   fileService = new FileService()
   gitService = new GitService()
   deployService = new DeployService()
+
+  // 按 server.backend 选择适配器；embedded 与改造前行为一致
+  const bootServerConfig = await loadServerConfig(configStore.path)
+  const useProcess = bootServerConfig.backend === 'process'
+  const built = await createAdapter({
+    backend: useProcess ? 'process' : 'embedded',
+    embedded: {
+      files: fileService,
+      git: gitService,
+      configStore,
+      serverConfig: () => loadServerConfig(configStore.path),
+      serverStatus: () => ({
+        listening: serverSnapshot.listening,
+        port: serverSnapshot.port,
+        bound: serverSnapshot.bound,
+        enabled: serverConfigCache.enabled,
+        bind: serverConfigCache.bind,
+        fingerprint: localServer?.fingerprint() ?? null,
+        connectionFile: localServer?.connectionFilePath() ?? null,
+        queue: deployQueue.snapshot(),
+        currentProject: projectContext.getCurrent(),
+        revision: nextStatusRevision()
+      }),
+      serverConfigSave: (patch) => saveServerConfig(configStore.path, patch as Parameters<typeof saveServerConfig>[1]),
+      serverTokenRotate: () => rotateToken(configStore.path),
+      serverExport: async () => {
+        const cfg = await loadServerConfig(configStore.path)
+        return {
+          port: serverSnapshot.port,
+          token: cfg.token,
+          bind: serverConfigCache.bind,
+          protocolVersion: PROTOCOL_VERSION,
+          fingerprint: localServer?.fingerprint() ?? null
+        }
+      },
+      deployService
+    },
+    host: useProcess
+      ? {
+          entry: app.isPackaged
+            ? join(app.getAppPath(), 'dist-server/index.js')
+            : join(__dirname, '../../dist-server/index.js'),
+          configPath: configStore.path,
+          appVersion: app.getVersion(),
+          dataDir: dirname(configStore.path)
+        }
+      : undefined
+  })
+  ipcAdapter = built.adapter
+  serverHost = built.host
+  if (serverHost) {
+    statusMirror = createStatusMirror({
+      post: (path, body) => {
+        void serverHost!.post(path, body)
+      }
+    })
+    serverHost.on('queue.snapshot', (data) => {
+      statusMirror!.onSnapshot(data)
+      broadcastServerStatus()
+    })
+    serverHost.on('server.state', () => broadcastServerStatus())
+  }
 
   // 启动即应用持久化主题（原生滚动条/系统对话框跟随）
   const savedTheme = (await configStore.load()).theme || 'auto'

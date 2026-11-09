@@ -77,6 +77,7 @@ export function createRuntime (options: RuntimeOptions) {
       queue: queue.snapshot(),
       currentProject,
       projects: opened,
+      fingerprint: publicServer?.fingerprint() ?? null,
       revision: ++revision
     }
   }
