@@ -209,3 +209,18 @@ describe('导出连接串（主要给 CLI --connect 用）', () => {
     })
   })
 })
+
+describe('backend 开关（T10）', () => {
+  it('默认 embedded；process 可持久化；非法值归一为 embedded', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'shipit-backend-'))
+    const configPath = join(dir, 'deploy-config.json')
+
+    expect((await loadServerConfig(configPath)).backend).toBe('embedded')
+
+    await saveServerConfig(configPath, { backend: 'process' } as never)
+    expect((await loadServerConfig(configPath)).backend).toBe('process')
+
+    await saveServerConfig(configPath, { backend: 'nope' } as never)
+    expect((await loadServerConfig(configPath)).backend).toBe('embedded')
+  })
+})
