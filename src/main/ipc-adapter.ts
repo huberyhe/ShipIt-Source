@@ -1,0 +1,109 @@
+/**
+ * IPC 适配层：桌面 handler 只依赖这个接口。
+ *
+ * - embedded：直接调用进程内服务（现状）
+ * - remote：调用独立后端的管理端点
+ *
+ * 两种实现错误语义一致：成功返回数据，失败抛带 code 的 Error。
+ * 注意：T9 必须整体切换，不能只转一部分 handler（否则会出现两个执行体）。
+ */
+import type { ClientResult } from '../shared/http-client'
+
+export interface IpcAdapter {
+  filesTree(root: string): Promise<unknown>
+  filesExpand(dir: string): Promise<unknown>
+  filesCollect(dir: string, maxFiles?: number): Promise<unknown>
+  gitCheckRepo(dir: string): Promise<unknown>
+  gitBranches(dir: string): Promise<unknown>
+  gitAuthors(dir: string): Promise<unknown>
+  gitStatus(dir: string): Promise<unknown>
+  gitLog(dir: string, options?: unknown): Promise<unknown>
+  gitDiff(dir: string, filePath: string): Promise<unknown>
+  gitCommitFiles(dir: string, rev: string): Promise<unknown>
+  configLoad(): Promise<unknown>
+  targetList(): Promise<unknown>
+  serverConfig(): Promise<unknown>
+  serverStatus(): Promise<unknown>
+}
+
+/** 信封解包：失败统一抛带 code 的 Error（与 renderer 现有 catch 口径一致） */
+export function unwrapEnvelope (result: ClientResult): unknown {
+  if (!result.ok) {
+    const error = new Error(result.error.message) as Error & { code?: string }
+    error.code = result.error.code
+    throw error
+  }
+  if (!result.envelope.ok) {
+    const error = new Error(result.envelope.error.message) as Error & { code?: string }
+    error.code = result.envelope.error.code
+    throw error
+  }
+  return result.envelope.data === null ? undefined : result.envelope.data
+}
+
+export interface EmbeddedDeps {
+  files: {
+    buildTree: (root: string) => Promise<unknown>
+    expandDirectory: (dir: string) => Promise<unknown>
+    collectFilesForUpload: (dir: string, maxFiles?: number) => Promise<unknown>
+  }
+  git: {
+    hasAnyRepository: (dir: string) => Promise<unknown>
+    getBranches: (dir: string) => Promise<unknown>
+    getAuthors: (dir: string) => Promise<unknown>
+    getStatusView: (dir: string) => Promise<unknown>
+    getLogView: (dir: string, options?: unknown) => Promise<unknown>
+    getFileDiff: (dir: string, filePath: string) => Promise<unknown>
+    getCommitFiles: (dir: string, rev: string) => Promise<unknown>
+  }
+  configStore: { load: () => Promise<{ deploymentTargets: unknown[] }> }
+  serverConfig: () => Promise<unknown>
+  serverStatus: () => unknown
+}
+
+export function createEmbeddedAdapter (deps: EmbeddedDeps): IpcAdapter {
+  return {
+    filesTree: (root) => deps.files.buildTree(root),
+    filesExpand: (dir) => deps.files.expandDirectory(dir),
+    filesCollect: (dir, maxFiles) => deps.files.collectFilesForUpload(dir, maxFiles),
+    gitCheckRepo: (dir) => deps.git.hasAnyRepository(dir),
+    gitBranches: (dir) => deps.git.getBranches(dir),
+    gitAuthors: (dir) => deps.git.getAuthors(dir),
+    gitStatus: (dir) => deps.git.getStatusView(dir),
+    gitLog: (dir, options) => deps.git.getLogView(dir, options),
+    gitDiff: (dir, filePath) => deps.git.getFileDiff(dir, filePath),
+    gitCommitFiles: (dir, rev) => deps.git.getCommitFiles(dir, rev),
+    configLoad: () => deps.configStore.load(),
+    targetList: async () => (await deps.configStore.load()).deploymentTargets,
+    serverConfig: () => deps.serverConfig(),
+    serverStatus: async () => deps.serverStatus()
+  }
+}
+
+export interface RemoteHost {
+  get(path: string, query?: Record<string, string | number | boolean | undefined>): Promise<ClientResult>
+  post(path: string, body?: unknown): Promise<ClientResult>
+}
+
+export function createRemoteAdapter (host: RemoteHost): IpcAdapter {
+  return {
+    filesTree: async (root) => unwrapEnvelope(await host.post('/files/tree', { root })),
+    filesExpand: async (dir) => unwrapEnvelope(await host.post('/files/expand', { dir })),
+    filesCollect: async (dir, maxFiles) => unwrapEnvelope(await host.post('/files/collect', { dir, maxFiles })),
+    gitCheckRepo: async (dir) => unwrapEnvelope(await host.get('/git/check-repo', { project: dir })),
+    gitBranches: async (dir) => unwrapEnvelope(await host.get('/git/branches', { project: dir })),
+    gitAuthors: async (dir) => unwrapEnvelope(await host.get('/git/authors', { project: dir })),
+    gitStatus: async (dir) => unwrapEnvelope(await host.get('/git/status', { project: dir })),
+    gitLog: async (dir, options) =>
+      unwrapEnvelope(await host.get('/git/log', { project: dir, ...(options as Record<string, string> | undefined) })),
+    gitDiff: async (dir, filePath) => unwrapEnvelope(await host.get('/git/diff', { project: dir, filePath })),
+    gitCommitFiles: async (dir, rev) => unwrapEnvelope(await host.get('/git/commit-files', { project: dir, rev })),
+    configLoad: async () => unwrapEnvelope(await host.get('/config')),
+    targetList: async () => {
+      const config = unwrapEnvelope(await host.get('/config')) as { deploymentTargets?: unknown[] }
+      return config?.deploymentTargets ?? []
+    },
+    serverConfig: async () => unwrapEnvelope(await host.get('/server/config')),
+    serverStatus: async () => unwrapEnvelope(await host.get('/status'))
+  }
+}
