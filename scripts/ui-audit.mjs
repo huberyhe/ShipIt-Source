@@ -42,6 +42,8 @@ const SHOTS = getArg('shots', '') // 传目录则在该目录下按 <theme>-<ste
 // 用真实项目/真实配置出图（面向 README 截图）：默认不生效，CI 门禁仍走夹具
 const REAL_PROJECT = getArg('project', '')
 const REAL_CONFIG = argv.includes('--real-config')
+// 后端形态（冒烟用）：embedded（默认）/ process
+const BACKEND = getArg('backend', 'embedded')
 
 // ---------------- 页面内检查（注入到渲染进程执行） ----------------
 const AUDIT_FN = String.raw`(opts => {
@@ -652,6 +654,8 @@ function prepareFixture(baseDir) {
     }]
   }
   config.currentTargetId = config.deploymentTargets[0].id
+  // 夹具里直接注入后端形态，避免改动用户真实配置
+  config.server = { ...(config.server || {}), backend: BACKEND }
   writeFileSync(join(userData, 'deploy-config.json'), JSON.stringify(config, null, 2))
   return { project, userData }
 }

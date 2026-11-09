@@ -37,6 +37,7 @@ import {
 } from './window-manager'
 import { PROTOCOL_VERSION } from '../shared/cli-contract'
 import { createAdapter } from './adapter-factory'
+import { createEmbeddedAdapter } from './ipc-adapter'
 import type { IpcAdapter } from './ipc-adapter'
 import { createStatusMirror } from './status-mirror'
 import type { ServerHost } from './server-host'
@@ -1103,50 +1104,62 @@ app.whenReady().then(async () => {
   // 按 server.backend 选择适配器；embedded 与改造前行为一致
   const bootServerConfig = await loadServerConfig(configStore.path)
   const useProcess = bootServerConfig.backend === 'process'
-  const built = await createAdapter({
-    backend: useProcess ? 'process' : 'embedded',
-    embedded: {
-      files: fileService,
-      git: gitService,
-      configStore,
-      serverConfig: () => loadServerConfig(configStore.path),
-      serverStatus: () => ({
-        listening: serverSnapshot.listening,
+  const embeddedDeps = {
+    files: fileService,
+    git: gitService,
+    configStore,
+    serverConfig: () => loadServerConfig(configStore.path),
+    serverStatus: () => ({
+      listening: serverSnapshot.listening,
+      port: serverSnapshot.port,
+      bound: serverSnapshot.bound,
+      enabled: serverConfigCache.enabled,
+      bind: serverConfigCache.bind,
+      fingerprint: localServer?.fingerprint() ?? null,
+      connectionFile: localServer?.connectionFilePath() ?? null,
+      queue: deployQueue.snapshot(),
+      currentProject: projectContext.getCurrent(),
+      revision: nextStatusRevision()
+    }),
+    serverConfigSave: (patch: any) => saveServerConfig(configStore.path, patch),
+    serverTokenRotate: () => rotateToken(configStore.path),
+    serverExport: async () => {
+      const cfg = await loadServerConfig(configStore.path)
+      return {
         port: serverSnapshot.port,
-        bound: serverSnapshot.bound,
-        enabled: serverConfigCache.enabled,
+        token: cfg.token,
         bind: serverConfigCache.bind,
-        fingerprint: localServer?.fingerprint() ?? null,
-        connectionFile: localServer?.connectionFilePath() ?? null,
-        queue: deployQueue.snapshot(),
-        currentProject: projectContext.getCurrent(),
-        revision: nextStatusRevision()
-      }),
-      serverConfigSave: (patch) => saveServerConfig(configStore.path, patch as Parameters<typeof saveServerConfig>[1]),
-      serverTokenRotate: () => rotateToken(configStore.path),
-      serverExport: async () => {
-        const cfg = await loadServerConfig(configStore.path)
-        return {
-          port: serverSnapshot.port,
-          token: cfg.token,
-          bind: serverConfigCache.bind,
-          protocolVersion: PROTOCOL_VERSION,
-          fingerprint: localServer?.fingerprint() ?? null
-        }
-      },
-      deployService
+        protocolVersion: PROTOCOL_VERSION,
+        fingerprint: localServer?.fingerprint() ?? null
+      }
     },
-    host: useProcess
-      ? {
-          entry: app.isPackaged
-            ? join(app.getAppPath(), 'dist-server/index.js')
-            : join(__dirname, '../../dist-server/index.js'),
-          configPath: configStore.path,
-          appVersion: app.getVersion(),
-          dataDir: dirname(configStore.path)
-        }
-      : undefined
-  })
+    deployService
+  }
+
+  let built: Awaited<ReturnType<typeof createAdapter>>
+  try {
+    built = await createAdapter({
+      backend: useProcess ? 'process' : 'embedded',
+      embedded: embeddedDeps,
+      host: useProcess
+        ? {
+            entry: app.isPackaged
+              ? join(app.getAppPath(), 'dist-server/index.js')
+              // 开发模式：__dirname 是 dist-electron/，项目根只需一级 ..
+              : join(__dirname, '../dist-server/index.js'),
+            configPath: configStore.path,
+            appVersion: app.getVersion(),
+            dataDir: dirname(configStore.path)
+          }
+        : undefined
+    })
+  } catch (error) {
+    // 后端起不来不能让整个应用不可用：明确记录并回退到进程内模式（失败可见，不静默）
+    const message = error instanceof Error ? error.message : String(error)
+    writeFatalLog('backend', `后端启动失败，回退到进程内模式：${message}`)
+    serverSnapshot = { ...serverSnapshot, error: `后端启动失败，已回退到进程内模式：${message}` }
+    built = { adapter: createEmbeddedAdapter(embeddedDeps), host: null }
+  }
   ipcAdapter = built.adapter
   serverHost = built.host
   if (serverHost) {
