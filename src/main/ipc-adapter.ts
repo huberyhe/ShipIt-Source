@@ -24,6 +24,17 @@ export interface IpcAdapter {
   targetList(): Promise<unknown>
   serverConfig(): Promise<unknown>
   serverStatus(): Promise<unknown>
+  // 写入类（T9 批 2）
+  configSave(config: unknown): Promise<unknown>
+  targetSave(payload: { op: 'add' | 'update' | 'clone'; [key: string]: unknown }): Promise<unknown>
+  targetRemove(id: string): Promise<unknown>
+  targetReorder(ids: string[]): Promise<unknown>
+  mappingAdd(targetId: string, mapping: unknown): Promise<unknown>
+  mappingUpdate(targetId: string, mappingId: string, updates: unknown): Promise<unknown>
+  mappingRemove(targetId: string, mappingId: string): Promise<unknown>
+  serverConfigSave(patch: unknown): Promise<unknown>
+  serverTokenRotate(): Promise<unknown>
+  serverExport(): Promise<unknown>
 }
 
 /** 信封解包：失败统一抛带 code 的 Error（与 renderer 现有 catch 口径一致） */
@@ -56,9 +67,22 @@ export interface EmbeddedDeps {
     getFileDiff: (dir: string, filePath: string) => Promise<unknown>
     getCommitFiles: (dir: string, rev: string) => Promise<unknown>
   }
-  configStore: { load: () => Promise<{ deploymentTargets: unknown[] }> }
+  configStore: {
+    load: () => Promise<{ deploymentTargets: unknown[] }>
+    patchOwned: (partial: unknown) => Promise<void>
+    addTarget: (target: unknown) => Promise<void>
+    updateTarget: (id: string, updates: unknown) => Promise<void>
+    removeTarget: (id: string) => Promise<void>
+    reorderTargets: (ids: string[]) => Promise<void>
+    addMapping: (targetId: string, mapping: unknown) => Promise<void>
+    updateMapping: (targetId: string, mappingId: string, updates: unknown) => Promise<void>
+    removeMapping: (targetId: string, mappingId: string) => Promise<void>
+  }
   serverConfig: () => Promise<unknown>
   serverStatus: () => unknown
+  serverConfigSave: (patch: unknown) => Promise<unknown>
+  serverTokenRotate: () => Promise<unknown>
+  serverExport: () => Promise<unknown>
 }
 
 export function createEmbeddedAdapter (deps: EmbeddedDeps): IpcAdapter {
@@ -76,7 +100,40 @@ export function createEmbeddedAdapter (deps: EmbeddedDeps): IpcAdapter {
     configLoad: () => deps.configStore.load(),
     targetList: async () => (await deps.configStore.load()).deploymentTargets,
     serverConfig: () => deps.serverConfig(),
-    serverStatus: async () => deps.serverStatus()
+    serverStatus: async () => deps.serverStatus(),
+    configSave: async (config) => {
+      await deps.configStore.patchOwned(config)
+      return deps.configStore.load()
+    },
+    targetSave: async (payload) => {
+      if (payload.op === 'add') await deps.configStore.addTarget(payload.target)
+      else if (payload.op === 'clone') await deps.configStore.addTarget(payload.target)
+      else await deps.configStore.updateTarget(String(payload.id), payload.updates)
+      return null
+    },
+    targetRemove: async (id) => {
+      await deps.configStore.removeTarget(id)
+      return null
+    },
+    targetReorder: async (ids) => {
+      await deps.configStore.reorderTargets(ids)
+      return null
+    },
+    mappingAdd: async (targetId, mapping) => {
+      await deps.configStore.addMapping(targetId, mapping)
+      return null
+    },
+    mappingUpdate: async (targetId, mappingId, updates) => {
+      await deps.configStore.updateMapping(targetId, mappingId, updates)
+      return null
+    },
+    mappingRemove: async (targetId, mappingId) => {
+      await deps.configStore.removeMapping(targetId, mappingId)
+      return null
+    },
+    serverConfigSave: (patch) => deps.serverConfigSave(patch),
+    serverTokenRotate: () => deps.serverTokenRotate(),
+    serverExport: () => deps.serverExport()
   }
 }
 
@@ -104,6 +161,21 @@ export function createRemoteAdapter (host: RemoteHost): IpcAdapter {
       return config?.deploymentTargets ?? []
     },
     serverConfig: async () => unwrapEnvelope(await host.get('/server/config')),
-    serverStatus: async () => unwrapEnvelope(await host.get('/status'))
+    serverStatus: async () => unwrapEnvelope(await host.get('/status')),
+    configSave: async (config) => unwrapEnvelope(await host.post('/config', { config })),
+    targetSave: async (payload) => {
+      const path = payload.op === 'add' ? '/targets/add' : payload.op === 'clone' ? '/targets/clone' : '/targets/update'
+      return unwrapEnvelope(await host.post(path, payload))
+    },
+    targetRemove: async (id) => unwrapEnvelope(await host.post('/targets/remove', { id })),
+    targetReorder: async (ids) => unwrapEnvelope(await host.post('/targets/reorder', { ids })),
+    mappingAdd: async (targetId, mapping) => unwrapEnvelope(await host.post('/mappings/add', { targetId, mapping })),
+    mappingUpdate: async (targetId, mappingId, updates) =>
+      unwrapEnvelope(await host.post('/mappings/update', { targetId, mappingId, updates })),
+    mappingRemove: async (targetId, mappingId) =>
+      unwrapEnvelope(await host.post('/mappings/remove', { targetId, mappingId })),
+    serverConfigSave: async (patch) => unwrapEnvelope(await host.post('/server/config', { patch })),
+    serverTokenRotate: async () => unwrapEnvelope(await host.post('/server/token')),
+    serverExport: async () => unwrapEnvelope(await host.post('/server/export'))
   }
 }

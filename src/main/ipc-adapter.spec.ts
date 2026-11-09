@@ -37,14 +37,29 @@ describe('main/ipc-adapter', () => {
         getFileDiff: async () => '',
         getCommitFiles: async () => []
       },
-      configStore: { load: async () => ({ deploymentTargets: [{ name: 'dev' }] }) },
+      configStore: {
+        load: async () => ({ deploymentTargets: [{ name: 'dev' }] }),
+        patchOwned: async () => undefined,
+        addTarget: async () => undefined,
+        updateTarget: async () => undefined,
+        removeTarget: async () => undefined,
+        reorderTargets: async () => undefined,
+        addMapping: async () => undefined,
+        updateMapping: async () => undefined,
+        removeMapping: async () => undefined
+      },
       serverConfig: async () => ({ enabled: false }),
-      serverStatus: () => ({ listening: false })
+      serverStatus: () => ({ listening: false }),
+      serverConfigSave: async () => ({ enabled: false }),
+      serverTokenRotate: async () => ({ token: 'new' }),
+      serverExport: async () => ({ port: 4517 })
     })
 
     expect(await adapter.filesTree(dir)).toMatchObject({ name: 'root' })
     expect(await adapter.targetList()).toEqual([{ name: 'dev' }])
     expect(await adapter.serverStatus()).toEqual({ listening: false })
+    expect(await adapter.configSave({ theme: 'dark' })).toEqual({ deploymentTargets: [{ name: 'dev' }] })
+    expect(await adapter.targetRemove('t1')).toBeNull()
   })
 
   it('remote：返回数据解包，失败抛带 code 的 Error', async () => {
