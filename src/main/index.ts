@@ -1294,10 +1294,46 @@ app.on('before-quit', (event) => {
   // 桌面界面**直接**调用 deploy()（不进队列），只看队列会误判"空闲"→ 退出时静默截断桌面正在跑的上传
   const desktopSessions = deployService.activeSessions().filter((session) => session.owner === 'desktop')
   const busy = snapshot.state !== 'idle' || snapshot.pendingCount > 0 || desktopSessions.length > 0
-  if (!busy && !localServer) return
+  // process 模式即使空闲也要通知后端优雅退出（否则只能靠父进程探测）
+  if (!busy && !localServer && !serverHost) return
   event.preventDefault()
   shutdownInProgress = true
   void (async () => {
+    // process 模式：由后端执行 drain，保留现有“继续等待 / 立即退出”交互（F4）
+    if (serverHost) {
+      const prepare = await serverHost.prepareStop(SHUTDOWN_GRACE_MS)
+      const drained =
+        prepare.ok &&
+        prepare.envelope.ok &&
+        (prepare.envelope.data as { drained?: boolean } | null)?.drained === true
+
+      if (!drained) {
+        const owner = BrowserWindow.getAllWindows().find((win) => !win.isDestroyed()) ?? null
+        let keepWaiting = false
+        if (owner) {
+          const choice = await dialog.showMessageBox(owner, {
+            type: 'warning',
+            message: '仍有上传未完成',
+            detail: '立即退出会中断上传，已传输的文件不会回滚。',
+            buttons: ['继续等待 30 秒', '立即退出'],
+            defaultId: 0,
+            cancelId: 0
+          })
+          keepWaiting = choice.response === 0
+        }
+        if (keepWaiting) await serverHost.finalizeStop(SHUTDOWN_EXTRA_WAIT_MS)
+        else await serverHost.forceStop()
+      }
+
+      // 等后端退出（最多 deadline + 2s），避免主进程先走把子进程硬切掉
+      await Promise.race([
+        new Promise<void>((resolve) => serverHost!.child?.on('exit', () => resolve())),
+        new Promise<void>((resolve) => setTimeout(resolve, SHUTDOWN_EXTRA_WAIT_MS + 2000))
+      ])
+      app.quit()
+      return
+    }
+
     if (busy) {
       // 队列与桌面会话各等一份宽限。两者共用同一条串行链，**并行等待**时时间才不会叠加
       // （串行 await 时最坏是 2 × 5 秒，用户感觉“退出卡住”）
