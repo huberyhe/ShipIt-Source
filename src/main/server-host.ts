@@ -69,12 +69,19 @@ function forkChild (options: HostOptions, parentPid: number): ServerChild {
   }
   // 延迟 require：测试环境（纯 Node）不加载 electron
   const { utilityProcess } = require('electron') as typeof import('electron')
-  return utilityProcess.fork(options.entry, args, { stdio: 'pipe' }) as unknown as ServerChild
+  const child = utilityProcess.fork(options.entry, args, { stdio: 'pipe' }) as unknown as ServerChild
+  // 后端 stderr 必须转发：否则启动失败时只能看到“等待 ready 超时”
+  child.stderr?.on('data', (chunk: Buffer | string) => process.stderr.write(`[shipit-server] ${chunk}`))
+  return child
 }
 
 function waitReady (child: ServerChild, timeoutMs: number): Promise<any> {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('等待 ready 超时')), timeoutMs)
+    const seen: string[] = []
+    const timer = setTimeout(
+      () => reject(new Error(`等待 ready 超时；后端输出：${seen.slice(-5).join(' | ') || '(空)'}`)),
+      timeoutMs
+    )
     let buffer = ''
     child.stdout?.on('data', (chunk: Buffer | string) => {
       buffer += chunk.toString()
@@ -83,6 +90,7 @@ function waitReady (child: ServerChild, timeoutMs: number): Promise<any> {
         const line = buffer.slice(0, index).trim()
         buffer = buffer.slice(index + 1)
         if (line) {
+          seen.push(line.slice(0, 200))
           try {
             const message = JSON.parse(line)
             if (message.type === 'ready') {
