@@ -11,7 +11,7 @@ import { loadServerConfig, rotateToken, saveServerConfig } from '../main/service
 import type { RequestContext, RouteHandler } from '../main/services/local-server'
 import type { Runtime } from './runtime'
 import type { EventHub } from './events'
-import { applySecrets, cloneSecrets, toTargetView } from './target-secrets'
+import { applySecrets, cloneSecrets, mergeDraftTarget, toTargetView } from './target-secrets'
 
 type Body = Record<string, any>
 
@@ -146,16 +146,11 @@ export function buildAdminHandlers (rt: Runtime, events: EventHub): Record<strin
 
     testConnDraft: async (ctx) => {
       const { target, targetId } = body(ctx)
-      let resolved = target
-      // 草稿测试已存目标：表单留空的密码沿用已存值（F1）
-      if (targetId) {
-        const saved = (await rt.configStore.load()).deploymentTargets.find((item) => item.id === targetId)
-        if (saved) {
-          resolved = { ...saved, ...target }
-          if (!target?.password) resolved.password = saved.password
-          if (!target?.passphrase) resolved.passphrase = saved.passphrase
-        }
-      }
+      // 草稿测试已存目标：表单留空的密码沿用已存值（F1 / A5）；新目标直接使用草稿值（A6）
+      const saved = targetId
+        ? (await rt.configStore.load()).deploymentTargets.find((item) => item.id === targetId)
+        : undefined
+      const resolved = mergeDraftTarget(saved, target)
       return ok(await rt.deployService.testConnection(resolved))
     },
 

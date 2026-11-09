@@ -33,6 +33,19 @@ export function cloneSecrets (source: DeployTarget, target: DeployTarget): Deplo
   }
 }
 
+/**
+ * 草稿测试的字段合并（F1 / A5 / A6）：
+ * - 已存目标 + 表单覆盖字段；表单未填密码/口令时沿用已存值
+ * - 无已存目标（新目标）直接使用草稿值
+ */
+export function mergeDraftTarget (saved: DeployTarget | undefined, incoming: any): DeployTarget {
+  if (!saved) return incoming as DeployTarget
+  const merged: DeployTarget = { ...saved, ...incoming }
+  if (!incoming?.password) merged.password = saved.password
+  if (!incoming?.passphrase) merged.passphrase = saved.passphrase
+  return merged
+}
+
 /** 对外视图：永不包含明文秘密 */
 export function toTargetView (target: DeployTarget): TargetView {
   const { password, passphrase, ...rest } = target
