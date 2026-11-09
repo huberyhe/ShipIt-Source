@@ -47,6 +47,7 @@ async function shutdown (phase: 'prepare' | 'final' | 'force', deadlineMs: numbe
   const result = (await runtime?.shutdown(phase, deadlineMs)) ?? { drained: true }
   if ((result as { drained?: boolean }).drained || phase === 'force') {
     closing = true
+    await runtime?.finalize().catch(() => undefined)
     process.exit(0)
   }
 }

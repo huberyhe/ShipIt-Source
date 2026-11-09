@@ -194,8 +194,10 @@ export function buildAdminHandlers (rt: Runtime, events: EventHub): Record<strin
       const { phase = 'prepare', deadlineMs = 5000 } = body(ctx)
       const result = await rt.shutdown(phase, deadlineMs)
       if ((result as { drained?: boolean }).drained || phase === 'force') {
-        // 让响应先写回，再退出
-        setImmediate(() => process.exit(0))
+        // 先返回响应，再停 listener 并退出（否则 stopAll 会杀掉当前连接）
+        setTimeout(() => {
+          void rt.finalize().finally(() => process.exit(0))
+        }, 100)
       }
       return ok(result)
     }

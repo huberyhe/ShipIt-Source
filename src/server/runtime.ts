@@ -262,10 +262,8 @@ export function createRuntime (options: RuntimeOptions) {
      */
     async shutdown (phase: 'prepare' | 'final' | 'force', deadlineMs: number) {
       draining = true
-      if (phase === 'force') {
-        await stopAll()
-        return { drained: false, forced: true as const }
-      }
+      // 只等待，不在此处停 listener：调用方需要先把响应写回（P0-6）
+      if (phase === 'force') return { drained: false, forced: true as const }
 
       const [queueDrained, sessionsIdle] = await Promise.all([
         queue.drain(deadlineMs),
@@ -282,8 +280,11 @@ export function createRuntime (options: RuntimeOptions) {
         }
       }
 
-      await stopAll()
       return { drained }
+    },
+    /** 真正停止两个 listener（在响应写回后调用） */
+    async finalize () {
+      await stopAll()
     }
   }
 }

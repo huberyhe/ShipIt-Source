@@ -48,7 +48,7 @@ function looksLikeEnvelope(value: unknown): value is Envelope {
 export interface HttpClientOptions {
   endpoint: ClientEndpoint
   /** 调用方标识：cli / mcp（D-25） */
-  client: ClientKind
+  client: ClientKind | 'desktop'
   /** 请求超时（毫秒） */
   timeoutMs?: number
 }
@@ -311,4 +311,5 @@ export function createHttpClient (options: HttpClientOptions): HttpClient {
 export function toEnvelope(result: ClientResult): Envelope {
   return result.ok ? result.envelope : errEnvelope(result.error.code, result.error.message, result.error.hint)
 }
+
 
