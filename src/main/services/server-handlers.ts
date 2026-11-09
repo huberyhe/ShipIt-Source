@@ -47,6 +47,11 @@ export interface ServerHandlerDeps {
   queue: DeployQueue
   /** 包版本（CON-3：取自包，禁止硬编码） */
   getVersion: () => string
+  /**
+   * 完整状态快照（v3）：由 Runtime 提供，含 instanceId / published / revision。
+   * 提供时 /status 直接返回它（与 SSE 共用同一份）；不提供则沿用旧的组装逻辑（embedded 兼容）。
+   */
+  snapshot?: () => Record<string, unknown>
   /** 只读 Git 查询（复用既有 GitService；不做任何写操作） */
   git: {
     isGitRepo: (dir: string) => Promise<boolean>
@@ -466,10 +471,24 @@ export function projectsHandler(deps: ServerHandlerDeps): RouteHandler {
 export function statusHandler(
   deps: ServerHandlerDeps,
   runtime: () => { listening: boolean; port: number | null; bound: string }
-): RouteHandler {
-  return async (ctx) => {
-    const snapshot = deps.queue.snapshot()
-    const live = runtime()
+  ): RouteHandler {
+    return async (ctx) => {
+      // v3：Runtime 统一快照（含 instanceId / published / revision），与 SSE 同源
+      if (deps.snapshot) {
+        const data = deps.snapshot()
+        const queue = data.queue as { tasks?: unknown[]; pendingCount?: number; runningTaskId?: string } | undefined
+        return okEnvelope(
+          data,
+          metaOf({
+            origin: ctx.origin,
+            count: queue?.tasks?.length ?? 0,
+            extra: { pendingCount: queue?.pendingCount, runningTaskId: queue?.runningTaskId }
+          })
+        )
+      }
+
+      const snapshot = deps.queue.snapshot()
+      const live = runtime()
     const sessions = deps.activeSessions()
     // 仅展示用：桌面最近聚焦的项目（策略 D′ 下不再作为执行路径的默认项目）
     const focused = deps.projectContext.currentProject()
