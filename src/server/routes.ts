@@ -2,7 +2,7 @@
  * 后端路由表。
  *
  * - `PUBLIC_ROUTES`：公开端点，**现有 10 条一字不改**（CON-1，CLI/MCP 零改动）
- * - `ADMIN_ROUTES`：管理端点，现有 10 条 + 32 条桌面专属（含 F1 的 `/targets/clone`）
+ * - `ADMIN_ROUTES`：管理端点，现有 10 条 + 35 条桌面专属（含 F1 的 `/targets/clone`）
  *
  * 两个端点由同一个 Runtime 提供 handler，只是注册的路由子集与鉴权 token 不同。
  * 禁止出现 `/internal` 前缀的命名分裂（评审 F5）。
@@ -12,7 +12,7 @@ import { ROUTES, type RouteDefinition } from '../main/services/local-server'
 /** 公开端点：直接复用既有路由表（10 条） */
 export const PUBLIC_ROUTES: readonly RouteDefinition[] = ROUTES
 
-/** 管理端点专用路由（32 条） */
+/** 管理端点专用路由（35 条） */
 const ADMIN_ONLY_ROUTES: readonly RouteDefinition[] = [
   // ---- 配置与目标（10）----
   { method: 'GET',  path: '/config', handler: 'configGet' },
@@ -65,5 +65,5 @@ const ADMIN_ONLY_ROUTES: readonly RouteDefinition[] = [
   { method: 'POST', path: '/shutdown', handler: 'shutdown' }
 ]
 
-/** 管理端点：现有 10 条 + 32 条桌面专属 */
+/** 管理端点：现有 10 条 + 35 条桌面专属 */
 export const ADMIN_ROUTES: readonly RouteDefinition[] = [...PUBLIC_ROUTES, ...ADMIN_ONLY_ROUTES]

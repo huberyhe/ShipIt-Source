@@ -647,7 +647,8 @@ async function openProjectPath(projectPath: string, callerId: number | null = fo
     const recent = [projectPath, ...(cfg.recentProjects ?? []).filter((p) => p !== projectPath)].slice(0, 10)
     await ipcAdapter.configSave({ recentProjects: recent })
   } else {
-    await configStore.addRecentProject(projectPath)
+    // 后端未就绪时不写盘：主进程不再是配置写者（否则会与后端跨进程并发覆盖）
+    writeFatalLog('config', 'open-project 早于后端就绪，最近项目未记录')
   }
   openProjectWindow(projectPath, callerId)
 }
@@ -740,15 +741,25 @@ function registerIpcHandlers() {
       case 'open-recent':
         if (payload) await openProjectPath(payload)
         break
+      // 配置只有一个写者：后端进程。主进程直接写盘会与后端并发（写锁是进程内的），
+      // 且全量写会把后端刚保存的目标（含凭据）覆盖回旧快照。
       case 'clear-recent': {
-        const cfg = await configStore.load()
-        cfg.recentProjects = []
-        await configStore.save()
+        if (serverHost) await ipcAdapter.configSave({ recentProjects: [] })
+        else writeFatalLog('config', 'clear-recent 早于后端就绪，已忽略')
         break
       }
       case 'remove-recent':
         // 单条移除：列表里的坏条目（误加的目录、已删除的项目）要能被清掉
-        if (typeof payload === 'string' && payload) await configStore.removeRecentProject(payload)
+        if (typeof payload === 'string' && payload) {
+          if (serverHost) {
+            const cfg = (await ipcAdapter.configLoad()) as { recentProjects?: string[] }
+            await ipcAdapter.configSave({
+              recentProjects: (cfg.recentProjects ?? []).filter((p) => p !== payload)
+            })
+          } else {
+            writeFatalLog('config', 'remove-recent 早于后端就绪，已忽略')
+          }
+        }
         break
       case 'open-settings':
         // 所有窗口的配置入口都汇聚到这里 → 全局设置窗口（单实例）
@@ -790,8 +801,8 @@ function registerIpcHandlers() {
   ipcMain.handle(IpcChannels.PROJECT_VIEW_SAVE, async (_event, projectPath: string, patch: unknown) => {
     if (typeof projectPath !== 'string' || !projectPath.trim()) return null
     if (!patch || typeof patch !== 'object') return null
+    // 视图状态同样只由后端写；早于后端就绪时丢弃（下次切视图会再存）
     if (serverHost) await ipcAdapter.projectViewSave(projectPath, patch)
-    else await configStore.saveProjectViewState(projectPath, patch as never)
     return null
   })
 

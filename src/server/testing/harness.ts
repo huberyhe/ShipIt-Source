@@ -93,6 +93,15 @@ export async function spawnServer (options: SpawnOptions = {}): Promise<ServerPr
     client: 'cli'
   })
 
+  // 提取成局部函数：写在对象字面量里时，async 方法内的 `this` 会被推断成
+  // `ServerProcess | PromiseLike<ServerProcess>`（Promise resolve 的 thenable 上下文），
+  // 导致 `this.waitExit` 在类型层面不存在。
+  const waitExit = (ms: number): Promise<number> =>
+    withTimeout(new Promise<number>((resolve) => {
+      if (child.exitCode !== null) return resolve(child.exitCode)
+      child.once('exit', (code) => resolve(code ?? -1))
+    }), ms, 'exit')
+
   return {
     child,
     dataDir: dir,
@@ -100,15 +109,10 @@ export async function spawnServer (options: SpawnOptions = {}): Promise<ServerPr
     ready,
     states,
     client,
-    waitExit (ms: number) {
-      return withTimeout(new Promise<number>((resolve) => {
-        if (child.exitCode !== null) return resolve(child.exitCode)
-        child.once('exit', (code) => resolve(code ?? -1))
-      }), ms, 'exit')
-    },
+    waitExit,
     async close () {
       child.kill()
-      await this.waitExit(5000).catch(() => -1)
+      await waitExit(5000).catch(() => -1)
     }
   }
 }

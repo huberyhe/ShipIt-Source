@@ -41,8 +41,10 @@ describe('server/target-secrets', () => {
     const view = toTargetView(base)
     expect(view.hasPassword).toBe(true)
     expect(view.hasPassphrase).toBe(true)
-    expect((view as Record<string, unknown>).password).toBeUndefined()
-    expect((view as Record<string, unknown>).passphrase).toBeUndefined()
+    // 断言“视图里不再携带凭据”：先转 unknown 再断言索引，否则 TS 会因 TargetView 无索引签名报 TS2352
+    const viewAsRecord = view as unknown as Record<string, unknown>
+    expect(viewAsRecord.password).toBeUndefined()
+    expect(viewAsRecord.passphrase).toBeUndefined()
   })
 
   it('复制沿用源目标的秘密', () => {

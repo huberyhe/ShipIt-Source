@@ -28,6 +28,7 @@
     "src/renderer/**/*.vue",
     "src/shared/**/*.ts",
     "src/main/**/*.ts",
+    "src/server/**/*.ts",
     "src/cli/**/*.ts",
     "scripts/**/*.ts",
     "vite.config.ts"
