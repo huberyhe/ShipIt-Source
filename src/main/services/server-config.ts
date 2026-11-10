@@ -63,9 +63,9 @@ export function normalizeServerConfig(input: unknown): ServerConfig {
     enabled: raw.enabled === true,
     bind,
     port,
-  tokenMode,
-  token,
-  allowedRoots: normalizeAllowedRoots(raw.allowedRoots)
+    tokenMode,
+    token,
+    allowedRoots: normalizeAllowedRoots(raw.allowedRoots)
   }
 }
 

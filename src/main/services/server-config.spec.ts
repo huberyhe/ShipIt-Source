@@ -210,3 +210,25 @@ describe('导出连接串（主要给 CLI --connect 用）', () => {
   })
 })
 
+
+describe('旧配置兼容（backend 字段已移除）', () => {
+  it('含 backend 的旧配置正常加载，归一化结果不再带该字段', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'shipit-legacy-backend-'))
+    try {
+      const configPath = join(dir, 'deploy-config.json')
+      writeFileSync(
+        configPath,
+        JSON.stringify({ server: { enabled: true, port: 4517, backend: 'embedded' } }),
+        'utf-8'
+      )
+
+      const cfg = await loadServerConfig(configPath)
+
+      expect(cfg.enabled).toBe(true)
+      expect(cfg.port).toBe(4517)
+      expect('backend' in cfg).toBe(false)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
