@@ -22,6 +22,8 @@ import { resolve } from 'path'
 export default defineConfig({
   test: {
     environment: 'node',
+    // 进程级用例 fork dist-server/index.js：缺失或过期时先构建（见脚本内说明）
+    globalSetup: './scripts/vitest-global-setup.ts',
     pool: 'forks',
     include: ['src/**/*.{spec,test}.ts', 'scripts/**/*.spec.ts'],
     exclude: ['node_modules/**', 'dist/**', 'dist-electron/**', 'release/**'],

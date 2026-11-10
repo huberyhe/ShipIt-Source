@@ -172,8 +172,8 @@ export function createServerHost (options: HostOptions): ServerHost {
       headers: {
         'x-shipit-token': admin.token,
         'x-shipit-protocol': '1',
-        'x-shipit-client': 'desktop',
-        'last-event-id': String(bridge.snapshot().revision)
+        'x-shipit-client': 'desktop'
+        // 不传 last-event-id：服务端不做断线续传，而是连接建立后立即推全量快照（events.ts 的 setInitial）
       }
     }, (res) => {
       const socket = res.socket as import('tls').TLSSocket

@@ -138,10 +138,19 @@ export function buildAdminHandlers (rt: Runtime, events: EventHub): Record<strin
     },
 
     serverExport: async () => {
-      if (!rt.published()) return errEnvelope('BACKEND_UNAVAILABLE', '服务未发布，无法导出连接串')
+      // 用**实际监听状态**而不是配置意图（评审 C 级）：published=true 但端口被占时
+      // listening 会是 false，此时导出的端口和令牌连不上，导出前必须拦住。
+      const publicState = rt.serverState().public
+      if (!rt.published() || !publicState.listening) {
+        return errEnvelope(
+          'BACKEND_UNAVAILABLE',
+          publicState.error ?? '服务未发布（或未成功监听），无法导出连接串'
+        )
+      }
       const config = await loadServerConfig(rt.configStore.path)
       return ok({
-        port: rt.publicPort(),
+        port: publicState.port,
+        bound: publicState.bound,
         token: config.token,
         bind: config.bind,
         protocolVersion: PROTOCOL_VERSION,

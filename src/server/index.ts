@@ -75,6 +75,11 @@ async function main (): Promise<void> {
     if (readySent) sendLine(line)
     else pending.push(line)
   })
+  // SSE 不续传：新连接（含重连）先拿到全量快照，避免客户端停在旧状态等下一个事件
+  hub.setInitial(() => [
+    ['server.state', runtime!.serverState()],
+    ['queue.snapshot', runtime!.statusSnapshot()]
+  ])
   runtime.setExtraHandlers(buildAdminHandlers(runtime, hub))
 
   const started = await runtime.startAdminListener()
