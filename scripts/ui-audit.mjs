@@ -6,6 +6,11 @@
  *   npm run audit:ui -- --themes=light,dark
  *   npm run audit:ui -- --port=9300 --out=.audit/report.md
  *
+ * 参数注：`--only` 会被 npm 当作自身配置吞掉（`npm config` 里有 `only` 键），
+ * `npm run -- --only=x` 不会传到本脚本。需要子集或自定义参数时直接调 node：
+ *   node --experimental-websocket scripts/ui-audit.mjs --only=filetree --themes=light
+ * `--themes` / `--out` 同理（npm 会警告 Unknown cli config 并丢弃）。
+ *
  * 做三件事：
  * 1) 在临时目录准备夹具（1 个含 git 历史 + 未提交改动的项目、2 个上传目标、服务端配置），
  *    并写入应用的 userData（部署配置）
@@ -43,7 +48,6 @@ const SHOTS = getArg('shots', '') // 传目录则在该目录下按 <theme>-<ste
 const REAL_PROJECT = getArg('project', '')
 const REAL_CONFIG = argv.includes('--real-config')
 // 后端形态（冒烟用）：embedded（默认）/ process
-const BACKEND = getArg('backend', 'embedded')
 
 // ---------------- 页面内检查（注入到渲染进程执行） ----------------
 const AUDIT_FN = String.raw`(opts => {
@@ -654,8 +658,6 @@ function prepareFixture(baseDir) {
     }]
   }
   config.currentTargetId = config.deploymentTargets[0].id
-  // 夹具里直接注入后端形态，避免改动用户真实配置
-  config.server = { ...(config.server || {}), backend: BACKEND }
   writeFileSync(join(userData, 'deploy-config.json'), JSON.stringify(config, null, 2))
   return { project, userData }
 }

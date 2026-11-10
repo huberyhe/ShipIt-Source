@@ -245,9 +245,11 @@ node --experimental-websocket scripts/ui-audit.mjs \
 `npm run audit:ui`（等价 `node --experimental-websocket scripts/ui-audit.mjs`）：
 自建夹具（含 git 历史与未提交改动的项目、本地/远端两个上传目标）→ 启动 Electron（独立 userData + CDP 端口）→
 **自动遍历 27 个界面/状态 × 浅色/深色两套主题** → 页面内执行启发式检查 → 输出 `.audit/ui-audit-report.md`；
-退出码 = Major 数量（0 即通过，可接 CI）。当前基线：双主题连续 3 轮均 0 Critical / 0 Major / 0 Minor，且无 >10s 的步骤。
+退出码：0 = 无界面类 Major（可接 CI）；1 = 有界面类 Major；2 = 脚本/环境故障。环境类问题单列、不计门禁。
 
 - 参数：`--themes=light,dark`、`--port=9301`、`--only=step1,step2`、`--shots=.audit/shots`（逐步截图留证）、`--keep`（保留夹具排障）
+- **传参必须直调 node**：`npm run audit:ui -- --only=x` 不生效（`--only` 撞 npm 自身 config 键，`--themes`/`--out` 被当作 Unknown cli config 丢弃）。用 `node --experimental-websocket scripts/ui-audit.mjs --only=open-project,filetree`。只给子集时若缺前置步骤（先 `open-project` 才有 project 窗口）会报 `harness/missing-window`，属环境类、不计门禁
+- **2026-11-10 实测基线（待修）**：light 3 Major —— `git-log` 已取完时缺「已全部加载」文案；`deploy-confirm` / `narrow-deploy-confirm` 的 `button.base-btn.v-primary.s-sm` 对比度低于 WCAG AA；dark 0 Major。此前文档写的「双主题 0 Major」已不成立
 - 覆盖：欢迎页（含悬停移除按钮）→ **托盘菜单结构（经 `getTrayMenuLabels` IPC 读取标签与文案）** → 项目窗口（文件树/展开/Git 变更/Git 日志/日志面板）→ 快捷键/关于/右键菜单/上传确认 → 设置（上传目标、新增弹窗、删除确认、映射增删、本地服务未保存）→ 悬停才显示的控件（快速上传、映射操作）→ 上传成功 Toast 与日志条目 → **上传中进度界面**（用不可达目标让上传挂起，稳定捕获）
 - **每步执行前必须把目标窗口带到前台（`Page.bringToFront` + 焦点模拟）**：后台/被遮挡窗口的 `setTimeout` 会被 Chromium"强化节流"到最长 1 分钟才触发一次，步骤里的轮询会因此从 1 秒变成 60~80 秒并随机超时（曾导致 4 个步骤超时、以及难以复现的偶发 Minor）。同理，`waitForAnimations` 在 `document.hidden` 时直接跳过（后台窗口不触发 rAF）
 - 排查便利：步骤结果会打印每步耗时（`id=ok(ms)`），慢步骤一眼可见；发现问题时控制台直接打印前 12 条明细
