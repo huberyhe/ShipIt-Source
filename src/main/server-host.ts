@@ -102,7 +102,11 @@ function waitReady (child: ServerChild, timeoutMs: number): Promise<any> {
         const line = buffer.slice(0, index).trim()
         buffer = buffer.slice(index + 1)
         if (line) {
-          seen.push(line.slice(0, 200))
+          // 诊断缓冲：ready 行里有宿主 token，而这段文本会进超时错误/日志，
+          // 必须脱敏；同时做环形缓冲，避免长时间运行无界增长（评审 C 级）。
+          const safe = line.replace(/"token"\s*:\s*"[^"]+"/g, '"token":"***"').slice(0, 200)
+          seen.push(safe)
+          if (seen.length > 20) seen.shift()
           try {
             const message = JSON.parse(line)
             if (message.type === 'ready') {
