@@ -423,8 +423,6 @@ export interface ServerConfig {
    * 已经打开的项目始终视为允许（无需在此重复登记）。
    */
   allowedRoots: string[]
-  /** 后端形态：embedded=进程内（默认）；process=独立后端进程 */
-  backend?: 'embedded' | 'process'
 }
 /** 目标秘密操作（F1）：保留 / 设置 / 清除 */
 export type SecretOp =

@@ -24,7 +24,6 @@ export function defaultServerConfig(): ServerConfig {
     port: DEFAULT_PORT,
   tokenMode: 'random',
   token: '',
-  backend: 'embedded',
     // 默认空：局域网下只允许「桌面已打开的项目」；需要更多范围时由用户显式添加
     allowedRoots: []
   }
@@ -66,8 +65,7 @@ export function normalizeServerConfig(input: unknown): ServerConfig {
     port,
   tokenMode,
   token,
-  allowedRoots: normalizeAllowedRoots(raw.allowedRoots),
-  backend: raw.backend === 'process' ? 'process' : 'embedded'
+  allowedRoots: normalizeAllowedRoots(raw.allowedRoots)
   }
 }
 
