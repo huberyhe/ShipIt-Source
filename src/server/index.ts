@@ -57,7 +57,12 @@ async function shutdown (phase: 'prepare' | 'final' | 'force', deadlineMs: numbe
 
 async function main (): Promise<void> {
   const args = parseArgs(process.argv.slice(2))
-  runtime = createRuntime({ configPath: args.config, appVersion: args.appVersion, dataDir: args.dataDir })
+  runtime = createRuntime({
+    configPath: args.config,
+    appVersion: args.appVersion,
+    dataDir: args.dataDir,
+    ...(args.parentPid ? { parentPid: args.parentPid } : {})
+  })
   const hub = createEventHub()
 
   // ready 必须早于任何 state：启动监听会 emit server.state，先缓冲

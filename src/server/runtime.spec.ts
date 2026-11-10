@@ -56,6 +56,9 @@ describe('server/runtime', () => {
     expect(data.version).toBe('9.9.9')
     expect(data.published).toBe(false)
     expect(data.instanceId).toBe(rt.instanceId)
+    // 进程自检：后端 pid 必须可读；未指定宿主时 parentPid 为 null
+    expect(typeof data.pid).toBe('number')
+    expect(data.parentPid).toBeNull()
 
     await rt.syncPublicListener()
     expect(rt.published()).toBe(false)

@@ -373,6 +373,7 @@ describe('命令面登记完整性（实现收敛）', () => {
       'git status',
       'plan',
       'projects list',
+      'ps',
       'status',
       'targets list',
       'targets ping',

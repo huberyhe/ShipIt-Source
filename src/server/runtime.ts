@@ -31,6 +31,8 @@ export interface RuntimeOptions {
   configPath: string
   appVersion: string
   dataDir: string
+  /** 宿主（桌面主进程）pid：用于 `shipit ps` 定位进程 */
+  parentPid?: number
 }
 
 export interface PublicState {
@@ -71,6 +73,9 @@ export function createRuntime (options: RuntimeOptions) {
       port: publicState.port,
       bound: publicState.bound,
       published,
+      // 进程自检（shipit ps）：后端 pid + 宿主 pid
+      pid: process.pid,
+      parentPid: options.parentPid ?? null,
       version: options.appVersion,
       protocolVersion: PROTOCOL_VERSION,
       instanceId,

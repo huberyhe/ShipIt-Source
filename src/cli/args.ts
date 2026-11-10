@@ -20,6 +20,7 @@ export type CommandName =
   | 'deploy'
   | 'git'
   | 'status'
+  | 'ps'
   | 'task'
   | 'mcp'
   | 'help'
@@ -67,6 +68,7 @@ export const COMMANDS: readonly CommandName[] = [
   'deploy',
   'git',
   'status',
+  'ps',
   'task',
   'projects',
   'mcp',
@@ -188,6 +190,15 @@ const COMMAND_HELP: Record<string, CommandHelp> = {
     notes: ['不要求项目根：用于确认桌面版是否在跑、监听端口、队列与当前项目。'],
     examples: ['shipit status', 'shipit status --json']
   },
+  ps: {
+    summary: '服务进程自检（pid / 端点 / 队列）',
+    usage: 'ps',
+    notes: [
+      '用于分辨“哪个进程是后端”：输出后端 pid 与桌面主进程 pid。',
+      'Electron 的 GPU/渲染/utility 进程无法改名，但这一个能明确对应。'
+    ],
+    examples: ['shipit ps', 'shipit ps --json']
+  },
   projects: {
     summary: '桌面当前已打开的项目',
     usage: 'projects list',
@@ -243,7 +254,7 @@ const COMMAND_HELP: Record<string, CommandHelp> = {
 /** 顶层帮助里的命令分类（顺序即展示顺序） */
 const COMMAND_CATEGORIES: ReadonlyArray<{ title: string; commands: readonly string[] }> = [
   { title: '上传流程', commands: ['targets', 'plan', 'deploy'] },
-  { title: '查询', commands: ['git', 'status', 'projects', 'task'] },
+    { title: '查询', commands: ['git', 'status', 'ps', 'projects', 'task'] },
   { title: '集成', commands: ['mcp'] }
 ]
 

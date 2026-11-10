@@ -47,5 +47,11 @@ describe('已发布 CLI 形态对进程后端（G18）', () => {
 
     const projects = runCli(proc.dataDir, ['projects', 'list', '--json'])
     expect(projects.code).toBe(0)
+
+    // ps：进程自检（后端 pid + 宿主 pid）
+    const ps = runCli(proc.dataDir, ['ps', '--json'])
+    expect(ps.code).toBe(0)
+    expect(ps.out).toContain('"pid"')
+    expect(ps.out).toContain('"parentPid"')
   }, 40_000)
 })
