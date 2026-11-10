@@ -77,7 +77,11 @@ function forkChild (options: HostOptions, parentPid: number): ServerChild {
   }
   // 延迟 require：测试环境（纯 Node）不加载 electron
   const { utilityProcess } = require('electron') as typeof import('electron')
-  const child = utilityProcess.fork(options.entry, args, { stdio: 'pipe' }) as unknown as ServerChild
+  const child = utilityProcess.fork(options.entry, args, {
+    stdio: 'pipe',
+    // Chromium 层可识别的服务名（任务管理器仍显示 exe，但进程列表/调试器可区分）
+    serviceName: 'shipit-server'
+  }) as unknown as ServerChild
   // 后端 stderr 必须转发：否则启动失败时只能看到“等待 ready 超时”
   child.stderr?.on('data', (chunk: Buffer | string) => process.stderr.write(`[shipit-server] ${chunk}`))
   return child

@@ -35,6 +35,9 @@ export function parseArgs (argv: string[]): ServerArgs {
   }
 }
 
+// 进程名：便于任务管理器/性能监视器识别（Windows 上仍以 exe 名为准）
+process.title = 'shipit-server'
+
 function sendLine (message: unknown): void {
   process.stdout.write(`${JSON.stringify(message)}\n`)
 }

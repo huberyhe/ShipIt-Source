@@ -14,8 +14,6 @@ import {
   saveServerConfig,
   type ExportedConnection
 } from './services/server-config'
-import { createLocalServer, type Handlers, type LocalServer } from './services/local-server'
-import { createServerHandlers } from './services/server-handlers'
 import { ProjectContext } from './services/project-context'
 import { createQueue } from './services/deploy-queue'
 import { createTray, trayMenuTemplate, shouldQuitOnWindowClose, type TrayActions, type TrayHandle } from './tray'
@@ -60,7 +58,6 @@ function applyPortableDataDir (): void {
 }
 applyPortableDataDir()
 import { createAdapter } from './adapter-factory'
-import { createEmbeddedAdapter } from './ipc-adapter'
 import type { IpcAdapter } from './ipc-adapter'
 import { createStatusMirror } from './status-mirror'
 import type { ServerHost } from './server-host'
@@ -218,7 +215,8 @@ function broadcastServerStatus(): void {
     error: serverSnapshot.error,
     enabled: config.enabled,
     bind: config.bind,
-    queue: serverHost && remote?.queue ? remote.queue : deployQueue.snapshot(),
+    // 单后端：队列真值只来自远端镜像
+    queue: remote?.queue ?? deployQueue.snapshot(),
     revision: nextStatusRevision()
   })
   // 托盘状态文本也含队列/项目数：不刷新的话右键菜单永远停在“上次构建时”的值
@@ -256,7 +254,6 @@ const deployQueue = createQueue({
     })
   }
 })
-let localServer: LocalServer | null = null
 let trayHandle: TrayHandle | null = null
 /**
  * 设置窗口是否有未保存改动（由设置窗口上报）。
@@ -277,7 +274,6 @@ let serverSnapshot: { listening: boolean; port: number | null; bound: string; er
   bound: ''
 }
 /** 服务端处理器注入点：任务 8~12 逐个绑定，未绑定的接口视为未启用 */
-let serverHandlers: Partial<Handlers> = {}
 
 /**
  * 创建窗口。角色决定初始视图：主窗口 = 项目选择页；项目窗口直达该项目的工区。
@@ -587,58 +583,6 @@ function serverStatusText(): string {
   return parts.join(' · ')
 }
 
-/** 服务端启停串行链：启停互相串行，避免并发建/拆监听器导致引用丢失与端口泄漏 */
-let serverLifecycleChain: Promise<void> = Promise.resolve()
-
-function onServerLifecycle(task: () => Promise<void>): Promise<void> {
-  const next = serverLifecycleChain.then(task, task)
-  serverLifecycleChain = next.catch(() => undefined)
-  return next
-}
-
-/** 启动本地服务端（按配置；未开启时不做任何监听，INV-4） */
-function startLocalServer(): Promise<void> {
-  return onServerLifecycle(async () => {
-    if (localServer) await localServer.stop()
-    const config = await loadServerConfig(configStore.path)
-    serverConfigCache = { enabled: config.enabled, bind: config.bind, allowedRoots: config.allowedRoots }
-      localServer = createLocalServer({
-        config,
-        // embedded 语义：未开启服务就不监听（INV-4）；管理端点仅存在于独立后端进程
-        listen: config.enabled,
-        dataDir: dirname(configStore.path),
-      handlers: serverHandlers,
-      // 监听建立后的运行时异常必须有人接住：未处理的 'error' 事件会直接崩掉主进程
-      onError: (error) => {
-        serverSnapshot = { ...serverSnapshot, error: error.message }
-        // 广播内部已刷新托盘（状态文本含队列/项目数），不再重复构建菜单
-        broadcastServerStatus()
-      }
-    })
-    // start() 已保证不 reject（同步抛错会被收成 StartResult）；这里再兜一层，
-    // 确保意外情况也不会让主进程带着半初始化状态崩掉，而是如实体现在状态里。
-    try {
-      const result = await localServer.start()
-      serverSnapshot = result.listening
-        ? { listening: true, port: result.port, bound: result.bound }
-        : { listening: false, port: null, bound: '', error: result.error?.message }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      serverSnapshot = { listening: false, port: null, bound: '', error: `本地服务启动失败：${message}` }
-    }
-    // 广播内部已刷新托盘（状态文本含队列/项目数），不再重复构建菜单
-    broadcastServerStatus()
-  })
-}
-
-function stopLocalServer(): Promise<void> {
-  return onServerLifecycle(async () => {
-    if (localServer) await localServer.stop()
-    serverSnapshot = { listening: false, port: null, bound: '' }
-    // 广播内部已刷新托盘（状态文本含队列/项目数），不再重复构建菜单
-    broadcastServerStatus()
-  })
-}
 
 /** 创建托盘；不可用时关窗即退出，避免留下无法操作的进程 */
 /**
@@ -1079,11 +1023,7 @@ function registerIpcHandlers() {
       config: ServerConfig
     }
     if (!saved.ok) return { ok: false as const, reason: saved.reason }
-    // embedded：由主进程重启监听；process：适配层已让后端重启公开端点
-    if (!serverHost) {
-      serverConfigCache = { enabled: saved.config.enabled, bind: saved.config.bind, allowedRoots: saved.config.allowedRoots }
-      await startLocalServer()
-    }
+    // 监听由后端重启（适配层内部已 syncPublicListener）
     broadcastConfigChanged()
     return { ok: true as const, config: saved.config, status: serverSnapshot }
   })
@@ -1133,8 +1073,7 @@ function registerIpcHandlers() {
 
   ipcMain.handle(IpcChannels.SERVER_REGENERATE_TOKEN, async () => {
     const config = await ipcAdapter.serverTokenRotate()
-    // embedded：重启监听；process：后端已重启公开端点
-    if (!serverHost) await startLocalServer()
+    // 公开端点由后端随令牌轮换重启（适配层内部完成）
     broadcastConfigChanged()
     return { config }
   })
@@ -1146,67 +1085,28 @@ app.whenReady().then(async () => {
   gitService = new GitService()
   deployService = new DeployService()
 
-  // 按 server.backend 选择适配器；embedded 与改造前行为一致
-  const bootServerConfig = await loadServerConfig(configStore.path)
-  const useProcess = bootServerConfig.backend === 'process'
-  const embeddedDeps = {
-    files: fileService,
-    git: gitService,
-    configStore,
-    serverConfig: () => loadServerConfig(configStore.path),
-    serverStatus: () => ({
-      listening: serverSnapshot.listening,
-      port: serverSnapshot.port,
-      bound: serverSnapshot.bound,
-      enabled: serverConfigCache.enabled,
-      bind: serverConfigCache.bind,
-      fingerprint: localServer?.fingerprint() ?? null,
-      connectionFile: localServer?.connectionFilePath() ?? null,
-      queue: deployQueue.snapshot(),
-      currentProject: projectContext.getCurrent(),
-      revision: nextStatusRevision()
-    }),
-    serverConfigSave: (patch: any) => saveServerConfig(configStore.path, patch),
-    saveProjectViewState: async (project: string, patch: any) => {
-      await configStore.saveProjectViewState(project, patch)
-    },
-    serverTokenRotate: () => rotateToken(configStore.path),
-    serverExport: async () => {
-      const cfg = await loadServerConfig(configStore.path)
-      return {
-        port: serverSnapshot.port,
-        token: cfg.token,
-        bind: serverConfigCache.bind,
-        protocolVersion: PROTOCOL_VERSION,
-        fingerprint: localServer?.fingerprint() ?? null
-      }
-    },
-    deployService
-  }
-
+  // 单后端：桌面只通过管理端点执行（不再有进程内模式）
   let built: Awaited<ReturnType<typeof createAdapter>>
   try {
     built = await createAdapter({
-      backend: useProcess ? 'process' : 'embedded',
-      embedded: embeddedDeps,
-      host: useProcess
-        ? {
-            entry: app.isPackaged
-              ? join(app.getAppPath(), 'dist-server/index.js')
-              // 开发模式：__dirname 是 dist-electron/，项目根只需一级 ..
-              : join(__dirname, '../dist-server/index.js'),
-            configPath: configStore.path,
-            appVersion: app.getVersion(),
-            dataDir: dirname(configStore.path)
-          }
-        : undefined
+      backend: 'process',
+      host: {
+        entry: app.isPackaged
+          ? join(app.getAppPath(), 'dist-server/index.js')
+          // 开发模式：__dirname 是 dist-electron/，项目根只需一级 ..
+          : join(__dirname, '../dist-server/index.js'),
+        configPath: configStore.path,
+        appVersion: app.getVersion(),
+        dataDir: dirname(configStore.path)
+      }
     })
   } catch (error) {
-    // 后端起不来不能让整个应用不可用：明确记录并回退到进程内模式（失败可见，不静默）
+    // 后端是唯一执行体：起不来就没有可用应用。明确提示后退出，不回退 embedded
     const message = error instanceof Error ? error.message : String(error)
-    writeFatalLog('backend', `后端启动失败，回退到进程内模式：${message}`)
-    serverSnapshot = { ...serverSnapshot, error: `后端启动失败，已回退到进程内模式：${message}` }
-    built = { adapter: createEmbeddedAdapter(embeddedDeps), host: null }
+    writeFatalLog('backend', `后端启动失败：${message}`)
+    dialog.showErrorBox('后端启动失败', message)
+    app.exit(1)
+    throw error
   }
   ipcAdapter = built.adapter
   serverHost = built.host
@@ -1238,69 +1138,6 @@ app.whenReady().then(async () => {
   const savedTheme = (await configStore.load()).theme || 'auto'
   applyNativeTheme(savedTheme)
 
-  // 服务端处理器：桌面界面、CLI、MCP 共用同一份执行逻辑（INV-2）
-  serverHandlers = createServerHandlers(
-    {
-      loadTargets: async () => (await configStore.load()).deploymentTargets,
-      testConnection: (target) => deployService.testConnection(target),
-      // 项目解析 + 作用域（D-25）：本机回环不限；局域网只允许"已打开项目 + 允许的项目根"
-      resolveProject: (input) =>
-        projectContext.resolve(input, {
-          enforce: serverConfigCache.bind === 'lan',
-          allowedRoots: serverConfigCache.allowedRoots,
-          openedProjects: projectPaths()
-        }),
-      // 仅展示用：最近聚焦的项目根
-      projectContext: { currentProject: () => projectContext.getCurrent() },
-      // 桌面直连会话（不进队列）：状态接口与状态栏据此显示"上传中"
-      activeSessions: () =>
-      deployService.activeSessions().map((session) => ({
-        owner: session.owner,
-        target: session.target,
-        ...(session.windowId === undefined ? {} : { windowId: session.windowId })
-      })),
-      projectScope: () => ({ enforce: serverConfigCache.bind === 'lan', allowedRoots: serverConfigCache.allowedRoots }),
-      // 项目发现（策略 D′ 下调用方必须能知道桌面开着哪些项目）
-      listProjects: async () =>
-        windowEntries()
-          .filter((entry) => !!entry.projectPath)
-          .map((entry) => ({
-            path: entry.projectPath as string,
-            name: projectNameOf(entry.projectPath as string),
-            windowId: entry.id,
-            focused: entry.id === focusedWindowId
-          })),
-      selection: {
-        isGitRepo: (dir) => gitService.isGitRepo(dir),
-        listChangedFiles: async (dir) => (await gitService.getStatusView(dir)).changes.map((c) => c.relativePath),
-        listCommitFiles: async (dir, ref) => (await gitService.getCommitFiles(dir, ref)).map((f) => f.path),
-        // 上传遍历：包含 dist 等构建产物（浏览用的 collectAllFiles 会跳过它们）
-        listFilesInDir: (dir, maxFiles) => fileService.collectFilesForUpload(dir, maxFiles),
-        exists: async (abs) => {
-          try {
-            await fsPromises.stat(abs)
-            return true
-          } catch {
-            return false
-          }
-        }
-      },
-      buildUploadTasks: (files, projectRoot, target) => deployService.buildUploadTasks(files, projectRoot, target),
-      git: {
-        isGitRepo: (dir) => gitService.isGitRepo(dir),
-        getStatusView: (dir) => gitService.getStatusView(dir),
-        getLogView: (dir, options) => gitService.getLogView(dir, options),
-        getBranches: (dir) => gitService.getBranches(dir)
-      },
-      queue: deployQueue,
-      getVersion: () => app.getVersion(),
-      // 队列任务标 owner='queue'：桌面「取消」不会中止这里的上传（INV-6）
-      // 把队列的取消信号传下去：看门狗超时时真正中止传输，否则串行链一直被占着
-      deploy: (tasks, target, onProgress, jobCtx) =>
-        deployService.deploy(tasks, target, onProgress, 'queue', { signal: jobCtx?.signal })
-    },
-    () => ({ listening: serverSnapshot.listening, port: serverSnapshot.port, bound: serverSnapshot.bound })
-  )
 
   disableNativeMenu()
   registerIpcHandlers()
@@ -1308,8 +1145,7 @@ app.whenReady().then(async () => {
   showMainWindow()
   createTrayIfPossible()
   openStartupProjectIfAny()
-  // process 模式由后端管理监听；embedded 才由主进程监听（且尊重 enabled）
-  if (!serverHost) await startLocalServer()
+  // 监听完全由后端管理（主进程不再建/拆 listener）
 
   app.on('activate', () => {
     // macOS：点 Dock 图标时确保有窗口（优先最近聚焦，无则主窗口）
@@ -1374,7 +1210,7 @@ app.on('before-quit', (event) => {
   const desktopSessions = deployService.activeSessions().filter((session) => session.owner === 'desktop')
   const busy = snapshot.state !== 'idle' || snapshot.pendingCount > 0 || desktopSessions.length > 0
   // process 模式即使空闲也要通知后端优雅退出（否则只能靠父进程探测）
-  if (!busy && !localServer && !serverHost) return
+  if (!busy && !serverHost) return
   event.preventDefault()
   shutdownInProgress = true
   void (async () => {
@@ -1447,8 +1283,7 @@ app.on('before-quit', (event) => {
         }
       }
     }
-    // 走启停串行链：避免与并发的启动/重配竞争（它们会拆/建监听器）
-    await stopLocalServer()
+    // 后端已在两阶段退出中停掉 listener（含删 server.json）
     app.quit()
   })()
 })
