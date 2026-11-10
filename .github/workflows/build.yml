@@ -66,6 +66,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # ui-audit 会启动真实 Electron，而单后端架构下必须存在 dist-server/index.js，
+      # 否则主进程启动即失败（R6）。`npm run build` 不含后端产物，必须单独构建。
+      - name: Build backend bundle
+        run: npm run build:server
+
+      - name: Verify backend bundle exists
+        shell: bash
+        run: test -f dist-server/index.js && echo "dist-server/index.js OK"
+
       - name: Build then audit UI (light + dark)
         run: |
           npm run build

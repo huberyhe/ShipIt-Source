@@ -14,7 +14,15 @@ import { join } from 'path'
 
 const ROOT = process.cwd()
 const BUNDLE = join(ROOT, 'dist-server', 'index.js')
-const SERVER_SRC = join(ROOT, 'src', 'server')
+/**
+ * 后端 bundle 的真实依赖图（R8）：入口在 src/server，但它会 import main/services 与 shared，
+ * 只盯 src/server 会漏掉“改了服务层/契约却仍跑旧 bundle”的情况。
+ */
+const SOURCE_DIRS = [
+  join(ROOT, 'src', 'server'),
+  join(ROOT, 'src', 'main', 'services'),
+  join(ROOT, 'src', 'shared')
+]
 
 /** 递归取目录内 .ts 文件的最新 mtime；目录不存在时返回 0 */
 function newestSourceMtime (dir: string): number {
@@ -30,7 +38,7 @@ function newestSourceMtime (dir: string): number {
 
 export default function setup (): void {
   const bundleMtime = existsSync(BUNDLE) ? statSync(BUNDLE).mtimeMs : 0
-  const stale = bundleMtime === 0 || newestSourceMtime(SERVER_SRC) > bundleMtime
+  const stale = bundleMtime === 0 || SOURCE_DIRS.some((dir) => newestSourceMtime(dir) > bundleMtime)
   if (!stale) return
 
   process.stderr.write('[vitest] dist-server 缺失或过期，先构建（进程级用例依赖它）\n')

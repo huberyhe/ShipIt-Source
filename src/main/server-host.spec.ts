@@ -104,6 +104,19 @@ describe('main/server-host', () => {
     expect(events[events.length - 1].current).toBe(events[events.length - 1].total)
   })
 
+  it('主动停止后不再自动重启（R1）', async () => {
+    const host = setup()
+    await host.start()
+    const firstPid = host.child!.pid
+
+    // prepareStop 属主动停止：后端退出是预期，不能被当成崩溃再 spawn 一个
+    await host.prepareStop(1000)
+    await new Promise((resolve) => setTimeout(resolve, 1500))
+
+    expect(host.child!.pid).toBe(firstPid)
+    expect(host.child!.exitCode).not.toBeNull()
+  })
+
   it('revision 转换：旧实例事件丢弃，新实例从当前计数继续单调', () => {
     const bridge = createRevisionBridge()
     bridge.setInstance('i1')

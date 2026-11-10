@@ -188,14 +188,21 @@ export function buildAdminHandlers (rt: Runtime, events: EventHub): Record<strin
     },
 
     testConnDraft: async (ctx) => {
-      const { target } = body(ctx)
+      const { target, secrets, cloneFrom } = body(ctx)
       // 桌面传的是 target.id；兼容显式 targetId（P1-5）
       const targetId = body(ctx).targetId ?? target?.id
       // 草稿测试已存目标：表单留空的密码沿用已存值（F1 / A5）；新目标直接使用草稿值（A6）
       const saved = targetId
         ? (await rt.configStore.load()).deploymentTargets.find((item) => item.id === targetId)
         : undefined
-      const resolved = mergeDraftTarget(saved, target)
+      let resolved = mergeDraftTarget(saved, target)
+      // 草稿里的 SecretOp / 复制来源必须一并生效（R7）：否则“清除密码/从其他目标复制”
+      // 在测试时仍用旧凭据，测出来的结果与保存后的实际行为不一致。
+      if (secrets) resolved = applySecrets(resolved, secrets)
+      if (cloneFrom) {
+        const source = (await rt.configStore.load()).deploymentTargets.find((item) => item.id === cloneFrom)
+        if (source) resolved = cloneSecrets(source, resolved)
+      }
       return ok(await rt.deployService.testConnection(resolved))
     },
 

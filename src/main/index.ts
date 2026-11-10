@@ -1109,6 +1109,8 @@ app.whenReady().then(async () => {
         void serverHost!.post(path, body)
       }
     })
+    // 后端重启后 Runtime 的项目列表为空：重传一次已开窗口（R2）
+    serverHost.on('restarted', () => statusMirror?.resync())
     serverHost.on('queue.snapshot', (data) => {
       statusMirror!.onSnapshot(data)
       broadcastServerStatus()
@@ -1287,8 +1289,17 @@ app.on('before-quit', (event) => {
           })
           keepWaiting = choice.response === 0
         }
-        if (keepWaiting) await serverHost.finalizeStop(SHUTDOWN_EXTRA_WAIT_MS)
-        else await serverHost.forceStop()
+        if (keepWaiting) {
+          // 再等一轮仍拿不到 drained 就必须强制（R4）：否则后端不退出，main 只能盲等 32s
+          const fin = await serverHost.finalizeStop(SHUTDOWN_EXTRA_WAIT_MS)
+          const finDrained =
+            fin.ok &&
+            fin.envelope.ok &&
+            (fin.envelope.data as { drained?: boolean } | null)?.drained === true
+          if (!finDrained) await serverHost.forceStop()
+        } else {
+          await serverHost.forceStop()
+        }
       }
 
       // 等后端退出（最多 deadline + 2s），避免主进程先走把子进程硬切掉

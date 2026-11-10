@@ -12,6 +12,8 @@ import { createHttpClient, type ClientResult, type HttpClient, type Query } from
 export interface ServerChild {
   stdout: NodeJS.ReadableStream | null
   stderr: NodeJS.ReadableStream | null
+  /** 进程号：utilityProcess 与 child_process 都有，用于诊断与测试断言 */
+  readonly pid?: number
   kill(): void
   on(event: 'exit', listener: (code: number | null) => void): void
   readonly exitCode: number | null
@@ -132,6 +134,8 @@ export function createServerHost (options: HostOptions): ServerHost {
   let sseRequest: ReturnType<typeof https.get> | null = null
   let sseTimer: NodeJS.Timeout | null = null
   let stopped = false
+  /** 已进入主动停止流程：后端退出属预期，不得当崩溃重启（R1） */
+  let stopping = false
   let restartAttempts = 0
   const handlers = new Map<string, Array<(data: unknown) => void>>()
   const bridge = createRevisionBridge()
@@ -208,7 +212,15 @@ export function createServerHost (options: HostOptions): ServerHost {
               } else {
                 const instanceId = payload?.data?.instanceId ?? payload?.instanceId ?? bridge.snapshot().instanceId
                 const translated = bridge.translate(instanceId, payloadRevision)
-                if (translated.accepted) emit(event, body)
+                if (translated.accepted) {
+                  // 必须把桥的**对外序号**写回事件体（R3）：否则下游收到的是新实例从 1 开始的
+                  // 原序号，而它已经见过旧实例的 100+，会按「旧快照」拒收 → 重启后状态永久卡住。
+                  const withRevision =
+                    body && typeof body === 'object' && typeof (body as { revision?: unknown }).revision === 'number'
+                      ? { ...(body as Record<string, unknown>), revision: translated.revision }
+                      : body
+                  emit(event, withRevision)
+                }
               }
             } catch {
               // 忽略坏帧
@@ -238,7 +250,9 @@ export function createServerHost (options: HostOptions): ServerHost {
       child = current
       // 崩溃监督（P1-11）：清理旧 SSE → 重启一次；再退则上报 fatal，避免无限循环
       current.on('exit', () => {
-        if (stopped) return
+        // 主动停止（prepare/final）后的退出是预期行为，不能当成崩溃重启（R1）：
+        // 否则关应用时会 500ms 后再 spawn 一个后端，靠 --parent-pid 6 秒后才自杀。
+        if (stopped || stopping) return
         cleanupSse()
         if (restartAttempts >= 1) {
           emit('fatal', { message: '后端连续退出，已放弃自动重启' })
@@ -263,6 +277,9 @@ export function createServerHost (options: HostOptions): ServerHost {
         client: 'desktop'
       })
       connectSse()
+      // 通知宿主“新实例已就绪”（R2）：崩溃重启后 Runtime 的项目列表是空的，
+      // 需要 main 重传已开窗口，否则 /projects 与 LAN 授权会一直失效。
+      emit('restarted', { instanceId: ready.instanceId })
       return ready
     },
 
@@ -287,11 +304,15 @@ export function createServerHost (options: HostOptions): ServerHost {
     },
 
     prepareStop (deadlineMs = 5000) {
+      stopping = true
       return this.post('/shutdown', { phase: 'prepare', deadlineMs })
     },
 
     finalizeStop (deadlineMs = 30000) {
-      return this.post('/shutdown', { phase: 'final', deadlineMs })
+      stopping = true
+      // HTTP 预算必须宽于后端的 deadline：两者相等时请求会先超时，
+      // 拿不到 drained 结果，调用方只能猜（R4）。
+      return this.post('/shutdown', { phase: 'final', deadlineMs }, deadlineMs + 5_000)
     },
 
     forceStop () {

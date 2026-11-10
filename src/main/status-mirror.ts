@@ -63,6 +63,9 @@ export function createStatusMirror (deps: { post: (path: string, body: unknown) 
       snapshot = next
     },
 
+    /** 把当前窗口列表重推给后端（R2）：后端重启后 Runtime 是新的，opened 为空，
+     *  不重推会让 /projects 与 LAN 已开项目授权一直失效到下一次窗口事件。 */
+    resync: () => push(),
     snapshot: () => snapshot,
     projects: () => ({ list: opened, current })
   }

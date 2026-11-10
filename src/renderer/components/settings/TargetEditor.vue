@@ -206,6 +206,27 @@ function startEdit(target: any) {
       ? target.postUpload.value
       : (stash?.kind === 'command' ? stash.value : '')
   }
+  // 草稿条目再次编辑：恢复上次的 SecretOp 与复制来源（R5）。
+  // 否则 startEdit 的默认重置（keep / null / 空密码）会在下一次暂存时
+  // 把用户刚设置的密码或复制来源静默抹掉。
+  const draftSecrets = (target as { secrets?: { password?: { op?: string; value?: string }; passphrase?: { op?: string; value?: string } } }).secrets
+  if (draftSecrets) {
+    const pw = draftSecrets.password
+    if (pw?.op === 'set') {
+      passwordOp.value = 'set'
+      editingForm.value.password = pw.value ?? ''
+    } else if (pw?.op === 'clear') {
+      passwordOp.value = 'clear'
+    }
+    const pp = draftSecrets.passphrase
+    if (pp?.op === 'set') {
+      passphraseOp.value = 'set'
+      editingForm.value.passphrase = pp.value ?? ''
+    } else if (pp?.op === 'clear') {
+      passphraseOp.value = 'clear'
+    }
+    if ((target as { cloneFrom?: string }).cloneFrom) copySourceId.value = (target as { cloneFrom?: string }).cloneFrom!
+  }
   editingMappings.value = JSON.parse(JSON.stringify(target.mappings || []))
   resetTempMapping()
   baseline.value = currentSnapshot()
@@ -303,13 +324,7 @@ async function saveTarget(): Promise<boolean> {
   }))
 
   // F1：把“保留/设置/清除”的意图与复制来源一并带到草稿
-  const secrets: any = {}
-  if (passwordOp.value === 'set' && editingForm.value.password) secrets.password = { op: 'set', value: editingForm.value.password }
-  else if (passwordOp.value === 'clear') secrets.password = { op: 'clear' }
-  if (passphraseOp.value === 'set' && editingForm.value.passphrase) secrets.passphrase = { op: 'set', value: editingForm.value.passphrase }
-  else if (passphraseOp.value === 'clear') secrets.passphrase = { op: 'clear' }
-  const extra: any = { secrets }
-  if (copySourceId.value) extra.cloneFrom = copySourceId.value
+  const extra: any = buildSecretPatch()
 
   try {
     // 暂存到草稿（等待设置窗口统一保存），不落盘
@@ -492,11 +507,29 @@ async function testFormConnection() {
   }
 }
 
+/**
+ * 把表单上的「保留 / 设置 / 清除」意图与复制来源组装成草稿补丁。
+ *
+ * 保存（saveDraft）与测试连接（buildTestTarget）必须用**同一份**构造（R7）：
+ * 否则“清除密码”后测试仍用旧凭据、选了复制来源测试却不生效，
+ * 测出来的结果和保存后的实际行为不一致。
+ */
+function buildSecretPatch () {
+  const secrets: any = {}
+  if (passwordOp.value === 'set' && editingForm.value.password) secrets.password = { op: 'set', value: editingForm.value.password }
+  else if (passwordOp.value === 'clear') secrets.password = { op: 'clear' }
+  if (passphraseOp.value === 'set' && editingForm.value.passphrase) secrets.passphrase = { op: 'set', value: editingForm.value.passphrase }
+  else if (passphraseOp.value === 'clear') secrets.passphrase = { op: 'clear' }
+  return { secrets, ...(copySourceId.value ? { cloneFrom: copySourceId.value } : {}) }
+}
+
 // 从编辑表单构建临时目标对象用于测试
   function buildTestTarget() {
     return {
       // 已存目标：后端按 id 取已存秘密；新目标则用表单里的明文
       id: editingId.value ?? undefined,
+      // 与保存同源：SecretOp 与复制来源一并带上（R7）
+      ...buildSecretPatch(),
       name: editingForm.value.name || '临时',
     protocol: editingForm.value.protocol,
     host: editingForm.value.host,
