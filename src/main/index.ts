@@ -1089,7 +1089,6 @@ app.whenReady().then(async () => {
   let built: Awaited<ReturnType<typeof createAdapter>>
   try {
     built = await createAdapter({
-      backend: 'process',
       host: {
         entry: app.isPackaged
           ? join(app.getAppPath(), 'dist-server/index.js')

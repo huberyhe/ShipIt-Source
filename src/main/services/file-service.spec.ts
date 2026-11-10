@@ -83,9 +83,12 @@ describe('file:collect-files 通道只用上传收集器（静态守卫）', () 
     // 经适配层后 handler 调 ipcAdapter.filesCollect；仍不得误用浏览用收集器
     expect(body).toContain('ipcAdapter.filesCollect')
     expect(body).not.toContain('collectAllFiles')
-    // 上传收集语义下沉到适配层的 embedded 实现：那里必须仍是 collectFilesForUpload
+    // 上传收集语义现在在后端路由里（桌面经 /files/collect 转发）
     const adapterSource = readFileSync(join(__dirname, '../ipc-adapter.ts'), 'utf-8')
-    expect(adapterSource).toContain('collectFilesForUpload')
+    expect(adapterSource).toContain('/files/collect')
     expect(adapterSource).not.toContain('collectAllFiles')
+    const routeSource = readFileSync(join(__dirname, '../../server/route-handlers.ts'), 'utf-8')
+    expect(routeSource).toContain('collectFilesForUpload')
+    expect(routeSource).not.toContain('collectAllFiles')
   })
 })

@@ -1,33 +1,20 @@
 /**
- * 按 `server.backend` 创建适配器：
- * - embedded：进程内服务
- * - process：启动独立后端并走管理端点
+ * 单后端装配：启动独立后端进程并返回管理端点客户端。
  *
- * 这是 index.ts 接线的唯一入口，保证两种形态使用同一份接口。
+ * 进程内模式（embedded）已移除；桌面所有服务调用都经这里。
  */
-import { createEmbeddedAdapter, createRemoteAdapter, type EmbeddedDeps, type IpcAdapter } from './ipc-adapter'
+import { createRemoteAdapter, type IpcAdapter } from './ipc-adapter'
 import { createServerHost, type HostOptions, type ServerHost } from './server-host'
 
-export async function createAdapter (options: {
-  backend: 'embedded' | 'process'
-  embedded?: EmbeddedDeps
-  host?: HostOptions
-}): Promise<{ adapter: IpcAdapter; host: ServerHost | null }> {
-  if (options.backend === 'process') {
-    if (!options.host) throw new Error('process 模式需要 host 配置')
-    const host = createServerHost(options.host)
-    await host.start()
-    return {
-      adapter: createRemoteAdapter({
-        get: (path, query) => host.get(path, query),
-        // 透传逐请求超时（F3/P1-6）：否则直连上传仍是 30s
-        post: (path, body, timeoutMs) => host.post(path, body, timeoutMs),
-        on: (event, fn) => host.on(event, fn)
-      }),
-      host
-    }
+export async function createAdapter (options: { host: HostOptions }): Promise<{ adapter: IpcAdapter; host: ServerHost }> {
+  const host = createServerHost(options.host)
+  await host.start()
+  return {
+    adapter: createRemoteAdapter({
+      get: (path, query) => host.get(path, query),
+      post: (path, body, timeoutMs) => host.post(path, body, timeoutMs),
+      on: (event, fn) => host.on(event, fn)
+    }),
+    host
   }
-
-  if (!options.embedded) throw new Error('embedded 模式需要进程内依赖')
-  return { adapter: createEmbeddedAdapter(options.embedded), host: null }
 }
