@@ -32,6 +32,20 @@ import {
 import { PROTOCOL_VERSION } from '../shared/cli-contract'
 
 /**
+ * 可选的「关硬件加速」开关（`SHIPIT_NO_GPU=1`）。
+ *
+ * 用途：远程桌面 / 虚拟机 / 低配机器。这些环境下软件光栅化反而不吃亏，
+ * 而 Chromium 的 GPU 进程会固定占一份私有内存（实测约 60MB）与整份工作集。
+ *
+ * 必须在 app ready 之前调用，否则 Chromium 已完成 GPU 初始化，开关无效。
+ * 默认行为不变（不设该变量时仍用硬件加速）。
+ */
+function applyGpuSwitch (): void {
+  if (process.env.SHIPIT_NO_GPU !== '1') return
+  app.disableHardwareAcceleration()
+}
+
+/**
  * 便携（绿色）模式：数据目录跟随程序目录，不写 %APPDATA%。
  *
  * - electron-builder 的 `portable` target 会注入 `PORTABLE_EXECUTABLE_DIR`
@@ -53,6 +67,8 @@ function applyPortableDataDir (): void {
   }
 }
 applyPortableDataDir()
+// 同样必须在 app ready 之前：Chromium 已完成 GPU 初始化后再调无效
+applyGpuSwitch()
 import { createAdapter } from './adapter-factory'
 import type { IpcAdapter } from './ipc-adapter'
 import { createStatusMirror } from './status-mirror'
