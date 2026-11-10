@@ -307,6 +307,9 @@ function createAppWindow(opts: {
       preload: join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      // 关闭拼写检查：Chromium 会为每个窗口加载系统词典（实测数 MB～十几 MB），
+      // 而本应用的输入框全是路径 / 目标名 / 令牌，拼写检查没有价值。
+      spellcheck: false,
       additionalArguments: [
         ...windowArguments(opts.role, projectPath),
         ...(opts.section ? [`${ARG_SECTION}${opts.section}`] : [])
