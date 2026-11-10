@@ -88,7 +88,8 @@ export function createRuntime (options: RuntimeOptions) {
   }
 
   function snapshotState () {
-    return { admin: adminState, public: publicState, published }
+    // 带 revision：宿主侧按 revision 丢弃乱序/旧实例的快照（与 statusSnapshot 共用计数）
+    return { admin: adminState, public: publicState, published, instanceId, revision: ++revision }
   }
 
   const queue = createQueue({

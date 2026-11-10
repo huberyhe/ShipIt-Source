@@ -64,6 +64,46 @@ describe('main/server-host', () => {
     expect(result.ok).toBe(true)
   })
 
+  it('直连上传的 deploy.progress 实时到达（增量事件不参与 revision 门控）', async () => {
+    const host = setup()
+    await host.start()
+
+    // 本地目录目标：无需网络，上传可控且快速
+    const projectDir = mkdtempSync(join(tmpdir(), 'shipit-proj-'))
+    const dstDir = mkdtempSync(join(tmpdir(), 'shipit-dst-'))
+    dirs.push(projectDir, dstDir)
+    writeFileSync(join(projectDir, 'a.txt'), 'hello')
+
+    const target = {
+      id: 't1',
+      name: '本地',
+      protocol: 'local',
+      host: dstDir,
+      port: 0,
+      username: 'local',
+      mappings: [{ id: 'm1', localPrefix: 'a.txt', remotePath: 'a.txt' }]
+    }
+    // /deploy/direct 按 name 解析目标，所以先写进配置
+    expect((await host.post('/targets/add', { target })).ok).toBe(true)
+
+    const plan = await host.post('/plan/preview', { files: ['a.txt'], projectRoot: projectDir, target })
+    expect(plan.ok).toBe(true)
+    if (!plan.ok || !plan.envelope.ok) throw new Error('plan 应成功')
+    const tasks = (plan.envelope.data as { tasks: unknown[] }).tasks
+    expect(tasks.length).toBeGreaterThan(0)
+
+    const events: Array<{ windowId?: number; current: number; total: number; file: string }> = []
+    const off = host.on('deploy.progress', (data) => events.push(data as (typeof events)[number]))
+    const res = await host.post('/deploy/direct', { windowId: 12345, tasks, targetName: '本地' }, 60_000)
+    off()
+
+    expect(res.ok).toBe(true)
+    // 修复前：deploy.progress 没有 revision，被当成“旧快照”全部丢弃 → 进度条不动
+    expect(events.length).toBeGreaterThan(0)
+    expect(events[0].windowId).toBe(12345)
+    expect(events[events.length - 1].current).toBe(events[events.length - 1].total)
+  })
+
   it('revision 转换：旧实例事件丢弃，新实例从当前计数继续单调', () => {
     const bridge = createRevisionBridge()
     bridge.setInstance('i1')

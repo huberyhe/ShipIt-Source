@@ -195,12 +195,21 @@ export function createServerHost (options: HostOptions): ServerHost {
           const eventLine = /^event:\s*(.+)$/m.exec(frame)
           const dataLine = /^data:\s*(.+)$/m.exec(frame)
           if (eventLine && dataLine) {
+            const event = eventLine[1].trim()
             try {
               const payload = JSON.parse(dataLine[1])
-              const instanceId = payload?.data?.instanceId ?? payload?.instanceId ?? bridge.snapshot().instanceId
-              const revision = payload?.data?.revision ?? payload?.revision ?? bridge.snapshot().revision
-              const translated = instanceId ? bridge.translate(instanceId, revision) : { accepted: true, revision: bridge.snapshot().revision }
-              if (translated.accepted) emit(eventLine[1].trim(), payload.data ?? payload)
+              const body = payload?.data ?? payload
+              // revision 门控只用于**快照**事件（带 revision）：防旧实例/乱序覆盖新状态。
+              // 增量事件（deploy.progress）没有 revision，若也走门控会被当成旧快照全部丢弃
+              // —— 这正是“上传进度条不实时”的成因。
+              const payloadRevision = payload?.data?.revision ?? payload?.revision
+              if (typeof payloadRevision !== 'number') {
+                emit(event, body)
+              } else {
+                const instanceId = payload?.data?.instanceId ?? payload?.instanceId ?? bridge.snapshot().instanceId
+                const translated = bridge.translate(instanceId, payloadRevision)
+                if (translated.accepted) emit(event, body)
+              }
             } catch {
               // 忽略坏帧
             }
