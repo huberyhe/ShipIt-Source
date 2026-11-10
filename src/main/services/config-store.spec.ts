@@ -72,8 +72,8 @@ describe('config-store', () => {
   it('新增最近项目不会抹掉服务端配置块与既有目标（P2 回归）', async () => {
     seed({ server: SERVER, deploymentTargets: [target()] })
 
-    // 修复前：该方法不 load()，用的是构造时的空快照 → server 与 deploymentTargets 一起被抹掉
-    await store.addRecentProject('D:/work/app')
+    // 修复前：写最近项目用的是构造时的空快照 → server 与 deploymentTargets 一起被抹掉
+    await store.patchOwned({ recentProjects: ['D:/work/app'] })
 
     const saved = onDisk()
     expect(saved.server).toEqual(SERVER)
@@ -112,7 +112,7 @@ describe('config-store', () => {
     expect(cfg.recentProjects).toEqual([])
     expect(cfg.deploymentTargets).toEqual([])
 
-    await store.addRecentProject('D:/y')
+    await store.patchOwned({ recentProjects: ['D:/y'] })
     expect(onDisk().server).toEqual(SERVER)
   })
 

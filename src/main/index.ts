@@ -1120,6 +1120,7 @@ app.whenReady().then(async () => {
   }
   ipcAdapter = built.adapter
   serverHost = built.host
+  let backendFatalNotified = false
   if (serverHost) {
     statusMirror = createStatusMirror({
       post: (path, body) => {
@@ -1141,6 +1142,24 @@ app.whenReady().then(async () => {
       }
       serverConfigCache = { ...serverConfigCache, enabled: !!data?.published }
       broadcastServerStatus()
+    })
+    // 后端放弃自动重启时必须让用户知道（评审 B-2）：否则所有操作只会返回
+    // BACKEND_UNAVAILABLE，真正原因只躺在 error.log 里没人看。只弹一次，避免重启循环时刷屏。
+    serverHost.on('fatal', (payload: unknown) => {
+      const detail =
+        payload && typeof payload === 'object' && 'message' in payload
+          ? String((payload as { message?: unknown }).message)
+          : String(payload)
+      writeFatalLog('backend', detail)
+      if (backendFatalNotified) return
+      backendFatalNotified = true
+      void dialog.showMessageBox({
+        type: 'error',
+        title: 'ShipIt 后端已停止',
+        message: '后端进程已停止，且不再自动重启',
+        detail: `${detail}\n\n上传、配置与 Git 查询都不可用。请重启应用；完整日志见 error.log。`,
+        buttons: ['知道了']
+      })
     })
   }
 

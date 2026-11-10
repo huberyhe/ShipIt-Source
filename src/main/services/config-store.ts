@@ -243,17 +243,7 @@ export class ConfigStore {
     })
   }
 
-  /** 从最近列表移除某条（列表要能被清理：误加的目录/已删除的项目不该永久占位） */
-  async removeRecentProject(projectPath: string): Promise<void> {
-    await this.mutateOwned((config) => {
-      config.recentProjects = (config.recentProjects ?? []).filter((p) => p !== projectPath)
-    })
-  }
-
-  async addRecentProject(projectPath: string): Promise<void> {
-    await this.mutateOwned((config) => {
-      // 已存在则移到最前（保证“最近”语义），并去重、限制总数
-      config.recentProjects = [projectPath, ...(config.recentProjects ?? []).filter((p) => p !== projectPath)].slice(0, 10)
-    })
-  }
+  // 注：最近项目的增删不再由本类提供方法——单后端化后，写入统一经管理端点
+  // 的 configSave → patchOwned（主进程不再直接写配置，见 INV-CONFIG-WRITER）。
+  // 增删逻辑（去重、置顶、上限 10 条）在调用方一处实现，避免两份口径。
 }

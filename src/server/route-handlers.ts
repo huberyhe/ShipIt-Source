@@ -47,6 +47,12 @@ export function buildAdminHandlers (rt: Runtime, events: EventHub): Record<strin
       const { target, secrets } = body(ctx) as { target: DeployTarget; secrets?: TargetSecrets }
       // 新增目标同样剥离明文秘密字段，只按 SecretOp 写入
       const { password: _pw, passphrase: _pp, ...safeTarget } = (target ?? {}) as any
+      // 名称唯一性必须服务端把关（B-4）：部署按 name 解析目标，重名会发错服务器。
+      // 渲染层虽然校验，但那是 UI 约束，不能当作数据不变量。
+      const name = String(safeTarget?.name ?? '').trim()
+      if (!name) return errEnvelope('USAGE', '目标名不能为空')
+      const all = (await rt.configStore.load()).deploymentTargets
+      if (all.some((t) => t.name === name)) return errEnvelope('USAGE', `目标名已存在：${name}`)
       await rt.configStore.addTarget(applySecrets(safeTarget, secrets))
       notifyConfig()
       return ok(null)
@@ -54,11 +60,18 @@ export function buildAdminHandlers (rt: Runtime, events: EventHub): Record<strin
 
     targetUpdate: async (ctx) => {
       const { id, updates, secrets } = body(ctx) as { id: string; updates: Partial<DeployTarget>; secrets?: TargetSecrets }
-      const current = (await rt.configStore.load()).deploymentTargets.find((t) => t.id === id)
+      const all = (await rt.configStore.load()).deploymentTargets
+      const current = all.find((t) => t.id === id)
       if (!current) return errEnvelope('NO_TARGET', `目标不存在：${id}`)
       // 普通字段与秘密分开：updates 里的空密码不能覆盖已存值（P1-2）
       const { password: _pw, passphrase: _pp, ...safeUpdates } = (updates ?? {}) as any
       const merged = applySecrets({ ...current, ...safeUpdates }, secrets)
+      // 改名同样要查重（排除自己）：否则两个目标同名后，部署按 name 解析会发错服务器
+      const nextName = String(merged.name ?? '').trim()
+      if (!nextName) return errEnvelope('USAGE', '目标名不能为空')
+      if (all.some((t) => t.id !== id && t.name === nextName)) {
+        return errEnvelope('USAGE', `目标名已存在：${nextName}`)
+      }
       await rt.configStore.updateTarget(id, merged)
       notifyConfig()
       return ok(null)
@@ -78,8 +91,12 @@ export function buildAdminHandlers (rt: Runtime, events: EventHub): Record<strin
 
     targetClone: async (ctx) => {
       const { sourceId, target } = body(ctx) as { sourceId: string; target: DeployTarget }
-      const source = (await rt.configStore.load()).deploymentTargets.find((t) => t.id === sourceId)
+      const all = (await rt.configStore.load()).deploymentTargets
+      const source = all.find((t) => t.id === sourceId)
       if (!source) return errEnvelope('NO_TARGET', `源目标不存在：${sourceId}`)
+      const name = String(target?.name ?? '').trim()
+      if (!name) return errEnvelope('USAGE', '目标名不能为空')
+      if (all.some((t) => t.name === name)) return errEnvelope('USAGE', `目标名已存在：${name}`)
       await rt.configStore.addTarget(cloneSecrets(source, target))
       notifyConfig()
       return ok(null)

@@ -5,8 +5,12 @@
  * - desktop：仅桌面宿主可用（管理端点：回环 + 宿主 token）
  * - ui：仅桌面 UI 交互，**不得**映射为任何 HTTP 路由（对话框、窗口、托盘、菜单）
  *
- * 本文件只声明边界；实际注册位置见 `src/server/routes.ts`。
- * 任何新增路由都必须先在这里归类，并由 `access-control.spec.ts` 守卫。
+ * 本文件是**静态守卫 + 文档**，不参与运行时校验：
+ * - 运行时的真实隔离由 `src/server/runtime.ts` 决定给哪个 listener 注册哪批路由（
+ *   公开端点根本注册不到管理路由，`runtime.spec` / `admin-routes.spec` 有断言）；
+ * - 这里的作用是让「新增路由必须归类」可被 `access-control.spec.ts` 检查，
+ *   并防止把 UI-only 能力做成 HTTP 接口。
+ * 若将来要在请求入口再加一层方法级鉴权，本文件就是白名单来源。
  */
 
 export type AccessLevel = 'public' | 'desktop' | 'ui'
@@ -33,6 +37,15 @@ export const DESKTOP_ONLY_PATH_PREFIXES = [
   '/deploy/cancel',
   '/projects/view',
   '/projects/recent',
+  // Git 明细：同前缀下还有公开的 /git/status、/git/log、/git/branches，
+  // 因此不能用 '/git/' 前缀，只能逐条列举（反向断言会盯住漏项）
+  '/git/check-repo',
+  '/git/authors',
+  '/git/diff',
+  '/git/commit-files',
+  '/git/status-full',
+  '/git/log-full',
+  '/git/branches-full',
   '/targets/',
   '/mappings/',
   '/plan/preview',

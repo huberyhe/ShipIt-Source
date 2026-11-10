@@ -47,6 +47,19 @@ describe('权限边界（公开 / 桌面 / UI-only）', () => {
     }
   })
 
+  it('每条管理路由都被桌面专属前缀覆盖（反向断言，防漏项）', () => {
+    // /projects 与方法相关：GET 属公开（列已打开项目窗口），POST 属桌面（新建/打开）。
+    // 路径前缀无法表达方法差异，这里显式例外；新增「同路径多方法」的路由时请同步维护这张表。
+    // 只看「真正新增的桌面专属路由」：ADMIN_ROUTES = PUBLIC_ROUTES + 桌面专属，
+    // 公开那部分本来就不该被桌面前缀覆盖。
+    const METHOD_EXCEPTIONS = new Set(['POST /projects'])
+    const publicKeys = new Set(keysOf(PUBLIC_ROUTES))
+    const uncovered = ADMIN_ROUTES.filter((route) => !publicKeys.has(`${route.method} ${route.path}`)).filter(
+      (route) => !isDesktopOnlyPath(route.path) && !METHOD_EXCEPTIONS.has(`${route.method} ${route.path}`)
+    )
+    expect(uncovered.map((route) => `${route.method} ${route.path}`)).toEqual([])
+  })
+
   it('桌面专属路由不与公开路由重叠（管理端点 = 公开 + 桌面专属）', () => {
     const publicKeys = new Set(keysOf(PUBLIC_ROUTES))
     const desktopOnly = ADMIN_ROUTES.filter((route) => isDesktopOnlyPath(route.path))
