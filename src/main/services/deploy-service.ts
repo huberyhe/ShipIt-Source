@@ -1,5 +1,50 @@
-import SftpClient from 'ssh2-sftp-client'
-import { Client } from 'basic-ftp'
+/**
+ * ssh2 / basic-ftp **惰性加载**。
+ *
+ * 这两个包只在「真正建立远端连接」时才需要（本地协议、plan、配置操作都不需要）。
+ * 静态 import 会让主进程与后端进程在启动时就加载整条依赖图（ssh2 尤其重），
+ * 实测每个进程多背 15–25MB 常驻内存。
+ *
+ * 这里用最小结构接口而不是包内的类型：
+ * - 避免依赖 CJS 包的 default 导出形状；
+ * - 字段与 `post-upload-script.ts` 期望的 `sftpClient` 形状保持一致。
+ */
+type SftpInstance = {
+  connect (options: unknown): Promise<unknown>
+  list (path: string): Promise<unknown>
+  mkdir (path: string, recursive?: boolean): Promise<unknown>
+  put (local: string, remote: string): Promise<unknown>
+  end (): Promise<unknown>
+  stat (remote: string): Promise<{ size?: number } | undefined>
+  chmod? (remote: string, mode: number): Promise<unknown>
+  client?: unknown
+}
+type SftpCtor = new (name?: string) => SftpInstance
+
+type FtpInstance = {
+  access (options: unknown): Promise<unknown>
+  list (path: string): Promise<unknown>
+  ensureDir (path: string): Promise<unknown>
+  uploadFrom (source: unknown, target: string): Promise<unknown>
+  close (): void
+}
+type FtpCtor = new () => FtpInstance
+
+let sftpCtorPromise: Promise<SftpCtor> | null = null
+let ftpCtorPromise: Promise<FtpCtor> | null = null
+
+async function loadSftpCtor (): Promise<SftpCtor> {
+  sftpCtorPromise ??= import('ssh2-sftp-client').then((mod) => {
+    const m = mod as unknown as { default?: SftpCtor } & SftpCtor
+    return m.default ?? m
+  })
+  return sftpCtorPromise
+}
+
+async function loadFtpCtor (): Promise<FtpCtor> {
+  ftpCtorPromise ??= import('basic-ftp').then((mod) => mod.Client as unknown as FtpCtor)
+  return ftpCtorPromise
+}
 import { promises as fsPromises, readFileSync, constants } from 'fs'
 import { join, relative, posix, dirname, isAbsolute, resolve } from 'path'
 import type {
@@ -114,7 +159,8 @@ export class DeployService {
       // 恰恰是"测试连接"最常见的失败）此前会漏掉 end()/close()，反复测试不可达目标会漏 socket。
       // `/test-connection` 是局域网可达路径，泄漏面被放大。
       if (target.protocol === 'sftp') {
-        const sftp = new SftpClient(`test-${Date.now()}`)
+        const Sftp = await loadSftpCtor()
+        const sftp = new Sftp(`test-${Date.now()}`)
         try {
           await sftp.connect(this.buildSftpOptions(target))
           await sftp.list(target.mappings[0]?.remotePath || '/')
@@ -123,7 +169,8 @@ export class DeployService {
           await sftp.end().catch(() => undefined)
         }
       } else {
-        const client = new Client()
+        const Ftp = await loadFtpCtor()
+        const client = new Ftp()
         await client.access(this.buildFtpOptions(target))
         try {
           await client.list(target.mappings[0]?.remotePath || '/')
@@ -286,18 +333,20 @@ export class DeployService {
       details: []
     }
 
-    let sftpClient: SftpClient | null = null
-    let ftpClient: Client | null = null
+    let sftpClient: SftpInstance | null = null
+    let ftpClient: FtpInstance | null = null
     const isLocal = target.protocol === 'local'
 
     try {
       if (isLocal) {
         // 本地/挂载目录：无需连接
       } else if (target.protocol === 'sftp') {
-        sftpClient = new SftpClient('deploy')
+        const Sftp = await loadSftpCtor()
+        sftpClient = new Sftp('deploy')
         await sftpClient.connect(this.buildSftpOptions(target))
       } else {
-        ftpClient = new Client()
+        const Ftp = await loadFtpCtor()
+        ftpClient = new Ftp()
         await ftpClient.access(this.buildFtpOptions(target))
       }
 
