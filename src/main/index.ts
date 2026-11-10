@@ -2,10 +2,7 @@ import { app, BrowserWindow, globalShortcut, ipcMain, dialog, Menu, nativeTheme,
 import { join, dirname } from 'path'
 import { networkInterfaces } from 'os'
 import { promises as fsPromises, existsSync, mkdirSync } from 'fs'
-import { GitService } from './services/git-service'
-import { DeployService } from './services/deploy-service'
 import { ConfigStore } from './services/config-store'
-import { FileService } from './services/file-service'
 import { IpcChannels } from '../shared/ipc-channels'
 import {
   connectionString,
@@ -15,7 +12,6 @@ import {
   type ExportedConnection
 } from './services/server-config'
 import { ProjectContext } from './services/project-context'
-import { createQueue } from './services/deploy-queue'
 import { createTray, trayMenuTemplate, shouldQuitOnWindowClose, type TrayActions, type TrayHandle } from './tray'
 import {
   PROJECT_WINDOW_LIMIT,
@@ -169,9 +165,8 @@ function syncCurrentProject(): void {
   trayHandle?.refresh()
 }
 let configStore: ConfigStore
-let fileService: FileService
-let gitService: GitService
-let deployService: DeployService
+// 注：主进程不再持有 Git / 文件 / 上传执行体（全部在后端进程）。
+// 之前这里 new 的三份实例既跑不了任务（单后端），又把 ssh2 / simple-git 静态加载进来（内存）。
 /** IPC 适配器：embedded=进程内服务；process=独立后端管理端点 */
 let ipcAdapter: IpcAdapter
 let serverHost: ServerHost | null = null
@@ -215,45 +210,16 @@ function broadcastServerStatus(): void {
     error: serverSnapshot.error,
     enabled: config.enabled,
     bind: config.bind,
-    // 单后端：队列真值只来自远端镜像
-    queue: remote?.queue ?? deployQueue.snapshot(),
+    // 单后端：队列真值只来自远端镜像（没有镜像时用空队列占位）
+    queue: remote?.queue ?? EMPTY_QUEUE,
     revision: nextStatusRevision()
   })
   // 托盘状态文本也含队列/项目数：不刷新的话右键菜单永远停在“上次构建时”的值
   trayHandle?.refresh()
 }
 
-const deployQueue = createQueue({
-  // 队列回调（含 webContents.send）抛错时留诊断：队列会吞掉它，这里负责不让它静默
-  onCallbackError: (where, error) => {
-    const message = error instanceof Error ? error.message : String(error)
-    process.stderr.write(`[shipit] 队列回调异常（${where}）：${message}\n`)
-  },
-  // 队列任务结束时把结果推给界面日志，标注来源（desktop / cli / mcp）与来源地址；
-  // 日志仅存在于内存，不写磁盘（CON-6）
-  onTaskChanged: () => {
-    broadcastServerStatus()
-  },
-  onTaskSettled: (record) => {
-    // 窗口可能已被销毁（退出流程）：broadcast 内部已跳过已销毁窗口
-    broadcast(IpcChannels.DEPLOY_LOG_ENTRY, {
-      taskId: record.taskId,
-      targetName: record.target,
-      timestamp: record.finishedAt ?? Date.now(),
-      totalFiles: record.result?.totalFiles ?? record.totalFiles,
-      succeeded: record.result?.succeeded ?? 0,
-      failed: record.result?.failed ?? 0,
-      skipped: record.result?.skipped ?? 0,
-      duration: record.result?.duration ?? 0,
-      details: record.result?.details ?? [],
-      cancelled: record.cancelled ?? false,
-      ...(record.result?.postUpload ? { postUpload: record.result.postUpload } : {}),
-      origin: record.origin,
-      projectRoot: record.projectRoot,
-      ...(record.remoteAddress ? { remoteAddress: record.remoteAddress } : {})
-    })
-  }
-})
+/** 队列快照的空值：单后端后主进程不再有队列，空闲时用它占位（队列真值来自 statusMirror） */
+const EMPTY_QUEUE = { state: 'idle' as const, runningTaskId: null, pendingCount: 0, tasks: [] as never[] }
 let trayHandle: TrayHandle | null = null
 /**
  * 设置窗口是否有未保存改动（由设置窗口上报）。
@@ -436,7 +402,7 @@ function createAppWindow(opts: {
     // 以**注册表里的当前绑定**为准：窗口可能中途从主窗口认领了项目，
     // 用创建时的 opts.projectPath 会释放错项目（或该释放的没释放）。
     const current = appWindows.get(id)
-    if (current?.projectPath) gitService.dispose(current.projectPath)
+    // Git 查询在后端进程，主进程不再持有 Git 缓存，无需 dispose
     appWindows.delete(id)
     if (focusedWindowId === id) focusedWindowId = null
     syncCurrentProject()
@@ -579,7 +545,7 @@ function serverStatusText(): string {
     (entry) => entry.role === 'project' && !entry.win.isDestroyed()
   )
   if (projects.length > 0) parts.push(`${projects.length} 个项目`)
-  parts.push(queueTextOf(deployQueue.snapshot()))
+  parts.push(queueTextOf(statusMirror?.snapshot()?.queue ?? EMPTY_QUEUE))
   return parts.join(' · ')
 }
 
@@ -1092,9 +1058,6 @@ function registerIpcHandlers() {
 
 app.whenReady().then(async () => {
   configStore = new ConfigStore()
-  fileService = new FileService()
-  gitService = new GitService()
-  deployService = new DeployService()
 
   // 单后端：桌面只通过管理端点执行（不再有进程内模式）
   let built: Awaited<ReturnType<typeof createAdapter>>
@@ -1142,6 +1105,47 @@ app.whenReady().then(async () => {
       }
       serverConfigCache = { ...serverConfigCache, enabled: !!data?.published }
       broadcastServerStatus()
+    })
+    // 队列任务结算：CLI / MCP 提交的上传结果要进桌面日志面板（此前只推给本地队列，
+    // 而本地队列永远不会再跑任务 → 这类日志曾整体丢失）。桌面直连上传不走队列，
+    // 其结果由 DEPLOY_UPLOAD 的响应单独广播，两边不会重复。
+    serverHost.on('task.settled', (payload: unknown) => {
+      const record = payload as {
+        taskId: string
+        target: string
+        finishedAt?: number
+        totalFiles?: number
+        origin?: string
+        projectRoot?: string
+        remoteAddress?: string
+        cancelled?: boolean
+        result?: {
+          totalFiles?: number
+          succeeded?: number
+          failed?: number
+          skipped?: number
+          duration?: number
+          details?: unknown[]
+          postUpload?: unknown
+        }
+      }
+      if (!record?.taskId) return
+      broadcast(IpcChannels.DEPLOY_LOG_ENTRY, {
+        taskId: record.taskId,
+        targetName: record.target,
+        timestamp: record.finishedAt ?? Date.now(),
+        totalFiles: record.result?.totalFiles ?? record.totalFiles,
+        succeeded: record.result?.succeeded ?? 0,
+        failed: record.result?.failed ?? 0,
+        skipped: record.result?.skipped ?? 0,
+        duration: record.result?.duration ?? 0,
+        details: record.result?.details ?? [],
+        cancelled: record.cancelled ?? false,
+        ...(record.result?.postUpload ? { postUpload: record.result.postUpload } : {}),
+        origin: record.origin ?? 'cli',
+        projectRoot: record.projectRoot,
+        ...(record.remoteAddress ? { remoteAddress: record.remoteAddress } : {})
+      })
     })
     // 后端放弃自动重启时必须让用户知道（评审 B-2）：否则所有操作只会返回
     // BACKEND_UNAVAILABLE，真正原因只躺在 error.log 里没人看。只弹一次，避免重启循环时刷屏。
@@ -1234,17 +1238,16 @@ app.on('will-quit', () => {
 app.on('before-quit', (event) => {
   isQuitting = true
   if (shutdownInProgress) return // 收尾完成后由我们自己触发的再次 quit：放行
-  const snapshot = deployQueue.snapshot()
-  // 桌面界面**直接**调用 deploy()（不进队列），只看队列会误判"空闲"→ 退出时静默截断桌面正在跑的上传
-  const desktopSessions = deployService.activeSessions().filter((session) => session.owner === 'desktop')
-  const busy = snapshot.state !== 'idle' || snapshot.pendingCount > 0 || desktopSessions.length > 0
-  // process 模式即使空闲也要通知后端优雅退出（否则只能靠父进程探测）
-  if (!busy && !serverHost) return
+  // 后端是唯一执行体：无论空闲与否都要走两阶段退出（否则只能靠父进程探测）
+  if (!serverHost) {
+    app.quit()
+    return
+  }
   event.preventDefault()
   shutdownInProgress = true
   void (async () => {
-    // process 模式：由后端执行 drain，保留现有“继续等待 / 立即退出”交互（F4）
-    if (serverHost) {
+    // 由后端执行 drain，保留现有“继续等待 / 立即退出”交互（F4）
+    {
       const prepare = await serverHost.prepareStop(SHUTDOWN_GRACE_MS)
       const drained =
         prepare.ok &&
@@ -1276,41 +1279,6 @@ app.on('before-quit', (event) => {
       ])
       app.quit()
       return
-    }
-
-    if (busy) {
-      // 队列与桌面会话各等一份宽限。两者共用同一条串行链，**并行等待**时时间才不会叠加
-      // （串行 await 时最坏是 2 × 5 秒，用户感觉“退出卡住”）
-      const [queueDrained, sessionsIdle] = await Promise.all([
-        deployQueue.drain(SHUTDOWN_GRACE_MS),
-        deployService.waitForIdle(SHUTDOWN_GRACE_MS)
-      ])
-      if (!queueDrained || !sessionsIdle) {
-        const pending = deployQueue.snapshot()
-        const alive = deployService.activeSessions()
-        process.stderr.write(
-          `[shipit] 退出时仍有未完成的上传：队列运行中 ${pending.runningTaskId ?? '-'}，排队 ${pending.pendingCount} 个，` +
-            `进行中会话 ${alive.length} 个（${alive.map((s) => `${s.owner}:${s.target}`).join('、') || '-'}）\n`
-        )
-        // 留痕不能只写 stderr：打包后的 GUI 进程没有控制台，用户看不到任何东西。
-        // 有窗口就明确问一次：立即中断退出，还是再等一轮。
-        const owner = BrowserWindow.getAllWindows().find((win) => !win.isDestroyed()) ?? null
-        if (owner) {
-          const choice = await dialog.showMessageBox(owner, {
-            type: 'warning',
-            message: '仍有上传未完成',
-            detail: `进行中的上传：${alive.map((s) => `${s.owner} → ${s.target}`).join('、') || '（队列任务）'}\n立即退出会中断上传，已传输的文件不会回滚。`,
-            buttons: ['继续等待 30 秒', '立即退出'],
-            defaultId: 0,
-            cancelId: 0
-          })
-          if (choice.response === 0) {
-            // 再等一轮：等到了就直接走完收尾，等不到也不再纠缠
-            await deployService.waitForIdle(SHUTDOWN_EXTRA_WAIT_MS)
-            await deployQueue.drain(SHUTDOWN_EXTRA_WAIT_MS)
-          }
-        }
-      }
     }
     // 后端已在两阶段退出中停掉 listener（含删 server.json）
     app.quit()
