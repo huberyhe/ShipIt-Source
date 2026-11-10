@@ -13,8 +13,8 @@
 - **多目标上传**：每个目标独立配置服务器连接（SFTP/FTP/FTPS/FTPES/本地目录）与**目录映射**（本地前缀 → 远端路径）；目标支持**复制**与**手动排序**（名称唯一性校验）
 - **上传链路**：选中文件 → 确认弹窗（展示目标地址与每个文件的远端路径）→ 进度条（可取消）→ 底部日志（含结果明细）；无映射/不存在的文件按**跳过**列出并给出原因，不计入失败
 - **键盘操作**（IDEA 风格）：点击选中文件 / 目录 / 提交 → `Ctrl+X` 快速上传（当前目标），或 `Ctrl+Shift+X` 唤起服务器菜单（数字 `1-9/0/A-Z` 或鼠标选择）→ 确认弹窗 `Enter` 上传 / `Esc` 取消；上传中 `Esc` 可中止。`Alt+Enter` = 只上传当前聚焦的那一行（与 `Ctrl+X` 的“整个选区”区分）；`F5` 刷新当前视图（文件树也会重新读取目录）
-- **菜单入口**：文件菜单里的「上传所选 / 上传到…」与上述快捷键同一条链路；无选区或无上传目标时条目置灰：**原因写在条目文字里**（如「上传所选（未配置上传目标）」），同时用 `title` 做悬停补充（禁用项只剩标签可读，title 只是锦上添花）
-- **菜单栏**：VS Code 风格自绘菜单（文件 / 视图 / 设置 / 帮助），条目带功能图标、快捷键提示与当前项勾选标记
+- **上传入口**：全部在视图内（右键菜单 + 上述快捷键），文件菜单**不**重复提供上传项；无选区或无上传目标时右键项置灰，**原因写在条目文字里**，同时用 `title` 做悬停补充（禁用项只剩标签可读，title 只是锦上添花）
+- **菜单栏**：VS Code 风格自绘菜单（文件 / 视图 / 帮助），条目带功能图标、快捷键提示与当前项勾选标记；全局配置在「文件 → 设置」
 - **主题**：自动跟随系统 / 深色 / 亮色，选择持久化
 - **无障碍**：键盘可达（内容区单一 Tab 停靠点 + 行间方向键；树行 `role="treeitem"`，展开箭头为 `button` + `aria-expanded`）、焦点环、表单 label 关联、toast/进度 aria-live
 
@@ -65,7 +65,7 @@ npm run electron:build
 
 ## CLI 与 MCP（agent 接入）
 
-桌面版可作为本机（可选局域网）服务被 CLI 与 MCP 调用：执行全部在桌面主进程，界面配置、上传队列与日志共用同一份。
+桌面版可作为本机（可选局域网）服务被 CLI 与 MCP 调用：执行全部在桌面版的后端进程（`shipit-server`），界面配置、上传队列与日志共用同一份。
 
 ```bash
 shipit status                            # 服务端状态与版本、队列快照
@@ -86,69 +86,87 @@ CLI / MCP 自动发现，不需要手填；通道强制 TLS 自签并固定证�
 ## 架构
 
 ```
-┌────────────────────────────────────────────────────────────┐
-│  Renderer Process (Vue 3 + Pinia)                          │
-│  layout/   AppMenuBar · AppLayout · Toolbar · StatusBar       │
-│  views/    ViewSwitcher · FileTree · GitChanges · GitLog    │
-│  components/  common/(BaseDialog·ContextMenu) · deploy/     │
-│               filetree/ · git/ · settings/ · project/       │
-│  stores/   project · files · git · deploy · ui
-  composables/  useServerMenu · useServerMenuHotkey              │
-└───────────────────────────┬────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│  Renderer Process (Vue 3 + Pinia)                            │
+│  layout/  AppMenuBar · AppLayout · Toolbar · StatusBar        │
+│  components/  common/ · views/ · filetree/ · git/ ·           │
+│               settings/ · deploy/ · project/                  │
+│  stores/  project · files · git · deploy · server · ui        │
+└───────────────────────────┬──────────────────────────────────┘
                             │ contextBridge (preload) / IPC
-┌───────────────────────────▼────────────────────────────────┐
-│  Main Process (Electron)                                   │
-│  services/  GitService · DeployService · FileService ·     │
-│             ConfigStore · server-handlers · local-server ·  │
-│             deploy-queue · server-config · tls-cert ·       │
-│             project-context · selection · tray              │
-│  index.ts   窗口管理 · IPC 路由 · 菜单动作分发 · 服务端启停/状态推送 │
-└────────────────────────────────────────────────────────────┘
-        src/cli/       index.ts（shipit 入口）· mcp.ts（MCP server）
-                       client · discover · args · commands · mcp-tools
-        src/shared/    ipc-channels.ts（IPC 通道常量）
-                       types.ts（主/渲染共享领域类型）
-                       cli-contract.ts（CLI/MCP 契约）· paths · fingerprint · task-verdict
+┌───────────────────────────▼──────────────────────────────────┐
+│  Main Process (Electron 宿主：窗口 / 托盘 / 菜单 / 对话框)      │
+│  server-host.ts    spawn 后端 · ready 分发宿主 token · SSE 订阅 │
+│  ipc-adapter.ts    IPC → HTTP（唯一实现）                      │
+│  status-mirror.ts  跨实例单调 revision                         │
+│  index.ts          窗口管理 · IPC 注册 · 菜单动作分发            │
+└───────────────────────────┬──────────────────────────────────┘
+                            │ HTTPS · 管理端点 · 127.0.0.1 · 宿主 token
+┌───────────────────────────▼──────────────────────────────────┐
+│  shipit-server（独立后端进程 · 唯一执行体）                     │
+│  runtime.ts   配置 / 队列 / 上传 / Git / 文件                   │
+│  routes.ts    公开端点（既有 10 条）+ 管理端点（桌面专属）        │
+│  events.ts    SSE 状态与日志推送                                │
+└───────────────────────────▲──────────────────────────────────┘
+                            │ HTTPS · 公开端点 · 配置端口 · 用户 token
+        src/cli/   index.ts（shipit 入口）· mcp.ts（MCP server）
+                   client · discover · args · commands · mcp-tools
+        src/shared/ types.ts · cli-contract.ts · ipc-channels.ts
+                   access-control.ts（权限三级）· http-client.ts
 ```
 
 ### 目录结构
 
 ```
 src/
-├── main/               # Electron 主进程
-│   ├── index.ts        #   窗口 / 菜单 / IPC 注册 / 服务端启停与状态推送
+├── server/             # 独立后端进程（唯一执行方，可脱离 Electron 手工启动）
+│   ├── index.ts        #   入口：--config / --parent-pid、ready 行、两阶段退出
+│   ├── runtime.ts      #   装配：配置 / 队列 / 上传 / Git / 文件 + 两个 listener
+│   ├── routes.ts       #   公开端点（既有 10 条）+ 管理端点（桌面专属）
+│   ├── route-handlers.ts   # 管理端点实现
+│   ├── events.ts       #   SSE 事件总线
+│   ├── target-secrets.ts   # 凭据补丁（keep / set / clear）
+│   └── testing/        #   起真实 TLS 后端的测试基座
+├── main/               # Electron 宿主 + 领域能力
+│   ├── index.ts        #   窗口 / 托盘 / 菜单 / IPC 注册 / 启动后端
+│   ├── server-host.ts  #   spawn 后端、ready token、SSE、崩溃重启、两阶段停止
+│   ├── ipc-adapter.ts  #   IPC → HTTP（唯一实现）
+│   ├── adapter-factory.ts / status-mirror.ts
 │   ├── preload.ts      #   contextBridge 暴露 window.deployApi
-│   ├── tray.ts         #   托盘（常驻服务）
-│   └── services/       #   领域服务：上传（deploy-service · deploy-queue · selection ·
-│                       #   ignore-dirs）· 本地服务端（local-server · server-handlers ·
-│                       #   server-config · tls-cert）· 项目上下文（project-context）· 配置（config-store）
-├── cli/                # 命令行与 MCP（与桌面共用同一服务端，INV-2）
+│   ├── tray.ts / window-manager.ts
+│   └── services/       #   领域能力（不依赖 Electron，被 server 复用）
+│                       #   上传：deploy-service · deploy-queue · selection · ignore-dirs
+│                       #        · post-upload-script
+│                       #   服务端：local-server · server-handlers · server-config · tls-cert
+│                       #   配置：config-store · config-file；文件树：file-service
+│                       #   Git：git-service · branch-parse；项目：project-context
+├── cli/                # 命令行与 MCP（只经公开端点访问后端）
 │   ├── index.ts        #   shipit 命令入口
-│   ├── args.ts         #   参数解析与帮助文本
+│   ├── args.ts         #   参数解析与帮助文本（COMMAND_HELP 唯一来源）
 │   ├── mcp.ts          #   stdio MCP server（mcp-tools.ts 定义工具面）
 │   ├── client.ts       #   固定指纹 + 令牌鉴权的 HTTPS 客户端
-│   ├── discover.ts     #   连接发现（连接信息文件 / --connect / --profile）
-│   ├── commands/       #   targets · plan · deploy · git 等命令
-│   └── testing/        #   命令级用例的测试桩（harness / deps）
+│   ├── discover.ts     #   连接发现（server.json / --connect / --profile）
+│   ├── commands/       #   projects · targets · plan · deploy · git · status · task · ps
+│   └── testing/        #   命令级用例的测试桩
 ├── renderer/           # Vue 渲染进程
-│   ├── stores/         #   Pinia 状态（UI 与业务分离）
-│   ├── layout/         #   框架组件（AppLayout / AppMenuBar / Toolbar）
+│   ├── stores/         #   Pinia 状态（project / files / git / deploy / server / ui）
+│   ├── layout/         #   框架组件（AppLayout / AppMenuBar / Toolbar / StatusBar / LogPanel）
 │   ├── composables/    #   组合式函数（服务器菜单 · 全局热键）
 │   ├── components/     #   业务组件（按域分目录）
-│   │   └── common/     #   通用组件（BaseDialog / ContextMenu）
 │   └── types/          #   window.deployApi 类型声明
-├── shared/             # 主/渲染共享
-│   ├── ipc-channels.ts
-│   └── types.ts
-scripts/                # 图标生成（gen-icon.ps1 + build-ico.cjs）
+├── shared/             # 跨层契约
+│   ├── types.ts / cli-contract.ts / ipc-channels.ts
+│   ├── access-control.ts  # 权限三级：public / desktop / ui
+│   └── http-client.ts     # CLI 与桌面共用的 HTTP 信封客户端
+scripts/                # 构建（build-server / build-cli / build-green / build）· 图标 · ui-audit
 build/                  # 应用图标（icon.png 源图 / icon.ico）
 ```
 
 ## 关键设计约定
 
-- **唯一事实来源**：`src/shared/types.ts` 定义所有领域类型（DeployTarget / DeployResult / GitCommitInfo…），主进程服务生产、渲染进程 store 消费，改字段只需动一处。
+- **唯一事实来源**：`src/shared/types.ts` 定义所有领域类型（DeployTarget / DeployResult / GitCommitInfo…），后端进程生产、渲染进程 store 消费，改字段只需动一处。
 - **IPC 通道**：所有通道名收敛在 `src/shared/ipc-channels.ts`，主进程注册 handler 与 preload 暴露都引用常量。
-- **服务层无 UI 依赖**：`services/` 下的 Git/Deploy/File/Config 服务不依赖 Electron 窗口，便于扩展协议与单测。
+- **服务层无 Electron 依赖**：`main/services/` 下的 Git/Deploy/File/Config 服务不依赖 Electron 窗口（也不得 import `electron`），因为 `server/runtime.ts` 会在后端进程里直接复用它们。
 - **主题**：CSS 变量定义在 `App.vue`（`:root/.theme-dark/.theme-light`），组件一律 `var(--*)`，禁止硬编码颜色。
 - **无障碍基线**：交互元素优先 `<button>`；树/列表行例外，是 `div[role="treeitem"]` + 容器单一 Tab 停靠点（展开箭头才是 `button` + `aria-expanded`）；全局 `:focus-visible`、表单 `label for`、toast `aria-live`。树已补齐语义：容器 `role="tree"` + 子层 `role="group"` + 行 `aria-selected`，读屏能播报选中项；行内操作区只在鼠标悬停时显示（键盘路径是 `Alt+Enter` 上传该行）；状态栏的服务/队列两项纳入 Tab 序列并用 `aria-live` 在状态真变时播报。
 - **菜单与快捷键**：菜单栏为渲染进程自绘（`layout/AppMenuBar.vue`），Electron 原生菜单已移除；全局快捷键统一在 `App.vue` 处理（输入控件聚焦时不拦截）。
@@ -166,6 +184,7 @@ build/                  # 应用图标（icon.png 源图 / icon.ico）
 - **Windows 符号链接权限**：winCodeSign 解压内含符号链接，普通权限下会失败。已通过 `win.signAndEditExecutable=false` 跳过其下载，并由 `scripts/after-pack.js`（`afterPack` 钩子）调用项目内 `scripts/vendor/rcedit.exe` 手动给 exe 设置图标与版本信息。
 - **国内网络**：`electron:build` 脚本已内置 `ELECTRON_BUILDER_BINARIES_MIRROR`（npmmirror）下载 nsis 等构建工具。
 - **换图标**：替换 `build/icon.png` → `npm run gen:icon` 重新生成 `icon.ico`，重新打包即可（`afterPack` 自动应用）。
+- **打包形态**：`npm run electron:build`（NSIS 安装包）· `npm run build:portable`（单文件便携）· `npm run build:green`（`release/ShipIt-green/` 目录 + zip，内置 `portable.txt`，数据写在 `<程序目录>/shipit-data`）。三者都包含后端产物 `dist-server/` 与 CLI `cli/`。
 - `scripts/vendor/rcedit.exe` 来自 electron-builder-binaries 的 winCodeSign 包，提交到仓库以便离线打包。
 
 ## 已知限制

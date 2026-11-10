@@ -75,7 +75,7 @@
 
 ## CLI / MCP
 
-桌面版可作为本机（可选局域网）服务被命令行与 AI Agent 调用，执行全部在桌面主进程完成：
+桌面版可作为本机（可选局域网）服务被命令行与 AI Agent 调用，执行全部在桌面版后端进程完成：
 
 ```bash
 npx -y @huberyhe/shipit-mcp status                 # 服务端状态与队列
