@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import {
-  FolderOpen, History, XCircle, LogOut, Upload, Server,
+  FolderOpen, History, XCircle, LogOut,
   FolderTree, GitCommit, GitBranch, Monitor, Sun, Moon,
   PanelBottom, RotateCw, Keyboard, Info, Settings as SettingsIcon
 } from 'lucide-vue-next'
@@ -11,11 +11,9 @@ import { shortenPath } from '../utils/path-display'
 import { shortcutLabel } from '../utils/shortcuts'
 import { useUiStore } from '../stores/ui'
 import { useProjectStore } from '../stores/project'
-import { useDeployStore } from '../stores/deploy'
 
 const uiStore = useUiStore()
 const projectStore = useProjectStore()
-const deployStore = useDeployStore()
 
 // 展开中的菜单：仅记录 label 与位置，items 实时取自 menus（数据变化时自动刷新，如清除最近项目后）
 const openMenuLabel = ref<string | null>(null)
@@ -37,66 +35,6 @@ function appAction(action: string, payload?: any) {
  */
 function requestCloseProject() {
   window.dispatchEvent(new CustomEvent('close-project'))
-}
-
-/**
- * 当前视图是否有可上传的选区。
- *
- * 单一来源：各视图把选区规模发布到 `uiStore.selectionCount`（只有当前挂载的视图会写），
- * 菜单栏只读。以前这里是 DOM 探针（`.ftn-row.selected` 等）——视图改类名就静默失效。
- */
-function hasVisibleSelection(): boolean {
-  return uiStore.selectionCount > 0
-}
-
-/**
- * 上传项为何不可用：**不能变成死路**。
- * - 无选区 → 先选文件（选完立刻可用，用户自己就能解开）
- * - 有选区但没配目标 → 指向设置里的「上传目标」分区（不点开也能知道该去哪）
- *
- * 说明文案写在**菜单项文字里**而不是 `title`：`ContextMenu` 的禁用项是 `pointer-events: none`，
- * 悬停提示根本不会出现（禁用项的唯一可读信号就是标签本身）。
- */
-const uploadBlocker = ref<'selection' | 'target' | null>('selection')
-
-function refreshUploadBlocker(): void {
-  if (!hasVisibleSelection()) uploadBlocker.value = 'selection'
-  else uploadBlocker.value = deployStore.targets.length > 0 ? null : 'target'
-}
-
-const uploadSuffix = computed(() => {
-  if (uploadBlocker.value === 'selection') return '（先选择文件）'
-  if (uploadBlocker.value === 'target') return '（未配置上传目标）'
-  return ''
-})
-
-const uploadDisabled = computed(() => uploadBlocker.value !== null)
-
-/** 禁用原因同时写进 title（ContextMenu 已支持 title），标签保留简短形式 */
-const uploadHint = computed(() => {
-  if (uploadBlocker.value === 'selection') return '先选中要上传的文件或目录'
-  if (uploadBlocker.value === 'target') return '尚未配置上传目标：设置 → 上传目标管理'
-  return undefined
-})
-
-/**
- * 复用各视图既有的上传链路（`useDeployHotkeys`）：菜单项与 Ctrl+X / Ctrl+Shift+X **派发同一个按键**，
- * 而不是在菜单栏里再写一份「选什么文件、发到哪」的判断（选区/目标/日志视图的提交语义都在视图里）。
- * 与 App.vue 转发 Ctrl+空格（`toggleSelectionOfFocusedRow`）同一手法。
- *
- * 视图侧仍有 `hasSelection()` 守卫：这里判成可用、视图却认为没选区时，按 Ctrl+X 也不会误传。
- */
-function dispatchUploadHotkey(shift: boolean): void {
-  window.dispatchEvent(
-    new KeyboardEvent('keydown', {
-      key: shift ? 'X' : 'x',
-      code: 'KeyX',
-      ctrlKey: true,
-      shiftKey: shift,
-      bubbles: true,
-      cancelable: true
-    })
-  )
 }
 
 function recentProjectItems(): ContextMenuItem[] {
@@ -123,30 +61,11 @@ const menus = computed<Array<{ label: string; items: ContextMenuItem[] }>>(() =>
   // 有项目 ⇔ 该窗口是项目窗口（就地打开会提升角色；关闭项目会销毁窗口），因此用它判定即可
   const hasProject = !!projectStore.projectPath
   // 无项目时菜单栏本就隐藏（App.vue 的 v-if），这里只是防御：宁可禁用，不要让人点了没反应
-  const uploadBlocked = !hasProject || uploadDisabled.value
   return [
     {
       label: '文件',
       items: [
         { label: '打开目录', icon: FolderOpen, shortcut: shortcutLabel('openProject'), action: () => appAction('open-project') },
-        { label: 'separator' },
-        // 产品第一动词：此前三张菜单里没有任何上传项，界面上看不出这工具能发文件
-        {
-          label: `上传所选${uploadSuffix.value}`,
-          title: uploadHint.value,
-          icon: Upload,
-          shortcut: shortcutLabel('uploadSelection'),
-          disabled: uploadBlocked,
-          action: () => dispatchUploadHotkey(false)
-        },
-        {
-          label: `上传到…${uploadSuffix.value}`,
-          title: uploadHint.value,
-          icon: Server,
-          shortcut: shortcutLabel('uploadTo'),
-          disabled: uploadBlocked,
-          action: () => dispatchUploadHotkey(true)
-        },
         { label: 'separator' },
         { label: '最近打开的项目', icon: History, children: recentProjectItems() },
         { label: 'separator' },
@@ -189,8 +108,6 @@ const menus = computed<Array<{ label: string; items: ContextMenuItem[] }>>(() =>
 
 function openAt(label: string, el: HTMLElement) {
   const rect = el.getBoundingClientRect()
-  // 选区不是响应式数据（在视图内部）：每次展开菜单时重新探一次，菜单项文案与禁用态才是当下的真相
-  refreshUploadBlocker()
   openMenuLabel.value = label
   openMenuPos.value = { x: rect.left, y: rect.bottom + 2 }
 }

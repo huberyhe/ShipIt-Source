@@ -17,9 +17,11 @@ export const useUiStore = defineStore('ui', () => {
    * 当前视图的选区规模（项数）。
    *
    * 三个视图各自拥有选区（文件树=filesStore、Git 变更/Git 日志=组件内 state），
-   * 菜单栏需要判断「上传所选」是否可用。此前菜单用 DOM 探针（`.ftn-row.selected`）猜，
-   * 视图改类名就会静默失效；改成视图**发布**计数、菜单**只读**，单一来源。
+   * 由视图**发布**、外部**只读**，避免 DOM 探针（`.ftn-row.selected`）随类名改动静默失效。
    * 只有当前挂载的视图会写这个值（切视图时旧视图卸载即归零）。
+   *
+   * 注：文件菜单的「上传所选」已移除，当前没有 UI 读取它；保留是为了后续状态显示类需求
+   * 存在单一选区来源，避免各视图再造一份。
    */
   const selectionCount = ref(0)
   function setSelectionCount(count: number): void {
