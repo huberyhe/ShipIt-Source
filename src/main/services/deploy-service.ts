@@ -454,6 +454,16 @@ export class DeployService {
     let ftpClient: FtpInstance | null = null
     const isLocal = target.protocol === 'local'
 
+    // 取消熔断（关键）：底层 I/O 的 destroy/close 不保证能让挂着的 Promise 立即落定
+    // （实测 SFTP 传大文件时取消，put 永不 reject，整个请求卡住 → 弹窗关不掉、无日志）。
+    // 这里用 race 把“取消”变成一个必然落定的竞态，I/O 本身交给 hooks 去收尾。
+    let abortReject: ((error: Error) => void) | null = null
+    const abortPromise = new Promise<never>((_, reject) => {
+      abortReject = reject
+    })
+    abortPromise.catch(() => undefined)
+    session.abortHooks.push(() => abortReject?.(new Error('upload cancelled')))
+
     try {
       if (isLocal) {
         // 本地/挂载目录：无需连接
@@ -495,6 +505,8 @@ export class DeployService {
         onProgress?.(i, tasks.length, task.relativePath)
 
         try {
+          // 只上传单个文件的异步块：与取消熔断 race，保证取消后立即落定
+          const uploadingOne = (async () => {
           if (isLocal) {
             const dest = this.resolveLocalDest(task, target)
             await fsPromises.mkdir(dirname(dest), { recursive: true })
@@ -517,6 +529,9 @@ export class DeployService {
               await ftpClient.uploadFrom(task.localPath, task.remotePath)
             }
           }
+          })()
+          uploadingOne.catch(() => undefined)
+          await Promise.race([uploadingOne, abortPromise])
           result.succeeded++
           // 传完一个再报一次：进度条按“已完成”前进，大文件期间不会假满
           onProgress?.(i + 1, tasks.length, task.relativePath)

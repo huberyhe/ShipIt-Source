@@ -942,8 +942,8 @@ function registerIpcHandlers() {
       })
       throw error
     } finally {
-      // 排障用：一次上传超过 5s 就留痕（正常上传不会触发），
-      // 用于确认“弹窗卡住”时后端请求到底有没有返回。
+      // 排障：一次上传超过 5s 就留痕（正常上传不会触发），
+      // 用于区分“请求没返回”与“渲染层状态错了”。
       const elapsed = Date.now() - startedAt
       if (elapsed > 5000) {
         writeFatalLog('deploy', `DEPLOY_UPLOAD 耗时 ${elapsed}ms（windowId=${_event.sender.id}）`)
