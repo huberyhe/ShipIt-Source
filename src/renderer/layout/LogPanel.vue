@@ -91,7 +91,9 @@ function resultText(log: DeployLogEntry): string {
     if (log.cancelled) {
       // 未上传数 = 因取消而没轮到的文件（与成功/失败分开统计）
       const notUploaded = log.details.filter((d) => d.status === 'cancelled').length
+      const interrupted = log.details.filter((d) => d.status === 'interrupted').length
       const parts = [`已取消 · 完成 ${log.succeeded} 个`]
+      if (interrupted > 0) parts.push(`中断 ${interrupted} 个`)
       if (notUploaded > 0) parts.push(`未上传 ${notUploaded} 个`)
       if (log.skipped > 0) parts.push(`跳过 ${log.skipped} 个`)
       return parts.join('，')
@@ -228,11 +230,12 @@ function onLogListKeydown(event: KeyboardEvent): void {
         <div v-if="expandedLogs.has(log.taskId)" class="log-files">
           <div v-for="d in log.details" :key="d.relativePath" class="log-file-row" :class="d.status">
           <component
-            :is="d.status === 'success' ? Check : d.status === 'skipped' || d.status === 'cancelled' ? Minus : X"
+            :is="d.status === 'success' ? Check : d.status === 'skipped' || d.status === 'cancelled' || d.status === 'interrupted' ? Minus : X"
             :size="10"
           />
           <span v-if="d.status === 'skipped'" class="log-file-skip">跳过</span>
           <span v-else-if="d.status === 'cancelled'" class="log-file-skip">未上传</span>
+          <span v-else-if="d.status === 'interrupted'" class="log-file-skip">中断</span>
             <span class="log-file-path" :title="d.relativePath">{{ pathText(d.relativePath) }}</span>
             <span class="log-file-arrow">→</span>
             <code class="log-file-remote" :title="d.remotePath">{{ pathText(d.remotePath) }}</code>
@@ -292,6 +295,7 @@ function onLogListKeydown(event: KeyboardEvent): void {
 .log-file-row.failed { color: var(--red); }
 .log-file-row.skipped { color: var(--fg2); }
 .log-file-row.cancelled { color: var(--yellow); }
+.log-file-row.interrupted { color: var(--yellow); }
 .log-file-skip { font-size: 11px; color: var(--fg2); border: 1px solid var(--bg4); border-radius: 4px; padding: 0 4px; }
 .log-file-path { color: var(--fg); }
 .log-file-arrow { color: var(--fg2); margin: 0 4px; }

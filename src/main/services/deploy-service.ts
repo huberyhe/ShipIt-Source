@@ -540,10 +540,16 @@ export class DeployService {
           onProgress?.(i + 1, tasks.length, task.relativePath)
           result.details.push({ relativePath: task.relativePath, remotePath: task.remotePath, status: 'success' })
         } catch (err: any) {
-          // 被取消时正在传的那个文件不算“失败”：用户主动中止，不该在结果里计失败
+          // 被取消时正在传的那个文件不算“失败”，但也不能说成“没上传”（可能已写了一部分）
+          // → 单独标 interrupted，后续文件才是 cancelled。
           if (session.aborted) {
             result.cancelled = true
-            cancelledAt = i
+            result.details.push({
+              relativePath: task.relativePath,
+              remotePath: task.remotePath,
+              status: 'interrupted'
+            })
+            cancelledAt = i + 1
             break
           }
           result.failed++

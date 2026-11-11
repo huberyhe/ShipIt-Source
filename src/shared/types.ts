@@ -262,8 +262,12 @@ export interface UploadPreview {
 export interface DeployDetail {
   relativePath: string
   remotePath: string
-  /** cancelled：因取消而根本没上传的文件（与失败区分，不计入 failed） */
-  status: 'success' | 'failed' | 'skipped' | 'cancelled'
+  /**
+   * cancelled：因取消而根本没轮到的文件
+   * interrupted：取消时正在传的那个（可能已部分写入远端）
+   * 两者都不计入 failed
+   */
+  status: 'success' | 'failed' | 'skipped' | 'cancelled' | 'interrupted'
   error?: string
 }
 

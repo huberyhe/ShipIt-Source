@@ -140,6 +140,35 @@ describe('上传串行化（INV-6 / AC-019）', () => {
     expect(existsSync(join(destRoot, 'out', 'sig.txt'))).toBe(false)
   })
 
+  it('取消时区分「中断」与「未上传」（interrupted vs cancelled）', async () => {
+    const service = new DeployService()
+    // 大文件让取消发生在传输中（而不是文件之间）
+    const big = join(srcDir, 'mid.bin')
+    const fd = openSync(big, 'w')
+    ftruncateSync(fd, 160 * 1024 * 1024)
+    closeSync(fd)
+    const bigTask: UploadTask = {
+      localPath: big,
+      remotePath: '/out/mid.bin',
+      relativePath: 'dist/mid.bin',
+      size: 160 * 1024 * 1024
+    }
+    const tasks = [uploadTask('x1.txt'), bigTask, uploadTask('x3.txt'), uploadTask('x4.txt')]
+
+    const running = service.deploy(tasks, target(), undefined, 'desktop')
+    await new Promise((resolve) => setTimeout(resolve, 120))
+    service.abortCurrent('desktop')
+    const result = await running
+
+    expect(result.cancelled).toBe(true)
+    const interrupted = result.details.filter((d) => d.status === 'interrupted')
+    const notUploaded = result.details.filter((d) => d.status === 'cancelled')
+    // 正在传的那个标中断，后面的标未上传
+    expect(interrupted.map((d) => d.relativePath)).toContain('dist/mid.bin')
+    expect(notUploaded.length).toBeGreaterThan(0)
+    expect(result.failed).toBe(0)
+  })
+
   it('取消时把没轮到的文件也列出来（status=cancelled，不计失败）', async () => {
     const service = new DeployService()
     // 4 个小文件，逐文件进度里一有回调就取消 → 后面几个根本没轮到
