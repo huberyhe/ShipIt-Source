@@ -116,8 +116,21 @@ async function main (): Promise<void> {
 
   process.on('SIGTERM', () => void shutdown('force', 0))
   process.on('SIGINT', () => void shutdown('force', 0))
-  process.on('uncaughtException', (error) => {
+  process.on('uncaughtException', (error: Error & { code?: string }) => {
     process.stderr.write(`[shipit-server] ${error.stack ?? error}\n`)
+    // 网络瞬断（断网/切网卡/VPN）会让 ssh2、socket 之类抛出未捕获错误。
+    // 过去的策略是“一律优雅退出”，结果是：断一次网 → 后端进程重启 → 桌面客户端所有在途
+    // 请求被重置（read ECONNRESET），用户看到“加载分支失败”这类与网络毫无关系的报错。
+    // 对这类可恢复的 I/O 错误只记录、不退出；真正的编程错误仍然退出并由父进程重启。
+    const code = error?.code
+    const transient =
+      code === 'ECONNRESET' ||
+      code === 'EPIPE' ||
+      code === 'ETIMEDOUT' ||
+      code === 'ECONNREFUSED' ||
+      code === 'ERR_STREAM_DESTROYED' ||
+      code === 'ERR_STREAM_WRITE_AFTER_END'
+    if (transient) return
     void shutdown('force', 0)
   })
   process.on('unhandledRejection', (error) => {

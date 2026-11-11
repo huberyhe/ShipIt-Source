@@ -18,6 +18,8 @@ type SftpInstance = {
   stat (remote: string): Promise<{ size?: number } | undefined>
   chmod? (remote: string, mode: number): Promise<unknown>
   client?: unknown
+  /** ssh2-sftp-client 继承 EventEmitter：网络中断时会 emit 'error'，必须消费 */
+  on? (event: string, listener: (...args: unknown[]) => void): void
 }
 type SftpCtor = new (name?: string) => SftpInstance
 
@@ -252,6 +254,7 @@ export class DeployService {
       if (target.protocol === 'sftp') {
         const Sftp = await loadSftpCtor()
         const sftp = new Sftp(`test-${Date.now()}`)
+        sftp.on?.('error', () => undefined)
         try {
           await sftp.connect(this.buildSftpOptions(target))
           await sftp.list(target.mappings[0]?.remotePath || '/')
@@ -470,6 +473,9 @@ export class DeployService {
       } else if (target.protocol === 'sftp') {
         const Sftp = await loadSftpCtor()
         sftpClient = new Sftp('deploy')
+        // 网络中断时 ssh2 会 emit 'error'；不消费就会变成未捕获异常
+        // （后端曾因此在断网瞬间直接重启，连带桌面客户端的在途请求全部 ECONNRESET）。
+        sftpClient.on?.('error', () => undefined)
         await sftpClient.connect(this.buildSftpOptions(target))
         // 取消时强制断连（F3）：让挂起的 put 抛错，才能走到 finally 释放串行链。
         // 先 destroy 底层 socket（end() 在断网场景自己也可能挂）：这是唯一能

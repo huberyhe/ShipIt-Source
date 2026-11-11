@@ -6,6 +6,8 @@
  * - 对 renderer 输出的 revision 由本层做跨实例单调转换（后端重启后 revision 归零）
  */
 import { fork, type ChildProcess } from 'child_process'
+import { appendFileSync } from 'fs'
+import { join } from 'path'
 import * as https from 'https'
 import { createHttpClient, type ClientResult, type HttpClient, type Query } from '../shared/http-client'
 
@@ -84,8 +86,26 @@ function forkChild (options: HostOptions, parentPid: number): ServerChild {
     // Chromium 层可识别的服务名（任务管理器仍显示 exe，但进程列表/调试器可区分）
     serviceName: 'shipit-server'
   }) as unknown as ServerChild
-  // 后端 stderr 必须转发：否则启动失败时只能看到“等待 ready 超时”
-  child.stderr?.on('data', (chunk: Buffer | string) => process.stderr.write(`[shipit-server] ${chunk}`))
+  // 后端 stderr 必须转发：否则启动失败时只能看到“等待 ready 超时”。
+  // 同时写入 error.log（打包后 GUI 没有控制台，stderr 会直接丢失 —— 断网导致的后端异常
+  // 只能靠这份日志定位）。按行截断避免刷屏。
+  child.stderr?.on('data', (chunk: Buffer | string) => {
+    const text = String(chunk)
+    process.stderr.write(`[shipit-server] ${text}`)
+    for (const line of text.split('\n')) {
+      const trimmed = line.trim()
+      if (!trimmed) continue
+      try {
+        appendFileSync(
+          join(options.dataDir, 'error.log'),
+          `${new Date().toISOString()} [shipit-server] ${trimmed.slice(0, 500)}\n`,
+          'utf-8'
+        )
+      } catch {
+        // 日志写不了不影响主流程
+      }
+    }
+  })
   return child
 }
 
