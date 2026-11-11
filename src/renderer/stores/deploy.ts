@@ -131,6 +131,8 @@ export const useDeployStore = defineStore('deploy', () => {
   /** 会话令牌。只有 currentToken 对应的那次执行才能推进队列/开关弹窗 */
   let sessionCounter = 0
   let currentToken = 0
+  /** 已结束的会话令牌：提升时跳过它们，避免为“已经传完的任务”开一个空弹窗 */
+  const finishedTokens = new Set<number>()
   /** 还有多少个任务在排队（状态栏显示用；弹窗不展示排队信息） */
   const pendingCount = computed(() => pendingUploads.value.length)
   /** 已发出取消请求但后端尚未确认：弹窗保持“正在取消…”，确认后才关闭 */
@@ -315,10 +317,8 @@ export const useDeployStore = defineStore('deploy', () => {
       isUploading.value = false
       return
     }
-    // 取消请求已被后端受理（abortCurrent 是同步生效的）：“正在取消”提示到此为止。
-    // 弹窗本身仍等 deployFiles 返回（executeDeploy 的 finally）再关，
-    // 否则会出现“弹窗已关、日志还没落”的空窗。
-    cancelling.value = false
+    // 保持“正在取消…”直到当前任务的 deployFiles 返回（executeDeploy 的 finally）：
+    // 弹窗与标题一起收尾，不会出现“标题已回到正在上传、弹窗还开着”的错位。
   }
 
   /**
@@ -470,9 +470,13 @@ export const useDeployStore = defineStore('deploy', () => {
       confirmSkipped.value = []
       // 只有「当前显示的那个任务」结束时才推进队列/开关弹窗。
       // 并发的排队长传结束时若也跑这段，会把状态搞乱（弹窗卡住不关）。
+      finishedTokens.add(myToken)
       if (currentToken === myToken) {
         cancelling.value = false
-        const next = pendingUploads.value.shift()
+        // 提升下一个未结束的任务（已结束的直接跳过：否则会为一个已经传完的任务
+        // 开一个空弹窗，看起来就是“弹窗闪一下又没了”）
+        let next = pendingUploads.value.shift()
+        while (next && finishedTokens.has(next.token)) next = pendingUploads.value.shift()
         if (next) {
           // 轮到它了：弹窗不关闭，内容换成它（此时后端正好开始传）
           currentToken = next.token
@@ -484,6 +488,7 @@ export const useDeployStore = defineStore('deploy', () => {
           currentToken = 0
           isUploading.value = false
           queuedAhead.value = 0
+          finishedTokens.clear()
         }
       }
     }
