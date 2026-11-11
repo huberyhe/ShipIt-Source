@@ -118,6 +118,16 @@ export const useDeployStore = defineStore('deploy', () => {
    * 界面据此显示“排队中（第 N 位）”，而不是先弹一个不动的进度条（用户会误以为在传）。
    */
   const queuedAhead = ref(0)
+  /**
+   * 已提交但还没开始的上传（上一个任务在跑时点的上传）。
+   * 主卡片只显示**正在传**的那个；这里存着待办的，上一个结束后依次提升。
+   */
+  const pendingUploads = ref<Array<{
+    target: { name: string; protocol: string; host: string; port: number; mappingCount: number }
+    total: number
+  }>>([])
+  /** 还有多少个任务在排队（主卡片底部提示用） */
+  const pendingCount = computed(() => pendingUploads.value.length)
   const lastDeployTime = ref<string>('')
 
   // Deploy confirm flow
@@ -283,6 +293,8 @@ export const useDeployStore = defineStore('deploy', () => {
    * 取消进行中的上传
    */
   async function cancelUpload() {
+    // 取消本窗口的全部会话（含还在排队的），队列也要一起清
+    pendingUploads.value = []
     try {
       await window.deployApi.cancelDeploy()
     } catch (error) {
@@ -356,19 +368,37 @@ export const useDeployStore = defineStore('deploy', () => {
     if (!target) throw new Error('未找到上传目标')
 
     showConfirm.value = false
-    isUploading.value = true
-    queuedAhead.value = 0
-    // 进度卡要说清「发到哪」：项目名/目标名/协议+主机/映射条数（不含任何凭据）
-    uploadTarget.value = {
-      name: target.name,
-      protocol: target.protocol,
-      host: target.host,
-      port: target.port,
-      mappingCount: target.mappings?.length ?? 0
+    // 已有上传在跑：这次进待办队列，**不碰当前卡片**，
+    // 否则会把正在传的那个任务的进度/目标盖掉（用户看不到第一个任务了）。
+    const isSecondary = isUploading.value
+    if (isSecondary) {
+      pendingUploads.value.push({
+        target: {
+          name: target.name,
+          protocol: target.protocol,
+          host: target.host,
+          port: target.port,
+          mappingCount: target.mappings?.length ?? 0
+        },
+        total: confirmFiles.value.length
+      })
+      // 排队不弹窗：只提示已入队，弹窗留给“真正开始传”的那个任务
+      toastSuccess(`已加入上传队列，前面还有 ${pendingUploads.value.length} 个任务`)
+    } else {
+      isUploading.value = true
+      queuedAhead.value = 0
+      // 进度卡要说清「发到哪」：项目名/目标名/协议+主机/映射条数（不含任何凭据）
+      uploadTarget.value = {
+        name: target.name,
+        protocol: target.protocol,
+        host: target.host,
+        port: target.port,
+        mappingCount: target.mappings?.length ?? 0
+      }
+      // 总数直接用待传列表长度：连接/握手阶段也能看到「0 / N」，
+      // 而不是 0/0 —— 后者看起来像“什么都没开始/卡住了”
+      uploadProgress.value = { current: 0, total: confirmFiles.value.length, file: '' }
     }
-    // 总数直接用待传列表长度：连接/握手阶段也能看到「0 / N」，
-    // 而不是 0/0 —— 后者看起来像“什么都没开始/卡住了”
-    uploadProgress.value = { current: 0, total: confirmFiles.value.length, file: '' }
 
     try {
       // 直接用弹窗展示的任务列表（与预览一致）
@@ -407,10 +437,20 @@ export const useDeployStore = defineStore('deploy', () => {
     } catch (err: any) {
       toastError('上传失败: ' + (err?.message || String(err)))
     } finally {
-      isUploading.value = false
-      queuedAhead.value = 0
       confirmFiles.value = []
       confirmSkipped.value = []
+      // 还有排队中的会话 → 把它们提升为当前卡片，弹窗不关闭、不闪
+      const next = pendingUploads.value.shift()
+      if (next) {
+        // 轮到它了：这时才弹出（继续显示）进度卡
+        isUploading.value = true
+        uploadTarget.value = next.target
+        uploadProgress.value = { current: 0, total: next.total, file: '' }
+        queuedAhead.value = 0
+      } else {
+        isUploading.value = false
+        queuedAhead.value = 0
+      }
     }
   }
 
@@ -426,6 +466,7 @@ export const useDeployStore = defineStore('deploy', () => {
     isUploading,
     uploadProgress,
     queuedAhead,
+    pendingCount,
     showConfirm,
     isPreviewing,
     confirmFiles,

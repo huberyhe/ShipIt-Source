@@ -29,9 +29,6 @@ const targetMeta = computed(() => {
 })
 const targetTitle = computed(() => `${projectName.value} → ${targetName.value}\n${targetMeta.value}`)
 
-/** 排队中：不显示假进度，只显示“前面还有几个” */
-const isQueued = computed(() => deployStore.queuedAhead > 0)
-
 const progressPercent = computed(() => {
   if (deployStore.uploadProgress.total === 0) return 0
   return Math.round((deployStore.uploadProgress.current / deployStore.uploadProgress.total) * 100)
@@ -71,7 +68,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
       </button>
       <div class="progress-header">
         <Upload :size="16" class="head-icon" />
-        <span>{{ isQueued ? '排队中…' : '正在上传…' }}</span>
+        <span>正在上传…</span>
       </div>
 
       <!-- 发到哪：项目 → 目标；第二行给协议+地址与映射条数（不逐条铺开） -->
@@ -84,20 +81,17 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
         <span class="dest-meta">{{ targetMeta }}</span>
       </div>
 
-      <template v-if="isQueued">
-        <!-- 排队时不画进度条：上一个任务还在跑，这里显示 0% 会让人以为在传 -->
-        <div class="queued-line" aria-live="polite">
-          等待前面的 {{ deployStore.queuedAhead }} 个上传完成
-        </div>
-      </template>
-      <template v-else>
-        <ProgressBar :value="progressPercent" label="上传进度" />
+      <ProgressBar :value="progressPercent" label="上传进度" />
 
-        <div class="progress-info" aria-live="polite">
-          <span class="percent">{{ progressPercent }}%</span>
-          <span class="count">{{ deployStore.uploadProgress.current }} / {{ deployStore.uploadProgress.total }}</span>
-        </div>
-      </template>
+      <div class="progress-info" aria-live="polite">
+        <span class="percent">{{ progressPercent }}%</span>
+        <span class="count">{{ deployStore.uploadProgress.current }} / {{ deployStore.uploadProgress.total }}</span>
+      </div>
+
+      <!-- 卡片始终显示“正在传”的那个任务；后面的排队任务只在这里计数，不抢主区域 -->
+      <div v-if="deployStore.pendingCount > 0" class="queued-line" aria-live="polite">
+        另有 {{ deployStore.pendingCount }} 个任务在排队
+      </div>
 
       <!-- 固定高度：文件名从无到有时不会把卡片顶高（避免抖动） -->
       <div class="current-file">
