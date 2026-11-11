@@ -128,6 +128,8 @@ export const useDeployStore = defineStore('deploy', () => {
     /** 会话令牌：用于判断“谁是当前任务” */
     token: number
   }>>([])
+  /** 响应式会话序号：作为进度卡的 key，让每个任务拿到独立实例（A 关、B 新开） */
+  const sessionKey = ref(0)
   /** 会话令牌。只有 currentToken 对应的那次执行才能推进队列/开关弹窗 */
   let sessionCounter = 0
   let currentToken = 0
@@ -379,6 +381,9 @@ export const useDeployStore = defineStore('deploy', () => {
       uploadProgress.value = data
       // 一旦开始收到真实进度，就不在排队了
       if (queuedAhead.value !== 0) queuedAhead.value = 0
+      // 取消态只会卡在“已取消的旧任务”上：真正的取消一旦生效就不会再有该任务的进度，
+      // 所以收到任何进度都说明**新任务已在传** → 立即退出取消态。
+      if (cancelling.value) cancelling.value = false
     })
     window.deployApi.onDeployQueued((data) => {
       queuedAhead.value = data?.ahead ?? 0
@@ -414,6 +419,7 @@ export const useDeployStore = defineStore('deploy', () => {
       toastSuccess(`已加入上传队列，前面还有 ${pendingUploads.value.length} 个任务`)
     } else {
       currentToken = myToken
+      sessionKey.value++
       isUploading.value = true
       queuedAhead.value = 0
       // 进度卡要说清「发到哪」：项目名/目标名/协议+主机/映射条数（不含任何凭据）
@@ -480,6 +486,7 @@ export const useDeployStore = defineStore('deploy', () => {
         if (next) {
           // 轮到它了：弹窗不关闭，内容换成它（此时后端正好开始传）
           currentToken = next.token
+          sessionKey.value++
           isUploading.value = true
           uploadTarget.value = next.target
           uploadProgress.value = { current: 0, total: next.total, file: '' }
@@ -504,6 +511,7 @@ export const useDeployStore = defineStore('deploy', () => {
     lastDeployTime,
     deployLogs,
     isUploading,
+    sessionKey,
     uploadProgress,
     queuedAhead,
     pendingCount,
