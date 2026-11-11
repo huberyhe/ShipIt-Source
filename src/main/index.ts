@@ -648,6 +648,13 @@ function registerIpcHandlers() {
   ipcMain.handle(IpcChannels.APP_GET_VERSION, () => app.getVersion())
   // 打包时经 electron-builder 的 extraMetadata 写入产物 package.json；开发态没有该字段
   ipcMain.handle(IpcChannels.APP_GET_BUILD_NUMBER, () => {
+    // 构建脚本写入 dist-electron/build-info.json（在 asar 内）；开发态没有该文件
+    try {
+      const info = JSON.parse(readFileSync(join(__dirname, 'build-info.json'), 'utf-8')) as { buildNumber?: unknown }
+      if (typeof info.buildNumber === 'string') return info.buildNumber
+    } catch {
+      // 回退到 package.json（若将来改用 extraMetadata）
+    }
     try {
       const pkg = JSON.parse(readFileSync(join(app.getAppPath(), 'package.json'), 'utf-8')) as { buildNumber?: unknown }
       return typeof pkg.buildNumber === 'string' ? pkg.buildNumber : ''
