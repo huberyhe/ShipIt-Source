@@ -5,6 +5,7 @@ import { shortenPath } from '../utils/path-display'
 import { useUiStore } from '../stores/ui'
 import { useGitStore } from '../stores/git'
 import { useServerStore } from '../stores/server'
+import { useDeployStore } from '../stores/deploy'
 
 const projectStore = useProjectStore()
 const uiStore = useUiStore()
@@ -15,6 +16,28 @@ function openServerSettings(): void {
 }
 const gitStore = useGitStore()
 const serverStore = useServerStore()
+const deployStore = useDeployStore()
+
+/**
+ * 队列状态文案。
+ *
+ * 桌面直连上传走 `/deploy/direct`，**不进后端队列**，所以后端快照永远是“队列空闲”。
+ * 只看它会让用户在本窗正在传（或刚排了两个）时看到“队列 空闲”。
+ * 这里把本窗口的上传会话与排队数合并进文案。
+ */
+const queueText = computed(() => {
+  const busy = deployStore.isUploading
+  const pending = deployStore.pendingCount
+  if (!busy && pending === 0) return serverStore.queueText
+  const parts: string[] = []
+  if (busy) parts.push('上传中')
+  if (pending > 0) parts.push(`排队 ${pending}`)
+  return `队列 ${parts.join(' · ')}`
+})
+
+const queueTone = computed<'on' | 'off'>(() =>
+  deployStore.isUploading || deployStore.pendingCount > 0 ? 'on' : serverStore.queueTone
+)
 
 // 分析中的提示（优先展示，避免看起来卡顿）
 const analyzingText = computed(() => {
@@ -52,7 +75,7 @@ const liveText = ref('')
 
 watch(
   // revision 一起看：它标记"第几份快照"，用来区分「默认值 → 真实值」与「真实状态之间的迁移」
-  () => [serverStore.revision, serverStore.stateText, serverStore.queueText] as const,
+  () => [serverStore.revision, serverStore.stateText, queueText.value] as const,
   (current, previous) => {
     const parts: string[] = []
     if (current[1] !== previous[1]) parts.push(current[1])
@@ -92,12 +115,12 @@ watch(
       </button>
       <button
         class="status-item"
-        :class="serverStore.queueTone"
-        :aria-label="`${serverStore.queueText}，展开上传日志`"
-        :title="serverStore.queueText + '（点击展开上传日志）'"
+        :class="queueTone"
+        :aria-label="`${queueText}，展开上传日志`"
+        :title="queueText + '（点击展开上传日志）'"
         @click="uiStore.toggleLogPanel()"
       >
-        <span class="dot" aria-hidden="true"></span>{{ serverStore.queueText }}
+        <span class="dot" aria-hidden="true"></span>{{ queueText }}
       </button>
     </div>
     <!-- aria-live 必须是“常驻且非 display:none”的节点，内容变化时才播报 -->
