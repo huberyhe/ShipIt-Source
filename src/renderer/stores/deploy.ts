@@ -126,8 +126,10 @@ export const useDeployStore = defineStore('deploy', () => {
     target: { name: string; protocol: string; host: string; port: number; mappingCount: number }
     total: number
   }>>([])
-  /** 还有多少个任务在排队（主卡片底部提示用） */
+  /** 还有多少个任务在排队（状态栏显示用；弹窗不展示排队信息） */
   const pendingCount = computed(() => pendingUploads.value.length)
+  /** 已发出取消请求但后端尚未确认：弹窗保持“正在取消…”，确认后才关闭 */
+  const cancelling = ref(false)
   const lastDeployTime = ref<string>('')
 
   // Deploy confirm flow
@@ -293,25 +295,36 @@ export const useDeployStore = defineStore('deploy', () => {
    * 取消进行中的上传
    */
   async function cancelUpload() {
+    if (cancelling.value) return
     // 只取消当前正在传的那个任务：后端 abortCurrent 不动排队中的，
     // 所以这里也不清 pendingUploads（它们会依次被提升）。
+    cancelling.value = true
+    spawnCancelDeadline()
     try {
       await window.deployApi.cancelDeploy()
     } catch (error) {
       reportError('取消上传失败', error)
+      cancelling.value = false
       isUploading.value = false
       return
     }
-    // 不立即复位：等 deployFiles 返回（executeDeploy 的 finally）再复位。
-    // 立即复位会出现“界面已结束、取消日志还没落”的空窗（用户报的“取消后没有日志”）。
-    // 3 秒兜底：后端迟迟不返回时仍允许继续操作，不让界面卡死。
+    // 不在这里复位 isUploading：等 deployFiles 真正返回（executeDeploy 的 finally）。
+    // 弹窗要**等取消完成**再关，否则用户看到“已取消”但后端还在传（或日志还没落）。
+  }
+
+  /**
+   * 取消确认的超时兜底：20 秒还没等到取消结果就强制复位，避免弹窗永远挂着。
+   * （后端自身有 15s 的串行链强制释放兜底，这里只是 UI 层保险）
+   */
+  function spawnCancelDeadline(): void {
     setTimeout(() => {
-      // 只在没有排队任务时才兜底复位：否则会把已提升的弹窗误关掉
-      if (isUploading.value && pendingUploads.value.length === 0) {
+      if (!cancelling.value) return
+      cancelling.value = false
+      if (pendingUploads.value.length === 0) {
         isUploading.value = false
         queuedAhead.value = 0
       }
-    }, 3000)
+    }, 20_000)
   }
 
   /**
@@ -438,6 +451,7 @@ export const useDeployStore = defineStore('deploy', () => {
     } catch (err: any) {
       toastError('上传失败: ' + (err?.message || String(err)))
     } finally {
+      cancelling.value = false
       confirmFiles.value = []
       confirmSkipped.value = []
       // 还有排队中的会话 → 把它们提升为当前卡片，弹窗不关闭、不闪
@@ -468,6 +482,7 @@ export const useDeployStore = defineStore('deploy', () => {
     uploadProgress,
     queuedAhead,
     pendingCount,
+    cancelling,
     showConfirm,
     isPreviewing,
     confirmFiles,

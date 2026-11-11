@@ -68,7 +68,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
       </button>
       <div class="progress-header">
         <Upload :size="16" class="head-icon" />
-        <span>正在上传…</span>
+        <span>{{ deployStore.cancelling ? '正在取消…' : '正在上传…' }}</span>
       </div>
 
       <!-- 发到哪：项目 → 目标；第二行给协议+地址与映射条数（不逐条铺开） -->
@@ -88,10 +88,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
         <span class="count">{{ deployStore.uploadProgress.current }} / {{ deployStore.uploadProgress.total }}</span>
       </div>
 
-      <!-- 卡片始终显示“正在传”的那个任务；后面的排队任务只在这里计数，不抢主区域 -->
-      <div v-if="deployStore.pendingCount > 0" class="queued-line" aria-live="polite">
-        另有 {{ deployStore.pendingCount }} 个任务在排队
-      </div>
+      <!-- 不在这里展示排队信息：排队数在右下角状态栏，弹窗只关心当前这个任务 -->
 
       <!-- 固定高度：文件名从无到有时不会把卡片顶高（避免抖动） -->
       <div class="current-file">
