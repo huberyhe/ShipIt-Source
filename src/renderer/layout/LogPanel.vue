@@ -88,9 +88,14 @@ function entryIcon(log: DeployLogEntry): Component {
  * 脚本失败的退出码/输出放到 title 里，避免把一行撑满。
  */
 function resultText(log: DeployLogEntry): string {
-  if (log.cancelled) return log.skipped > 0
-    ? `已取消 · 完成 ${log.succeeded} 个，跳过 ${log.skipped} 个`
-    : `已取消 · 完成 ${log.succeeded} 个`
+    if (log.cancelled) {
+      // 未上传数 = 因取消而没轮到的文件（与成功/失败分开统计）
+      const notUploaded = log.details.filter((d) => d.status === 'cancelled').length
+      const parts = [`已取消 · 完成 ${log.succeeded} 个`]
+      if (notUploaded > 0) parts.push(`未上传 ${notUploaded} 个`)
+      if (log.skipped > 0) parts.push(`跳过 ${log.skipped} 个`)
+      return parts.join('，')
+    }
   const parts: string[] = []
   if (log.failed > 0) parts.push(`${log.succeeded} 个成功，${log.failed} 个失败`)
   else if (log.succeeded > 0) parts.push('上传成功')
@@ -222,8 +227,12 @@ function onLogListKeydown(event: KeyboardEvent): void {
 
         <div v-if="expandedLogs.has(log.taskId)" class="log-files">
           <div v-for="d in log.details" :key="d.relativePath" class="log-file-row" :class="d.status">
-            <component :is="d.status === 'success' ? Check : d.status === 'skipped' ? Minus : X" :size="10" />
-            <span v-if="d.status === 'skipped'" class="log-file-skip">跳过</span>
+          <component
+            :is="d.status === 'success' ? Check : d.status === 'skipped' || d.status === 'cancelled' ? Minus : X"
+            :size="10"
+          />
+          <span v-if="d.status === 'skipped'" class="log-file-skip">跳过</span>
+          <span v-else-if="d.status === 'cancelled'" class="log-file-skip">未上传</span>
             <span class="log-file-path" :title="d.relativePath">{{ pathText(d.relativePath) }}</span>
             <span class="log-file-arrow">→</span>
             <code class="log-file-remote" :title="d.remotePath">{{ pathText(d.remotePath) }}</code>
@@ -282,6 +291,7 @@ function onLogListKeydown(event: KeyboardEvent): void {
 .log-file-row.success { color: var(--fg2); }
 .log-file-row.failed { color: var(--red); }
 .log-file-row.skipped { color: var(--fg2); }
+.log-file-row.cancelled { color: var(--yellow); }
 .log-file-skip { font-size: 11px; color: var(--fg2); border: 1px solid var(--bg4); border-radius: 4px; padding: 0 4px; }
 .log-file-path { color: var(--fg); }
 .log-file-arrow { color: var(--fg2); margin: 0 4px; }

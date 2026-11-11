@@ -140,6 +140,33 @@ describe('上传串行化（INV-6 / AC-019）', () => {
     expect(existsSync(join(destRoot, 'out', 'sig.txt'))).toBe(false)
   })
 
+  it('取消时把没轮到的文件也列出来（status=cancelled，不计失败）', async () => {
+    const service = new DeployService()
+    // 4 个小文件，逐文件进度里一有回调就取消 → 后面几个根本没轮到
+    const tasks = [uploadTask('c1.txt'), uploadTask('c2.txt'), uploadTask('c3.txt'), uploadTask('c4.txt')]
+    let aborted = false
+    const result = await service.deploy(
+      tasks,
+      target(),
+      (current) => {
+        if (!aborted && current >= 1) {
+          aborted = true
+          service.abortCurrent('desktop')
+        }
+      },
+      'desktop'
+    )
+
+    expect(result.cancelled).toBe(true)
+    const notUploaded = result.details.filter((d) => d.status === 'cancelled')
+    expect(notUploaded.length).toBeGreaterThan(0)
+    // 取消的文件不计入 failed
+    expect(result.failed).toBe(0)
+    expect(result.details.filter((d) => d.status === 'failed')).toHaveLength(0)
+    // 明细能覆盖到最后一个文件（用户要知道哪些没传）
+    expect(result.details.some((d) => d.relativePath.endsWith('c4.txt') && d.status === 'cancelled')).toBe(true)
+  })
+
   it('取消只针对当前执行的任务，排队中的照常执行', async () => {
     const service = new DeployService()
 

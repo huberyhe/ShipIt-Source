@@ -262,7 +262,8 @@ export interface UploadPreview {
 export interface DeployDetail {
   relativePath: string
   remotePath: string
-  status: 'success' | 'failed' | 'skipped'
+  /** cancelled：因取消而根本没上传的文件（与失败区分，不计入 failed） */
+  status: 'success' | 'failed' | 'skipped' | 'cancelled'
   error?: string
 }
 

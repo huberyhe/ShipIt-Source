@@ -492,10 +492,13 @@ export class DeployService {
         session.abortHooks.push(() => { try { activeFtp.close() } catch { /* 已关闭 */ } })
       }
 
+      // 取消发生在第几个文件（-1 表示不是取消结束）
+      let cancelledAt = -1
       for (let i = 0; i < tasks.length; i++) {
         // 取消检查：停止继续上传
         if (session.aborted) {
           result.cancelled = true
+          cancelledAt = i
           break
         }
 
@@ -540,6 +543,7 @@ export class DeployService {
           // 被取消时正在传的那个文件不算“失败”：用户主动中止，不该在结果里计失败
           if (session.aborted) {
             result.cancelled = true
+            cancelledAt = i
             break
           }
           result.failed++
@@ -548,6 +552,19 @@ export class DeployService {
             remotePath: task.remotePath,
             status: 'failed',
             error: err.message
+          })
+        }
+      }
+
+      // 取消时把**没轮到的文件**也列出来（status=cancelled）：用户要知道到底哪些没传。
+      // 不计入 failed/skipped（那不是错误也不是跳过），只是“没开始”。
+      if (result.cancelled && cancelledAt >= 0) {
+        for (let j = cancelledAt; j < tasks.length; j++) {
+          result.details.push({
+            relativePath: tasks[j].relativePath,
+            remotePath: tasks[j].remotePath,
+            status: 'cancelled',
+            error: '上传已取消'
           })
         }
       }
