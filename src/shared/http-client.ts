@@ -86,7 +86,9 @@ function normalizeFingerprint256(value?: string): string {
  * `verifiedSockets`：记录**已验证过**的 socket。keep-alive 复用同一 socket 时无需再验（也拿不到新证书）。
  */
 const fingerprintAgents = {
-  keepAlive: new HttpsAgent({ keepAlive: true, maxCachedSessions: 0 }),
+  // timeout 必须小于服务端的 keepAliveTimeout（Node 默认 5s）：否则连接先在服务端
+  // 被关、客户端却还拿着复用 → 下一次请求 read ECONNRESET（偶发，且只在空闲之后）。
+  keepAlive: new HttpsAgent({ keepAlive: true, maxCachedSessions: 0, timeout: 3000, keepAliveMsecs: 1000 }),
   // 兜底：连 keepAlive 也关，用于"没拿到证书"时强制一次**完整握手**
   fresh: new HttpsAgent({ keepAlive: false, maxCachedSessions: 0 })
 }
@@ -246,6 +248,19 @@ export function createHttpClient (options: HttpClientOptions): HttpClient {
         })
 
         req.on('error', (error: Error & { code?: string }) => {
+          // 连接被对端重置（ECONNRESET/EPIPE）：最常见的是 keep-alive 连接已被服务端的
+          // keepAliveTimeout（默认 5s）关掉，而客户端仍在拿它发请求 —— 偶发、重试必成。
+          // 只对 GET 重试：POST 可能已经在服务端产生副作用（上传、配置写入），
+          // 重试会造成重复执行。
+          if (
+            method === 'GET' &&
+            (error.code === 'ECONNRESET' || error.code === 'EPIPE' || error.code === 'ECONNABORTED')
+          ) {
+            if (attemptNo === 1) {
+              attempt(fingerprintAgents.fresh)
+              return
+            }
+          }
           if (noCertificate) {
             // 第一次没拿到证书 → 用"完全不复用"的 agent 重试一次，强制完整握手
             if (attemptNo === 1) {
