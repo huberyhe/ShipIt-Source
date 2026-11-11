@@ -563,8 +563,8 @@ export class DeployService {
           result.details.push({
             relativePath: tasks[j].relativePath,
             remotePath: tasks[j].remotePath,
-            status: 'cancelled',
-            error: '上传已取消'
+            // 不写 error：行尾的“上传已取消”文案是冗余的，状态已由标签表达
+            status: 'cancelled'
           })
         }
       }

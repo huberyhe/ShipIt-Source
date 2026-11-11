@@ -353,7 +353,15 @@ export const useDeployStore = defineStore('deploy', () => {
    * 同一 taskId 去重：桌面自身发起的上传已由 executeDeploy 写入。
    */
   function pushLog(entry: DeployLogEntry) {
-    if (deployLogs.value.some((log) => log.taskId === entry.taskId)) return
+    const idx = deployLogs.value.findIndex((log) => log.taskId === entry.taskId)
+    if (idx >= 0) {
+      // 同一任务会先收到主进程广播、再由本窗口写入。两份的明细可能不等（渲染层能补上
+      // 主进程不知道的“被跳过文件”），保留更完整的那份。
+      if (entry.details.length > deployLogs.value[idx].details.length) {
+        deployLogs.value[idx] = entry
+      }
+      return
+    }
     deployLogs.value.unshift(entry)
     if (deployLogs.value.length > MAX_DEPLOY_LOGS) deployLogs.value.length = MAX_DEPLOY_LOGS
   }
@@ -453,8 +461,20 @@ export const useDeployStore = defineStore('deploy', () => {
         JSON.parse(JSON.stringify(target)),
         projectStore.projectPath ?? undefined
       )
+      // 日志要能回答“这次到底涉及哪些文件”：把被跳过的文件也拼进明细
+      // （主进程只认识实际要传的 tasks，skipped 是渲染层一侧的信息）
       pushLog({
         ...result,
+        details: [
+          ...result.details,
+          ...confirmSkipped.value.map((skip) => ({
+            relativePath: skip.relativePath,
+            remotePath: skip.relativePath,
+            status: 'skipped' as const,
+            ...(skip.reason ? { error: skipReasonText(skip.reason) } : {})
+          }))
+        ],
+        skipped: result.skipped + confirmSkipped.value.length,
         origin: 'desktop',
         ...(projectStore.projectPath ? { projectRoot: projectStore.projectPath } : {})
       })
