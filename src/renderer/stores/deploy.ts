@@ -125,7 +125,12 @@ export const useDeployStore = defineStore('deploy', () => {
   const pendingUploads = ref<Array<{
     target: { name: string; protocol: string; host: string; port: number; mappingCount: number }
     total: number
+    /** 会话令牌：用于判断“谁是当前任务” */
+    token: number
   }>>([])
+  /** 会话令牌。只有 currentToken 对应的那次执行才能推进队列/开关弹窗 */
+  let sessionCounter = 0
+  let currentToken = 0
   /** 还有多少个任务在排队（状态栏显示用；弹窗不展示排队信息） */
   const pendingCount = computed(() => pendingUploads.value.length)
   /** 已发出取消请求但后端尚未确认：弹窗保持“正在取消…”，确认后才关闭 */
@@ -299,7 +304,9 @@ export const useDeployStore = defineStore('deploy', () => {
     // 只取消当前正在传的那个任务：后端 abortCurrent 不动排队中的，
     // 所以这里也不清 pendingUploads（它们会依次被提升）。
     cancelling.value = true
-    spawnCancelDeadline()
+    // 记录取消时的令牌：用于兜底判断“当前任务是否真的结束了”
+    const tokenAtCancel = currentToken
+    spawnCancelDeadline(tokenAtCancel)
     try {
       await window.deployApi.cancelDeploy()
     } catch (error) {
@@ -308,22 +315,27 @@ export const useDeployStore = defineStore('deploy', () => {
       isUploading.value = false
       return
     }
-    // 不在这里复位 isUploading：等 deployFiles 真正返回（executeDeploy 的 finally）。
-    // 弹窗要**等取消完成**再关，否则用户看到“已取消”但后端还在传（或日志还没落）。
+    // 取消请求已被后端受理（abortCurrent 是同步生效的）：“正在取消”提示到此为止。
+    // 弹窗本身仍等 deployFiles 返回（executeDeploy 的 finally）再关，
+    // 否则会出现“弹窗已关、日志还没落”的空窗。
+    cancelling.value = false
   }
 
   /**
    * 取消确认的超时兜底：20 秒还没等到取消结果就强制复位，避免弹窗永远挂着。
    * （后端自身有 15s 的串行链强制释放兜底，这里只是 UI 层保险）
    */
-  function spawnCancelDeadline(): void {
+  function spawnCancelDeadline(tokenAtCancel: number): void {
     setTimeout(() => {
-      if (!cancelling.value) return
+      // 当前任务还是取消时那个、且仍处于“上传中” → 说明 deployFiles 没回来、
+      // finally 永远不执行（弹窗会一直挂着）。这时强制复位，让用户能继续操作。
+      if (!isUploading.value) return
+      if (currentToken !== 0 && currentToken !== tokenAtCancel) return // 已提升到下一个任务，正常
       cancelling.value = false
-      if (pendingUploads.value.length === 0) {
-        isUploading.value = false
-        queuedAhead.value = 0
-      }
+      isUploading.value = false
+      queuedAhead.value = 0
+      pendingUploads.value = []
+      currentToken = 0
     }, 20_000)
   }
 
@@ -382,6 +394,7 @@ export const useDeployStore = defineStore('deploy', () => {
     if (!target) throw new Error('未找到上传目标')
 
     showConfirm.value = false
+    const myToken = ++sessionCounter
     // 已有上传在跑：这次进待办队列，**不碰当前卡片**，
     // 否则会把正在传的那个任务的进度/目标盖掉（用户看不到第一个任务了）。
     const isSecondary = isUploading.value
@@ -394,11 +407,13 @@ export const useDeployStore = defineStore('deploy', () => {
           port: target.port,
           mappingCount: target.mappings?.length ?? 0
         },
-        total: confirmFiles.value.length
+        total: confirmFiles.value.length,
+        token: myToken
       })
       // 排队不弹窗：只提示已入队，弹窗留给“真正开始传”的那个任务
       toastSuccess(`已加入上传队列，前面还有 ${pendingUploads.value.length} 个任务`)
     } else {
+      currentToken = myToken
       isUploading.value = true
       queuedAhead.value = 0
       // 进度卡要说清「发到哪」：项目名/目标名/协议+主机/映射条数（不含任何凭据）
@@ -451,20 +466,25 @@ export const useDeployStore = defineStore('deploy', () => {
     } catch (err: any) {
       toastError('上传失败: ' + (err?.message || String(err)))
     } finally {
-      cancelling.value = false
       confirmFiles.value = []
       confirmSkipped.value = []
-      // 还有排队中的会话 → 把它们提升为当前卡片，弹窗不关闭、不闪
-      const next = pendingUploads.value.shift()
-      if (next) {
-        // 轮到它了：这时才弹出（继续显示）进度卡
-        isUploading.value = true
-        uploadTarget.value = next.target
-        uploadProgress.value = { current: 0, total: next.total, file: '' }
-        queuedAhead.value = 0
-      } else {
-        isUploading.value = false
-        queuedAhead.value = 0
+      // 只有「当前显示的那个任务」结束时才推进队列/开关弹窗。
+      // 并发的排队长传结束时若也跑这段，会把状态搞乱（弹窗卡住不关）。
+      if (currentToken === myToken) {
+        cancelling.value = false
+        const next = pendingUploads.value.shift()
+        if (next) {
+          // 轮到它了：弹窗不关闭，内容换成它（此时后端正好开始传）
+          currentToken = next.token
+          isUploading.value = true
+          uploadTarget.value = next.target
+          uploadProgress.value = { current: 0, total: next.total, file: '' }
+          queuedAhead.value = 0
+        } else {
+          currentToken = 0
+          isUploading.value = false
+          queuedAhead.value = 0
+        }
       }
     }
   }

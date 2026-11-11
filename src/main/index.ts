@@ -908,6 +908,7 @@ function registerIpcHandlers() {
 
   // 执行：直接上传已确认的任务列表（与预览完全一致）
   ipcMain.handle(IpcChannels.DEPLOY_UPLOAD, async (_event, tasks: any[], target: any, projectRoot?: string) => {
+    const startedAt = Date.now()
     let result: any
     try {
       result = (await ipcAdapter.deployDirect(
@@ -940,6 +941,13 @@ function registerIpcHandlers() {
         ...(projectRoot ? { projectRoot } : {})
       })
       throw error
+    } finally {
+      // 排障用：一次上传超过 5s 就留痕（正常上传不会触发），
+      // 用于确认“弹窗卡住”时后端请求到底有没有返回。
+      const elapsed = Date.now() - startedAt
+      if (elapsed > 5000) {
+        writeFatalLog('deploy', `DEPLOY_UPLOAD 耗时 ${elapsed}ms（windowId=${_event.sender.id}）`)
+      }
     }
     // 桌面直连上传不进队列，其他窗口的日志面板默认看不到这次上传：
     // 结果统一广播（发起窗口按 taskId 去重），与 CLI/MCP 任务的可见性保持一致。
