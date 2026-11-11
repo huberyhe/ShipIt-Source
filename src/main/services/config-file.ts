@@ -44,11 +44,24 @@ export async function writeJsonAtomic(filePath: string, data: unknown): Promise<
   const dir = dirname(filePath)
   if (dir && dir !== '.') await fs.mkdir(dir, { recursive: true }).catch(() => undefined)
   const tmpPath = `${filePath}.tmp`
+  // 先清掉可能的残留 tmp：writeFile 的 mode 只在**创建**时生效，
+  // 复用旧文件会带着旧权限（Windows 上额外的 chmod 也会拉长与 rename 的竞争窗口）。
+  await fs.rm(tmpPath, { force: true }).catch(() => undefined)
   // mode 必须显式 0600（F8）：默认 0644 会把原有的 0600 通过 rename 覆盖成全局可读，
   // 而这个文件里有目标密码与服务 token。Windows 上 mode 不生效，靠 ACL（另测）。
   await fs.writeFile(tmpPath, JSON.stringify(data, null, 2), { encoding: 'utf-8', mode: 0o600 })
-  await fs.chmod(tmpPath, 0o600).catch(() => undefined)
-  await fs.rename(tmpPath, filePath)
+  // Windows 上 rename 可能撞上杀毒/索引器的瞬时占用（EPERM/EBUSY）：短重试，
+  // 不能直接把一次瞬时占用报成“配置保存失败”。
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await fs.rename(tmpPath, filePath)
+      return
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      if (attempt >= 2 || (code !== 'EPERM' && code !== 'EBUSY')) throw error
+      await new Promise((resolve) => setTimeout(resolve, 30))
+    }
+  }
 }
 
 /** 读取 JSON 对象；文件不存在或解析失败返回空对象（调用方按"缺字段"处理） */

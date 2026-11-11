@@ -172,8 +172,28 @@ export function createRuntime (options: RuntimeOptions) {
     return result
   }
 
+  /**
+   * 公开端点的生命周期串行链（F2）。
+   *
+   * 保存配置、轮换令牌、退出都会触发 listener 重建，它们可以并发到达。
+   * 无锁时两次调用都会先 await 旧 listener.stop() 再各自创建新实例，
+   * 后完成者覆盖 publicServer，先创建的那个仍在监听但已无引用
+   * —— 外部表现为“端口被自己占着，状态却报占用”，stop 与 server.json 所有权也不可靠。
+   */
+  let publicLifecycle: Promise<void> = Promise.resolve()
+
+  function withPublicLifecycle<T> (fn: () => Promise<T>): Promise<T> {
+    const run = publicLifecycle.then(fn, fn)
+    publicLifecycle = run.then(() => undefined, () => undefined)
+    return run
+  }
+
   /** 公开端点：按 enabled 启停；失败只影响公开能力，管理连接不受影响 */
-  async function syncPublicListener () {
+  function syncPublicListener () {
+    return withPublicLifecycle(doSyncPublicListener)
+  }
+
+  async function doSyncPublicListener () {
     const config = await loadServerConfig(options.configPath)
     serverConfigCache = { bind: config.bind, allowedRoots: config.allowedRoots }
     published = config.enabled
@@ -211,6 +231,8 @@ export function createRuntime (options: RuntimeOptions) {
   }
 
   async function stopAll () {
+    // 先等生命周期链落完：不能在一个 listener 切换的中途停服（F2）
+    await publicLifecycle.catch(() => undefined)
     await publicServer?.stop()
     publicServer = null
     await adminServer?.stop()

@@ -45,7 +45,8 @@ async function loadFtpCtor (): Promise<FtpCtor> {
   ftpCtorPromise ??= import('basic-ftp').then((mod) => mod.Client as unknown as FtpCtor)
   return ftpCtorPromise
 }
-import { promises as fsPromises, readFileSync, constants } from 'fs'
+import { promises as fsPromises, createReadStream, createWriteStream, readFileSync, constants } from 'fs'
+import { pipeline } from 'stream/promises'
 import { join, relative, posix, dirname, isAbsolute, resolve } from 'path'
 import type {
   DeployTarget,
@@ -72,6 +73,32 @@ interface DeploySession {
   /** 发起窗口（仅 owner=desktop）：取消只作用于本窗口的会话，不误伤其他窗口 */
   windowId?: number
   aborted: boolean
+  /** 中止本地流式复制（F3） */
+  controller: AbortController
+  /** 中止远端 I/O 的钩子：断连后挂起的 put/uploadFrom 才会抛错，release() 才执行 */
+  abortHooks: Array<() => void>
+}
+
+/**
+ * 标记会话中止，并**真正打断正在进行的 I/O**（F3）。
+ *
+ * 只置 aborted 不够：已经 await 的 put / uploadFrom / 流式复制不会自己结束，
+ * finally 里的 release() 就不会执行 → 串行链被永久占住，后续任务虽然“排队中”但永远不开始。
+ */
+function markAborted (session: DeploySession): void {
+  session.aborted = true
+  try {
+    session.controller.abort()
+  } catch {
+    // AbortController 已中止
+  }
+  for (const hook of session.abortHooks) {
+    try {
+      hook()
+    } catch {
+      // 钩子只做尽力而为的释放
+    }
+  }
 }
 
 /** deploy() 的附加选项 */
@@ -142,7 +169,7 @@ export class DeployService {
     for (const session of this.sessions) {
       if (owner && session.owner !== owner) continue
       if (windowId !== undefined && session.windowId !== windowId) continue
-      session.aborted = true
+      markAborted(session)
     }
   }
 
@@ -287,10 +314,17 @@ export class DeployService {
     owner: DeployOwner = 'desktop',
     options: DeployOptions = {}
   ): Promise<DeployResult> {
-    const session: DeploySession = { owner, target: target.name, aborted: false, windowId: options.windowId }
+    const session: DeploySession = {
+      owner,
+      target: target.name,
+      aborted: false,
+      windowId: options.windowId,
+      controller: new AbortController(),
+      abortHooks: []
+    }
     // 外部取消（队列看门狗超时）与手动 abort 走同一个标记：排队中/传输中语义一致
     const onAbort = (): void => {
-      session.aborted = true
+      markAborted(session)
     }
     options.signal?.addEventListener('abort', onAbort, { once: true })
     if (options.signal?.aborted) session.aborted = true
@@ -352,10 +386,15 @@ export class DeployService {
         const Sftp = await loadSftpCtor()
         sftpClient = new Sftp('deploy')
         await sftpClient.connect(this.buildSftpOptions(target))
+        // 取消时强制断连（F3）：让挂起的 put 抛错，才能走到 finally 释放串行链
+        const activeSftp = sftpClient
+        session.abortHooks.push(() => { void activeSftp.end().catch(() => undefined) })
       } else {
         const Ftp = await loadFtpCtor()
         ftpClient = new Ftp()
         await ftpClient.access(this.buildFtpOptions(target))
+        const activeFtp = ftpClient
+        session.abortHooks.push(() => { try { activeFtp.close() } catch { /* 已关闭 */ } })
       }
 
       for (let i = 0; i < tasks.length; i++) {
@@ -372,7 +411,14 @@ export class DeployService {
           if (isLocal) {
             const dest = this.resolveLocalDest(task, target)
             await fsPromises.mkdir(dirname(dest), { recursive: true })
-            await fsPromises.copyFile(task.localPath, dest)
+            // 用流式复制而不是 copyFile（F3）：copyFile 不响应取消，目标在慢速网络盘上
+            // 挂住时整个串行链会被卡死。mode 传源文件权限，保持与 copyFile 一致的语义。
+            const srcStat = await fsPromises.stat(task.localPath)
+            await pipeline(
+              createReadStream(task.localPath),
+              createWriteStream(dest, { mode: srcStat.mode & 0o777 }),
+              { signal: session.controller.signal }
+            )
           } else {
             // 确保远程目录存在
             const remoteDir = posix.dirname(task.remotePath)
@@ -387,6 +433,11 @@ export class DeployService {
           result.succeeded++
           result.details.push({ relativePath: task.relativePath, remotePath: task.remotePath, status: 'success' })
         } catch (err: any) {
+          // 被取消时正在传的那个文件不算“失败”：用户主动中止，不该在结果里计失败
+          if (session.aborted) {
+            result.cancelled = true
+            break
+          }
           result.failed++
           result.details.push({
             relativePath: task.relativePath,

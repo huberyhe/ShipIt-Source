@@ -6,7 +6,7 @@
  * 这里用 local 协议（不建立远端连接）确定性覆盖：串行、排队期取消、来源隔离、串行链释放。
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { closeSync, existsSync, ftruncateSync, mkdirSync, mkdtempSync, openSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import type { DeployTarget, UploadTask } from '../../shared/types'
@@ -161,6 +161,37 @@ describe('上传串行化（INV-6 / AC-019）', () => {
     expect(result.cancelled).toBe(true)
     expect(result.postUpload).toBeUndefined()
     expect(existsSync(marker)).toBe(false)
+  })
+
+  it('取消会打断正在进行的本地复制，并释放串行链（F3）', async () => {
+    // 稀疏大文件：读+写都要走真实 I/O，足够在复制中途 abort。
+    const big = join(srcDir, 'big.bin')
+    const fd = openSync(big, 'w')
+    ftruncateSync(fd, 160 * 1024 * 1024)
+    closeSync(fd)
+
+    const bigTask: UploadTask = {
+      localPath: big,
+      remotePath: '/out/big.bin',
+      relativePath: 'dist/big.bin',
+      size: 160 * 1024 * 1024
+    }
+    const service = new DeployService()
+    const started = Date.now()
+    const running = service.deploy([bigTask], target(), undefined, 'desktop')
+
+    // 给它一点时间进入复制，再取消
+    await new Promise((resolve) => setTimeout(resolve, 40))
+    service.abort('desktop')
+    const result = await running
+
+    // 取消能生效：不是“等完整 160MB 传完才返回”
+    expect(result.cancelled).toBe(true)
+    expect(Date.now() - started).toBeLessThan(5_000)
+
+    // 串行链已释放：下一个任务能立刻开始（不被挂住的旧 I/O 阻塞）
+    const next = await service.deploy([uploadTask('after.txt')], target(), undefined, 'desktop')
+    expect(next.succeeded).toBe(1)
   })
 
   it('单文件失败不影响其余文件，且结果如实上报（失败明细）', async () => {
