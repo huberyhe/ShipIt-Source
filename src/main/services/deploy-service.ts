@@ -255,6 +255,7 @@ export class DeployService {
         const Sftp = await loadSftpCtor()
         const sftp = new Sftp(`test-${Date.now()}`)
         sftp.on?.('error', () => undefined)
+        this.armSftpWatchdog(sftp)
         try {
           await sftp.connect(this.buildSftpOptions(target))
           await sftp.list(target.mappings[0]?.remotePath || '/')
@@ -477,6 +478,7 @@ export class DeployService {
         // （后端曾因此在断网瞬间直接重启，连带桌面客户端的在途请求全部 ECONNRESET）。
         sftpClient.on?.('error', () => undefined)
         await sftpClient.connect(this.buildSftpOptions(target))
+        this.armSftpWatchdog(sftpClient)
         // 取消时强制断连（F3）：让挂起的 put 抛错，才能走到 finally 释放串行链。
         // 先 destroy 底层 socket（end() 在断网场景自己也可能挂）：这是唯一能
         // 把“已发出但永远等不到回应”的写操作立刻拉回的手段。
@@ -655,6 +657,39 @@ export class DeployService {
 
     // 子目录并行递归
     await Promise.all(subDirs.map(d => this.collectDirFiles(d, projectRoot, mappings, tasks, skipped)))
+  }
+
+  /**
+   * 给已建立的 SFTP 连接装“断网看门狗”。
+   *
+   * 背景：`connect()` 里的 keepaliveInterval 被 ssh2-sftp-client 丢弃（实测无效），
+   * 断网后 put 会挂到 TCP 自己超时（分钟级），任务看起来永远“传不完”。
+   *
+   * 两层：
+   * 1) setKeepAlive：应用层心跳，5s 一次、连续 2 次无回应即判连接死
+   * 2) socket 空闲超时：30s 无数据流动就 destroy（传输中的数据流会不断重置它，不会误杀）
+   */
+  private armSftpWatchdog (client: SftpInstance): void {
+    type Underlying = {
+      setKeepAlive?: (interval: number, countMax: number) => void
+      _sock?: { setTimeout?: (ms: number, cb: () => void) => void; destroy?: () => void }
+    }
+    const underlying = (client as { client?: unknown }).client as Underlying | undefined
+    try {
+      underlying?.setKeepAlive?.(5_000, 2)
+    } catch {
+      // 旧版本没有该方法：靠下面的 socket 超时兜底
+    }
+    const sock = underlying?._sock
+    if (sock?.setTimeout) {
+      sock.setTimeout(30_000, () => {
+        try {
+          sock.destroy?.()
+        } catch {
+          // 已断开
+        }
+      })
+    }
   }
 
   private buildSftpOptions(target: DeployTarget): any {
