@@ -73,6 +73,7 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
+      "include": "build/installer.nsh",
       "artifactName": "ShipIt-v${version}-build${env.BUILD_NUMBER}-${arch}.${ext}"
     },
     "linux": {
