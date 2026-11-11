@@ -49,10 +49,16 @@ describe('上传串行化（INV-6 / AC-019）', () => {
     const service = new DeployService()
     let firstFinished = false
 
-    const first = service.deploy([uploadTask('a.txt')], target(), undefined, 'desktop').then((r) => {
-      firstFinished = true
-      return r
-    })
+    // 用 onProgress 而不是 .then 记录“第一个已完成”：.then 是外部微任务，
+    // 与第二个会话的 await previous 续体谁先入队并不确定（会偶发假失败）。
+    const first = service.deploy(
+      [uploadTask('a.txt')],
+      target(),
+      (current, total) => {
+        if (current === total) firstFinished = true
+      },
+      'desktop'
+    )
     const second = service.deploy(
       [uploadTask('b.txt')],
       target(),
@@ -132,6 +138,19 @@ describe('上传串行化（INV-6 / AC-019）', () => {
     })
     expect(result.cancelled).toBe(true)
     expect(existsSync(join(destRoot, 'out', 'sig.txt'))).toBe(false)
+  })
+
+  it('进度按已完成文件数报：不提前满格（A3 反馈）', async () => {
+    const service = new DeployService()
+    const seen: Array<[number, number]> = []
+    await service.deploy(
+      [uploadTask('p1.txt'), uploadTask('p2.txt')],
+      target(),
+      (current, total) => seen.push([current, total]),
+      'desktop'
+    )
+    // 每个文件两次：开始（当前已完成数）+ 完成（+1）
+    expect(seen).toEqual([[0, 2], [1, 2], [1, 2], [2, 2]])
   })
 
   it('取消后不执行上传后脚本（F4）', async () => {

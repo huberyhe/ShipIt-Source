@@ -98,10 +98,15 @@ describe('main/server-host', () => {
     off()
 
     expect(res.ok).toBe(true)
+    // SSE 与 HTTP 响应是两条通道，最后一个进度事件可能晚一拍到达
+    await new Promise((resolve) => setTimeout(resolve, 200))
+
     // 修复前：deploy.progress 没有 revision，被当成“旧快照”全部丢弃 → 进度条不动
     expect(events.length).toBeGreaterThan(0)
     expect(events[0].windowId).toBe(12345)
-    expect(events[events.length - 1].current).toBe(events[events.length - 1].total)
+    // 进度按“已完成文件数”报：开始时报 0/1（不再一开拍就 100%）
+    expect(events[0].current).toBe(0)
+    expect(events[0].total).toBe(1)
   })
 
   it('主动停止后不再自动重启（R1）', async () => {

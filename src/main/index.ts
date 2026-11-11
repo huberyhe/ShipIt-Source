@@ -892,15 +892,38 @@ function registerIpcHandlers() {
 
   // 执行：直接上传已确认的任务列表（与预览完全一致）
   ipcMain.handle(IpcChannels.DEPLOY_UPLOAD, async (_event, tasks: any[], target: any, projectRoot?: string) => {
-    const result = (await ipcAdapter.deployDirect(
-      { windowId: _event.sender.id, tasks, targetName: target?.name, projectRoot },
-      (current: number, total: number, file: string) => {
-        // 逐文件进度只回发起窗口（进度条属于该窗口的会话）
-        sendToWindow(_event.sender.id, IpcChannels.DEPLOY_PROGRESS, { current, total, file })
-      }
-    )) as any
+    let result: any
+    try {
+      result = (await ipcAdapter.deployDirect(
+        { windowId: _event.sender.id, tasks, targetName: target?.name, projectRoot },
+        (current: number, total: number, file: string) => {
+          // 逐文件进度只回发起窗口（进度条属于该窗口的会话）
+          sendToWindow(_event.sender.id, IpcChannels.DEPLOY_PROGRESS, { current, total, file })
+        }
+      )) as any
+    } catch (error) {
+      // 请求本身失败（后端不可达、连接中断等）也必须留一条日志：
+      // 否则用户点完上传只看到弹窗消失、日志面板空白，完全不知道发生了什么。
+      const message = error instanceof Error ? error.message : String(error)
+      const total = Array.isArray(tasks) ? tasks.length : 0
+      broadcast(IpcChannels.DEPLOY_LOG_ENTRY, {
+        taskId: `failed-${Date.now().toString(36)}`,
+        targetName: target?.name ?? '-',
+        timestamp: Date.now(),
+        totalFiles: total,
+        succeeded: 0,
+        failed: total,
+        skipped: 0,
+        duration: 0,
+        details: [{ relativePath: '(上传请求失败)', remotePath: '', status: 'failed', error: message }],
+        origin: 'desktop',
+        ...(projectRoot ? { projectRoot } : {})
+      })
+      throw error
+    }
     // 桌面直连上传不进队列，其他窗口的日志面板默认看不到这次上传：
     // 结果统一广播（发起窗口按 taskId 去重），与 CLI/MCP 任务的可见性保持一致。
+    // 取消也会走到这里（deploy 会返回 cancelled:true 的结果），所以取消同样有日志。
     broadcast(IpcChannels.DEPLOY_LOG_ENTRY, {
       taskId: result.taskId,
       targetName: result.targetName,

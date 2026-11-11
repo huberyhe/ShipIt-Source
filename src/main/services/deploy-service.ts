@@ -28,7 +28,8 @@ type FtpInstance = {
   uploadFrom (source: unknown, target: string): Promise<unknown>
   close (): void
 }
-type FtpCtor = new () => FtpInstance
+// basic-ftp 的构造参数是 socket 空闲超时（毫秒）；0/不传 = 永不超时
+type FtpCtor = new (timeout?: number) => FtpInstance
 
 let sftpCtorPromise: Promise<SftpCtor> | null = null
 let ftpCtorPromise: Promise<FtpCtor> | null = null
@@ -202,7 +203,8 @@ export class DeployService {
         }
       } else {
         const Ftp = await loadFtpCtor()
-        const client = new Ftp()
+        // 30s 空闲超时：FTP 没有 keepalive，不设超时就会在断网时永久挂住
+        const client = new Ftp(30_000)
         await client.access(this.buildFtpOptions(target))
         try {
           await client.list(target.mappings[0]?.remotePath || '/')
@@ -386,12 +388,22 @@ export class DeployService {
         const Sftp = await loadSftpCtor()
         sftpClient = new Sftp('deploy')
         await sftpClient.connect(this.buildSftpOptions(target))
-        // 取消时强制断连（F3）：让挂起的 put 抛错，才能走到 finally 释放串行链
+        // 取消时强制断连（F3）：让挂起的 put 抛错，才能走到 finally 释放串行链。
+        // 先 destroy 底层 socket（end() 在断网场景自己也可能挂）：这是唯一能
+        // 把“已发出但永远等不到回应”的写操作立刻拉回的手段。
         const activeSftp = sftpClient
-        session.abortHooks.push(() => { void activeSftp.end().catch(() => undefined) })
+        session.abortHooks.push(() => {
+          try {
+            const underlying = (activeSftp as { client?: { destroy?: () => void } }).client
+            underlying?.destroy?.()
+          } catch {
+            // socket 已销毁
+          }
+          void activeSftp.end().catch(() => undefined)
+        })
       } else {
         const Ftp = await loadFtpCtor()
-        ftpClient = new Ftp()
+        ftpClient = new Ftp(30_000)
         await ftpClient.access(this.buildFtpOptions(target))
         const activeFtp = ftpClient
         session.abortHooks.push(() => { try { activeFtp.close() } catch { /* 已关闭 */ } })
@@ -405,7 +417,9 @@ export class DeployService {
         }
 
         const task = tasks[i]
-        onProgress?.(i + 1, tasks.length, task.relativePath)
+        // 进度按“已完成文件数”报：开始第 i 个时报 i（不是 i+1）。
+        // 否则单文件上传时一开拍就是 100%，大文件传输期间进度条停在满格。
+        onProgress?.(i, tasks.length, task.relativePath)
 
         try {
           if (isLocal) {
@@ -431,6 +445,8 @@ export class DeployService {
             }
           }
           result.succeeded++
+          // 传完一个再报一次：进度条按“已完成”前进，大文件期间不会假满
+          onProgress?.(i + 1, tasks.length, task.relativePath)
           result.details.push({ relativePath: task.relativePath, remotePath: task.remotePath, status: 'success' })
         } catch (err: any) {
           // 被取消时正在传的那个文件不算“失败”：用户主动中止，不该在结果里计失败
@@ -528,6 +544,12 @@ export class DeployService {
       host: target.host,
       port: target.port || 22,
       username: target.username,
+      // 连接级超时与保活：断网/远端失联时不能等 OS 的 TCP 超时（可能几十分钟）。
+      // readyTimeout 管建连，keepalive 管已建立的连接：10s 一次、连续 2 次无响应即判死，
+      // 挂起的 put 会因此抛错，任务能尽快结案而不是“永远传不完”。
+      readyTimeout: 20_000,
+      keepaliveInterval: 10_000,
+      keepaliveCountMax: 2
     }
 
     if (target.privateKeyPath) {
