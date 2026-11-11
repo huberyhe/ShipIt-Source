@@ -134,6 +134,35 @@ describe('上传串行化（INV-6 / AC-019）', () => {
     expect(existsSync(join(destRoot, 'out', 'sig.txt'))).toBe(false)
   })
 
+  it('取消后不执行上传后脚本（F4）', async () => {
+    // 部分文件已传完再取消：脚本不能跑。这类脚本常是“重启服务/切版本”，
+    // 在只传了一半的目录上执行是不可回滚的副作用。
+    const marker = join(destRoot, 'post-ran.txt')
+    const t: DeployTarget = {
+      ...target(),
+      postUpload: { kind: 'command', value: `echo ran > "${marker}"` } as never
+    }
+    const tasks = [uploadTask('a.txt'), uploadTask('b.txt'), uploadTask('c.txt')]
+    const service = new DeployService()
+
+    let aborted = false
+    const result = await service.deploy(
+      tasks,
+      t,
+      (current) => {
+        if (!aborted && current >= 1) {
+          aborted = true
+          service.abort('desktop')
+        }
+      },
+      'desktop'
+    )
+
+    expect(result.cancelled).toBe(true)
+    expect(result.postUpload).toBeUndefined()
+    expect(existsSync(marker)).toBe(false)
+  })
+
   it('单文件失败不影响其余文件，且结果如实上报（失败明细）', async () => {
     const service = new DeployService()
     const missing: UploadTask = {

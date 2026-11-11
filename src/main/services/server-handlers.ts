@@ -66,8 +66,11 @@ export interface ServerHandlerDeps {
     tasks: UploadTask[],
     target: DeployTarget,
     onProgress: (current: number, total: number, file: string) => void,
-    /** 队列任务上下文：取消信号（看门狗超时）必须往下传 */
-    jobCtx?: { signal?: AbortSignal }
+    /**
+     * 队列任务上下文：取消信号（看门狗超时）与“真正开始”回调都必须往下传。
+     * markStarted 让队列在拿到执行链后重置看门狗（F9）。
+     */
+    jobCtx?: { signal?: AbortSignal; markStarted?: () => void }
   ) => Promise<DeployResult>
 }
 

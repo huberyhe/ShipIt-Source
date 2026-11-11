@@ -1040,7 +1040,9 @@ function registerIpcHandlers() {
       connectionFile: status?.connectionFile ?? null,
       queue: status?.queue,
       currentProject: status?.currentProject ?? null,
-      revision: status?.revision ?? 0
+      // 必须用 main 的发号器（F1）：GET 与推送先到一处，renderer 才能按同一个时钟丢弃旧快照。
+      // 后端实例内 revision 在后端重启后会归零，直接透传会被 renderer 当成旧状态丢掉。
+      revision: nextStatusRevision()
     }
   })
 

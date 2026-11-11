@@ -137,7 +137,12 @@ export function createRuntime (options: RuntimeOptions) {
     isDraining: () => draining,
     snapshot: () => statusSnapshot(),
     deploy: (tasks, target, onProgress, ctx) =>
-      deployService.deploy(tasks, target, onProgress, 'queue', { signal: ctx?.signal })
+      // markStarted 必须转交（F9）：队列在拿到执行锁（uploadTail）后才重置看门狗，
+      // 否则排队等桌面上传的时间也会计入 10 分钟的传输预算。
+      deployService.deploy(tasks, target, onProgress, 'queue', {
+        signal: ctx?.signal,
+        ...(ctx?.markStarted ? { markStarted: ctx.markStarted } : {})
+      })
   }, () => publicState)
 
   /** 管理端点：始终启动，只绑回环，宿主 token，不写 server.json */

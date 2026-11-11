@@ -165,9 +165,20 @@ export function createServerHost (options: HostOptions): ServerHost {
     sseRequest = null
   }
 
+  /**
+   * 安排一次重连（1s 后）。多处终止路径共用，并做去重：已有待执行的重连就跳过，
+   * 避免 end+close 同时触发时排出两条链。
+   */
+  function scheduleReconnect (): void {
+    // stopping 时不再重连（F11）：退出流程中每秒连一个已死的端口毫无意义
+    if (stopped || stopping) return
+    if (sseTimer) return
+    sseTimer = setTimeout(connectSse, 1000)
+  }
+
   /** SSE 订阅：校验指纹（INV-11），断线 1s 重连 */
   function connectSse (): void {
-    if (stopped || !admin) return
+    if (stopped || stopping || !admin) return
     const request = https.get({
       host: '127.0.0.1',
       port: admin.port,
@@ -229,13 +240,14 @@ export function createServerHost (options: HostOptions): ServerHost {
           index = buffer.indexOf('\n\n')
         }
       })
-      res.on('end', () => {
-        if (!stopped) sseTimer = setTimeout(connectSse, 1000)
-      })
+      // 异常断开（aborted / close / error）也必须重连（F10）：此前只挂了 end，
+      // 而 tls-mismatch 里的 res.destroy() 与网络抖动不一定触发 end。
+      res.on('end', scheduleReconnect)
+      res.on('aborted', scheduleReconnect)
+      res.on('close', scheduleReconnect)
+      res.on('error', scheduleReconnect)
     })
-    request.on('error', () => {
-      if (!stopped) sseTimer = setTimeout(connectSse, 1000)
-    })
+    request.on('error', scheduleReconnect)
     sseRequest = request
   }
 
@@ -305,11 +317,14 @@ export function createServerHost (options: HostOptions): ServerHost {
 
     prepareStop (deadlineMs = 5000) {
       stopping = true
+      // 主动停止时立刻断开 SSE（F11）：否则后端退出后 res 'end' 还会再安排一次重连
+      cleanupSse()
       return this.post('/shutdown', { phase: 'prepare', deadlineMs })
     },
 
     finalizeStop (deadlineMs = 30000) {
       stopping = true
+      cleanupSse()
       // HTTP 预算必须宽于后端的 deadline：两者相等时请求会先超时，
       // 拿不到 drained 结果，调用方只能猜（R4）。
       return this.post('/shutdown', { phase: 'final', deadlineMs }, deadlineMs + 5_000)

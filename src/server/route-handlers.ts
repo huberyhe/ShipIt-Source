@@ -90,14 +90,20 @@ export function buildAdminHandlers (rt: Runtime, events: EventHub): Record<strin
     },
 
     targetClone: async (ctx) => {
-      const { sourceId, target } = body(ctx) as { sourceId: string; target: DeployTarget }
+      const { sourceId, target, secrets } = body(ctx) as {
+        sourceId: string
+        target: DeployTarget
+        secrets?: TargetSecrets
+      }
       const all = (await rt.configStore.load()).deploymentTargets
       const source = all.find((t) => t.id === sourceId)
       if (!source) return errEnvelope('NO_TARGET', `源目标不存在：${sourceId}`)
       const name = String(target?.name ?? '').trim()
       if (!name) return errEnvelope('USAGE', '目标名不能为空')
       if (all.some((t) => t.name === name)) return errEnvelope('USAGE', `目标名已存在：${name}`)
-      await rt.configStore.addTarget(cloneSecrets(source, target))
+      // 先复制源秘密，再叠加本次 SecretOp（F5）：否则用户复制后改的密码会被源密码覆盖
+      const cloned = cloneSecrets(source, target)
+      await rt.configStore.addTarget(secrets ? applySecrets(cloned, secrets) : cloned)
       notifyConfig()
       return ok(null)
     },

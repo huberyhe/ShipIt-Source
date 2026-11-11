@@ -44,7 +44,10 @@ export async function writeJsonAtomic(filePath: string, data: unknown): Promise<
   const dir = dirname(filePath)
   if (dir && dir !== '.') await fs.mkdir(dir, { recursive: true }).catch(() => undefined)
   const tmpPath = `${filePath}.tmp`
-  await fs.writeFile(tmpPath, JSON.stringify(data, null, 2), 'utf-8')
+  // mode 必须显式 0600（F8）：默认 0644 会把原有的 0600 通过 rename 覆盖成全局可读，
+  // 而这个文件里有目标密码与服务 token。Windows 上 mode 不生效，靠 ACL（另测）。
+  await fs.writeFile(tmpPath, JSON.stringify(data, null, 2), { encoding: 'utf-8', mode: 0o600 })
+  await fs.chmod(tmpPath, 0o600).catch(() => undefined)
   await fs.rename(tmpPath, filePath)
 }
 

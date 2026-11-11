@@ -80,6 +80,11 @@ export interface DeployOptions {
   windowId?: number
   /** 外部取消信号：队列看门狗超时走这条路径，与手动取消共用同一套语义 */
   signal?: AbortSignal
+  /**
+   * 真正拿到执行链（uploadTail）后回调一次。
+   * 队列用它重置看门狗（F9）：排队等桌面上传不应该消耗 CLI 的传输预算。
+   */
+  markStarted?: () => void
 }
 
 export class DeployService {
@@ -302,6 +307,9 @@ export class DeployService {
       // 前一个会话的失败不影响本会话
     }
 
+    // 拿到执行链了：这时才算“真正开始”（F9）
+    options.markStarted?.()
+
     if (session.aborted) {
       // 排队期间被取消：不建立连接、不上传任何文件，语义与执行中取消一致
       this.sessions.delete(session)
@@ -390,7 +398,9 @@ export class DeployService {
       }
 
       // 上传后脚本：全部文件传完后执行一次（失败不影响已上传文件的成功状态）
-      if (postUploadOf(target)) {
+      // 取消/超时后必须跳过：此时只有部分文件到位，脚本可能是重启服务/切版本，
+      // 在半成品目录上执行属于不可回滚的副作用（F4）。
+      if (!session.aborted && postUploadOf(target)) {
         result.postUpload = await runPostUploadScript({
           target,
           sftpClient: target.protocol === 'sftp' ? sftpClient : null,

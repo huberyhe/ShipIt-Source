@@ -363,19 +363,23 @@ async function persistDraft(): Promise<boolean> {
     }
     const persisted = deployStore.targets as any[]
     const draftIds = new Set(draftTargets.value.map((t) => t.id))
-    for (const old of persisted) {
-      if (!draftIds.has(old.id)) await deployStore.removeTarget(old.id)
-    }
+    // 顺序：先写入/复制，再删除被移除的（F7）。
+    // 反过来的话「复制 A 并同时删掉 A」会先落盘删除，clone 找不到源直接 NO_TARGET。
     for (const t of draftTargets.value) {
       const before = persisted.find((p) => p.id === t.id)
       // secrets/cloneFrom/hasPassword 只用于本次写入，不进入配置
       const { secrets, cloneFrom, hasPassword, hasPassphrase, ...fields } = t as any
       if (!before) {
-        if (cloneFrom) await deployStore.saveTarget({ op: 'clone', sourceId: cloneFrom, target: fields })
+        // clone 也要带 secrets（F5）：UI 允许复制后改密码，强制用源密码会让用户
+        // 以为改了、实际拿旧凭据去连新服务器。
+        if (cloneFrom) await deployStore.saveTarget({ op: 'clone', sourceId: cloneFrom, target: fields, secrets })
         else await deployStore.saveTarget({ op: 'add', target: fields, secrets })
       } else if (JSON.stringify(before) !== JSON.stringify(t)) {
         await deployStore.saveTarget({ op: 'update', id: t.id, updates: fields, secrets })
       }
+    }
+    for (const old of persisted) {
+      if (!draftIds.has(old.id)) await deployStore.removeTarget(old.id)
     }
     await deployStore.loadTargets()
 

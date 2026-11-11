@@ -133,7 +133,18 @@ export function createRemoteAdapter (host: RemoteHost): IpcAdapter {
       }
     },
     deployCancel: async (windowId) => unwrapEnvelope(await host.post('/deploy/cancel', { windowId })),
-    testConnectionDraft: async (target) => unwrapEnvelope(await host.post('/test-connection/draft', { target }))
+    testConnectionDraft: async (target) => {
+      // renderer 把 secrets/cloneFrom 展开在 target 里（草稿补丁），而后端 handler 读的是
+      // 顶层字段（F6）。不在这里拆包，R7 的 applySecrets/cloneSecrets 永远拿不到数据。
+      const { secrets, cloneFrom, ...rest } = (target ?? {}) as Record<string, unknown>
+      return unwrapEnvelope(
+        await host.post('/test-connection/draft', {
+          target: rest,
+          ...(secrets ? { secrets } : {}),
+          ...(cloneFrom ? { cloneFrom } : {})
+        })
+      )
+    }
   }
 }
 
