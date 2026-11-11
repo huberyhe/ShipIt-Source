@@ -78,6 +78,10 @@ interface DeploySession {
   controller: AbortController
   /** 中止远端 I/O 的钩子：断连后挂起的 put/uploadFrom 才会抛错，release() 才执行 */
   abortHooks: Array<() => void>
+  /** 取消后的强制释放句柄（由 deploy() 注入；协义层不响应中断时的兼容） */
+  forceRelease?: () => void
+  /** 取消后启动的兑底定时器 */
+  releaseTimer?: NodeJS.Timeout
 }
 
 /**
@@ -86,6 +90,15 @@ interface DeploySession {
  * 只置 aborted 不够：已经 await 的 put / uploadFrom / 流式复制不会自己结束，
  * finally 里的 release() 就不会执行 → 串行链被永久占住，后续任务虽然“排队中”但永远不开始。
  */
+/**
+ * 取消后若 I/O 迟迟不结束，多久强制释放串行链（ms）。
+ *
+ * 各协义的 destroy/close 在极端网络条件下可能仍然挂住（socket 半死、内核缓冲未回）。
+ * 没有这个兑底，一次取消就能把后续所有上传永久堵在 `await previous` 上。
+ * 代价：旧 I/O 可能仍在向远端写，与新会话并发 —— 所以只作为最后手段，并写日志。
+ */
+const ABORT_FORCE_RELEASE_MS = 15_000
+
 function markAborted (session: DeploySession): void {
   session.aborted = true
   try {
@@ -100,6 +113,21 @@ function markAborted (session: DeploySession): void {
       // 钩子只做尽力而为的释放
     }
   }
+
+  // 兑底：连钩子也拉不回来时，到点强制释放，不让后续任务无限排队
+  if (session.releaseTimer) clearTimeout(session.releaseTimer)
+  session.releaseTimer = setTimeout(() => {
+    process.stderr.write(
+      `[shipit] 取消后 ${ABORT_FORCE_RELEASE_MS}ms 仍未结束，强制释放串行链：${session.owner}/${session.target}\n`
+    )
+    try {
+      session.forceRelease?.()
+    } catch {
+      // 释放已发生
+    }
+  }, ABORT_FORCE_RELEASE_MS)
+  // 不阻塞进程退出：这只是兑底定时器
+  session.releaseTimer.unref?.()
 }
 
 /** deploy() 的附加选项 */
@@ -322,7 +350,14 @@ export class DeployService {
       aborted: false,
       windowId: options.windowId,
       controller: new AbortController(),
-      abortHooks: []
+      abortHooks: [],
+      forceRelease: () => {
+        try {
+          release()
+        } catch {
+          // 已释放
+        }
+      }
     }
     // 外部取消（队列看门狗超时）与手动 abort 走同一个标记：排队中/传输中语义一致
     const onAbort = (): void => {
@@ -475,6 +510,7 @@ export class DeployService {
         })
       }
     } finally {
+      if (session.releaseTimer) clearTimeout(session.releaseTimer)
       if (sftpClient) sftpClient.end()
       if (ftpClient) ftpClient.close()
       options.signal?.removeEventListener('abort', onAbort)

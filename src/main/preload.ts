@@ -59,6 +59,7 @@ contextBridge.exposeInMainWorld('deployApi', {
 
   // --- 应用信息 ---
   getAppVersion: () => ipcRenderer.invoke(IpcChannels.APP_GET_VERSION),
+  getBuildNumber: () => ipcRenderer.invoke(IpcChannels.APP_GET_BUILD_NUMBER),
 
   /** 打开全局设置窗口（单实例；section: 'targets' | 'server'） */
   openSettings: (section?: 'targets' | 'server') => ipcRenderer.invoke(IpcChannels.SETTINGS_OPEN, section ?? 'targets'),

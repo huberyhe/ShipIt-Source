@@ -1,7 +1,7 @@
 import { app, BrowserWindow, globalShortcut, ipcMain, dialog, Menu, nativeTheme, shell } from 'electron'
 import { join, dirname } from 'path'
 import { networkInterfaces } from 'os'
-import { promises as fsPromises, existsSync, mkdirSync } from 'fs'
+import { promises as fsPromises, existsSync, mkdirSync, readFileSync } from 'fs'
 import { ConfigStore } from './services/config-store'
 import { IpcChannels } from '../shared/ipc-channels'
 import {
@@ -646,6 +646,15 @@ function registerIpcHandlers() {
 
   // 应用版本（来自打包时的 package.json，UI 与安装包版本同源）
   ipcMain.handle(IpcChannels.APP_GET_VERSION, () => app.getVersion())
+  // 打包时经 electron-builder 的 extraMetadata 写入产物 package.json；开发态没有该字段
+  ipcMain.handle(IpcChannels.APP_GET_BUILD_NUMBER, () => {
+    try {
+      const pkg = JSON.parse(readFileSync(join(app.getAppPath(), 'package.json'), 'utf-8')) as { buildNumber?: unknown }
+      return typeof pkg.buildNumber === 'string' ? pkg.buildNumber : ''
+    } catch {
+      return ''
+    }
+  })
 
   /**
    * 用系统浏览器打开外部链接。

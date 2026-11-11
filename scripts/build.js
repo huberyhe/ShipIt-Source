@@ -41,7 +41,9 @@ try {
   // --publish never：本地打包不上传 Release。
   // 注：脚本会给子进程注入 BUILD_NUMBER，而 electron-builder 把该变量当作 CI 标识，
   // 不显式关闭会尝试发布到 GitHub Release 并因缺少 GH_TOKEN 报错（安装包已生成但退出码为 1）。
-  execSync('electron-builder --publish never', { stdio: 'inherit', env })
+  // 把 build 号写进产物 package.json（about 页要显示）：extraMetadata 会合并到 asar 内的
+  // package.json，不污染源文件。
+  execSync(`electron-builder --publish never -c.extraMetadata.buildNumber=${buildNumber}`, { stdio: 'inherit', env })
 
   console.log(`\n✓ Build complete! Installer: ShipIt-v*-build${buildNumber}-x64.exe`)
 } catch (err) {

@@ -10,6 +10,8 @@ defineEmits<{ close: [] }>()
 // 版本号硬绑定主进程 app.getVersion()（App 启动时已预取到 store），同步可用、无首帧空态
 const uiStore = useUiStore()
 const version = computed(() => uiStore.appVersion)
+/** 打包注入的 build 号；未注入（开发态）时不显示，避免出现“build —” */
+const buildNumber = computed(() => uiStore.appBuildNumber)
 
 const features = [
   '多协议上传：SFTP / FTP / FTPS / FTPES / 本地目录',
@@ -30,7 +32,13 @@ function openLink(url: string): void {
     <div class="about">
       <!-- 标题已在弹窗头部（关于 ShipIt），正文不再重复产品名：两个同名标题会让“当前在哪个层级”变模糊 -->
       <div class="meta-line">
-        <span class="version-wrap">版本 <code class="version-num">{{ version || '—' }}</code></span>
+        <span class="version-wrap">
+          版本 <code class="version-num">{{ version || '—' }}</code>
+          <template v-if="buildNumber">
+            <span class="sep" aria-hidden="true">·</span>
+            <code class="version-num build-num">build{{ buildNumber }}</code>
+          </template>
+        </span>
         <span class="sep" aria-hidden="true">·</span>
         <span class="tagline">开发者文件发布工具</span>
         <IconButton

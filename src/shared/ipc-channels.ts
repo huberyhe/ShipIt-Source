@@ -95,6 +95,8 @@ export const IpcChannels = {
 
   // 应用信息（版本号等）
   APP_GET_VERSION: 'app:get-version',
+  /** 打包时注入的 build 号（YYYYMMDDHHmm），未注入时为空串 */
+  APP_GET_BUILD_NUMBER: 'app:get-build-number',
   /** 用系统浏览器打开外部链接（仅限白名单域名 + https） */
   APP_OPEN_EXTERNAL: 'app:open-external',
 

@@ -28,8 +28,7 @@
     ${EndIf}
 
     ${If} $R1 == 0
-      MessageBox MB_YESNO|MB_ICONQUESTION \
-        "ShipIt 正在运行，安装前需要先关闭它。$\r$\n$\r$\n选择「是」：自动关闭 ShipIt 并继续安装$\r$\n选择「否」：退出安装（稍后手动关闭后再装）" \
+      MessageBox MB_YESNO|MB_ICONQUESTION "ShipIt 正在运行。是否关闭它并继续安装？" \
         /SD IDYES IDYES shipit_appkill IDNO shipit_appabort
 
       shipit_appabort:

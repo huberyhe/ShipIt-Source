@@ -12,6 +12,8 @@ export const useUiStore = defineStore('ui', () => {
   const theme = ref<Theme>('auto')
   /** 应用版本（启动时预取，供关于对话框同步展示，避免首帧空态） */
   const appVersion = ref('')
+  /** 打包时注入的 build 号（YYYYMMDDHHmm）；开发态为空 */
+  const appBuildNumber = ref('')
 
   /**
    * 当前视图的选区规模（项数）。
@@ -31,6 +33,7 @@ export const useUiStore = defineStore('ui', () => {
   /** 预取应用版本（= 打包时 package.json 的 version，经主进程 app.getVersion()） */
   async function initAppVersion() {
     try { appVersion.value = await window.deployApi.getAppVersion() } catch { /* ignore */ }
+    try { appBuildNumber.value = await window.deployApi.getBuildNumber() } catch { /* ignore */ }
   }
 
   // 应用主题到 document
@@ -162,6 +165,7 @@ function viewStateSnapshot(): { activeView: ActiveView; logPanelExpanded: boolea
     resetGitExpandedState,
     theme,
     appVersion,
+    appBuildNumber,
     initAppVersion,
     setTheme,
     initTheme,
