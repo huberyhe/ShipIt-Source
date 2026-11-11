@@ -74,6 +74,8 @@ interface DeploySession {
   /** 发起窗口（仅 owner=desktop）：取消只作用于本窗口的会话，不误伤其他窗口 */
   windowId?: number
   aborted: boolean
+  /** 已拿到执行链（用于算排队位置） */
+  started: boolean
   /** 中止本地流式复制（F3） */
   controller: AbortController
   /** 中止远端 I/O 的钩子：断连后挂起的 put/uploadFrom 才会抛错，release() 才执行 */
@@ -141,6 +143,11 @@ export interface DeployOptions {
    * 队列用它重置看门狗（F9）：排队等桌面上传不应该消耗 CLI 的传输预算。
    */
   markStarted?: () => void
+  /**
+   * 进入排队时回调一次，告知前面还有几个会话。
+   * 界面用它显示“排队中”，而不是先弹一个不动的进度卡（用户会误以为在传）。
+   */
+  onQueued?: (ahead: number) => void
 }
 
 export class DeployService {
@@ -348,6 +355,7 @@ export class DeployService {
       owner,
       target: target.name,
       aborted: false,
+      started: false,
       windowId: options.windowId,
       controller: new AbortController(),
       abortHooks: [],
@@ -372,6 +380,11 @@ export class DeployService {
       release = resolve
     })
     this.sessions.add(session)
+    // 排队位置：前面还有几个「已登记但未开始」的会话。
+    // 用独立回调而不是 onProgress —— 后者语义是“文件开始/完成”，
+    // 混入排队信号会让“严格串行”的用例误判（第二个任务“已经开始”）。
+    const ahead = [...this.sessions].filter((item) => item !== session && !item.started).length
+    if (ahead > 0) options.onQueued?.(ahead)
     try {
       await previous.catch(() => undefined)
     } catch {
@@ -379,6 +392,7 @@ export class DeployService {
     }
 
     // 拿到执行链了：这时才算“真正开始”（F9）
+    session.started = true
     options.markStarted?.()
 
     if (session.aborted) {

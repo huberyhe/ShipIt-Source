@@ -221,7 +221,11 @@ export function buildAdminHandlers (rt: Runtime, events: EventHub): Record<strin
         target,
         (current, total, file) => rt.notify('deploy.progress', { windowId, current, total, file }),
         'desktop',
-        { windowId }
+        {
+          windowId,
+          // 排队时告知界面“前面还有几个”：否则会先弹一个不动的进度卡
+          onQueued: (ahead) => rt.notify('deploy.queued', { windowId, ahead })
+        }
       )
       return ok(result)
     },

@@ -27,6 +27,8 @@ export const IpcChannels = {
   DEPLOY_TEST_CONN: 'deploy:test-conn',
   DEPLOY_UPLOAD: 'deploy:upload',
   DEPLOY_CANCEL: 'deploy:cancel',
+  /** 主进程 → 渲染进程：本次上传在排队（前面还有 ahead 个会话） */
+  DEPLOY_QUEUED: 'deploy:queued',
   DEPLOY_PROGRESS: 'deploy:progress', // 主进程 → 渲染进程推送事件
   DEPLOY_LOG_ENTRY: 'deploy:log-entry', // 主进程 → 渲染进程：CLI / MCP 触发的上传结果（含来源标注）
 

@@ -73,6 +73,8 @@ function openLink(url: string): void {
  * 结果图标比文字高出一截（用户一眼就看到“没对齐”）。
  */
 .meta-line { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--fg2); }
+/* 版本号与 build 号之间要有间距：version-wrap 里是 inline 内容，靠 gap 分隔 */
+.version-wrap { display: inline-flex; align-items: center; gap: 6px; }
 .version-num { font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace; font-size: 12px; color: var(--fg); }
 .sep { color: var(--fg2); }
 .tagline { color: var(--fg2); }

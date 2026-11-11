@@ -41,11 +41,14 @@ export interface IpcAdapter {
   deployPreview(files: string[], projectRoot: string, target: any): Promise<unknown>
   deployDirect(
     payload: { windowId: number; tasks: any[]; targetName: string; projectRoot?: string },
-    onProgress?: (current: number, total: number, file: string) => void
+    onProgress?: (current: number, total: number, file: string) => void,
+    /** 排队位置回调：前面还有几个会话（用于显示“排队中”而不是假进度） */
+    onQueued?: (ahead: number) => void
   ): Promise<unknown>
   deployCancel(windowId: number): Promise<unknown>
   testConnectionDraft(target: any): Promise<unknown>
 }
+
 
 /** 信封解包：失败统一抛带 code 的 Error（与 renderer 现有 catch 口径一致） */
 export function unwrapEnvelope (result: ClientResult): unknown {
@@ -118,11 +121,17 @@ export function createRemoteAdapter (host: RemoteHost): IpcAdapter {
       unwrapEnvelope(await host.post('/projects/view', { project, patch })),
     deployPreview: async (files, projectRoot, target) =>
       unwrapEnvelope(await host.post('/plan/preview', { files, projectRoot, target })),
-    deployDirect: async (payload, onProgress) => {
+    deployDirect: async (payload, onProgress, onQueued) => {
       const off = onProgress && host.on
         ? host.on('deploy.progress', (data) => {
             const progress = data as { windowId?: number; current: number; total: number; file: string }
             if (progress?.windowId === payload.windowId) onProgress(progress.current, progress.total, progress.file)
+          })
+        : null
+      const offQueued = onQueued && host.on
+        ? host.on('deploy.queued', (data) => {
+            const queued = data as { windowId?: number; ahead: number }
+            if (queued?.windowId === payload.windowId) onQueued(queued.ahead)
           })
         : null
       try {
@@ -130,6 +139,7 @@ export function createRemoteAdapter (host: RemoteHost): IpcAdapter {
         return unwrapEnvelope(await host.post('/deploy/direct', payload, 30 * 60 * 1000))
       } finally {
         off?.()
+        offQueued?.()
       }
     },
     deployCancel: async (windowId) => unwrapEnvelope(await host.post('/deploy/cancel', { windowId })),

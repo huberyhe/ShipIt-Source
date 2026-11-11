@@ -140,6 +140,24 @@ describe('上传串行化（INV-6 / AC-019）', () => {
     expect(existsSync(join(destRoot, 'out', 'sig.txt'))).toBe(false)
   })
 
+  it('并发提交时后一个会话收到排队位置（排队 UI 依赖它）', async () => {
+    const service = new DeployService()
+    const queued: number[] = []
+
+    const first = service.deploy([uploadTask('q1.txt')], target(), undefined, 'desktop')
+    const second = service.deploy(
+      [uploadTask('q2.txt')],
+      target(),
+      undefined,
+      'desktop',
+      { onQueued: (ahead) => queued.push(ahead) }
+    )
+    await Promise.all([first, second])
+
+    // 第二个提交时前一个尚未开始 → 告知“前面还有 1 个”，界面据此显示排队中
+    expect(queued).toEqual([1])
+  })
+
   it('进度按已完成文件数报：不提前满格（A3 反馈）', async () => {
     const service = new DeployService()
     const seen: Array<[number, number]> = []

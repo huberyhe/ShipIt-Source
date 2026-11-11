@@ -915,6 +915,10 @@ function registerIpcHandlers() {
         (current: number, total: number, file: string) => {
           // 逐文件进度只回发起窗口（进度条属于该窗口的会话）
           sendToWindow(_event.sender.id, IpcChannels.DEPLOY_PROGRESS, { current, total, file })
+        },
+        (ahead: number) => {
+          // 排队提示：界面据此显示“排队中（第 N 位）”，不显示假进度
+          sendToWindow(_event.sender.id, IpcChannels.DEPLOY_QUEUED, { ahead })
         }
       )) as any
     } catch (error) {

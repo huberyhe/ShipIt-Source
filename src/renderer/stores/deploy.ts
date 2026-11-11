@@ -113,6 +113,11 @@ export const useDeployStore = defineStore('deploy', () => {
   const deployLogs = ref<DeployLogEntry[]>([])
   const isUploading = ref(false)
   const uploadProgress = ref({ current: 0, total: 0, file: '' })
+  /**
+   * 本次上传在排队时 >0：前面还有几个会话。
+   * 界面据此显示“排队中（第 N 位）”，而不是先弹一个不动的进度条（用户会误以为在传）。
+   */
+  const queuedAhead = ref(0)
   const lastDeployTime = ref<string>('')
 
   // Deploy confirm flow
@@ -282,8 +287,18 @@ export const useDeployStore = defineStore('deploy', () => {
       await window.deployApi.cancelDeploy()
     } catch (error) {
       reportError('取消上传失败', error)
+      isUploading.value = false
+      return
     }
-    isUploading.value = false
+    // 不立即复位：等 deployFiles 返回（executeDeploy 的 finally）再复位。
+    // 立即复位会出现“界面已结束、取消日志还没落”的空窗（用户报的“取消后没有日志”）。
+    // 3 秒兜底：后端迟迟不返回时仍允许继续操作，不让界面卡死。
+    setTimeout(() => {
+      if (isUploading.value) {
+        isUploading.value = false
+        queuedAhead.value = 0
+      }
+    }, 3000)
   }
 
   /**
@@ -324,6 +339,11 @@ export const useDeployStore = defineStore('deploy', () => {
     // 任务详情走 GET /tasks/:id，避免两类进度共用一条通道相互覆盖）。
     window.deployApi.onDeployProgress((data) => {
       uploadProgress.value = data
+      // 一旦开始收到真实进度，就不在排队了
+      if (queuedAhead.value !== 0) queuedAhead.value = 0
+    })
+    window.deployApi.onDeployQueued((data) => {
+      queuedAhead.value = data?.ahead ?? 0
     })
   }
 
@@ -337,6 +357,7 @@ export const useDeployStore = defineStore('deploy', () => {
 
     showConfirm.value = false
     isUploading.value = true
+    queuedAhead.value = 0
     // 进度卡要说清「发到哪」：项目名/目标名/协议+主机/映射条数（不含任何凭据）
     uploadTarget.value = {
       name: target.name,
@@ -387,6 +408,7 @@ export const useDeployStore = defineStore('deploy', () => {
       toastError('上传失败: ' + (err?.message || String(err)))
     } finally {
       isUploading.value = false
+      queuedAhead.value = 0
       confirmFiles.value = []
       confirmSkipped.value = []
     }
@@ -403,6 +425,7 @@ export const useDeployStore = defineStore('deploy', () => {
     deployLogs,
     isUploading,
     uploadProgress,
+    queuedAhead,
     showConfirm,
     isPreviewing,
     confirmFiles,

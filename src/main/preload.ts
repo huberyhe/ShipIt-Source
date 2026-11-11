@@ -36,6 +36,10 @@ contextBridge.exposeInMainWorld('deployApi', {
   onDeployProgress: (callback: (data: { current: number; total: number; file: string }) => void) => {
     ipcRenderer.on(IpcChannels.DEPLOY_PROGRESS, (_event, data) => callback(data))
   },
+  /** 本次上传在排队：前面还有 ahead 个会话 */
+  onDeployQueued: (callback: (data: { ahead: number }) => void) => {
+    ipcRenderer.on(IpcChannels.DEPLOY_QUEUED, (_event, data) => callback(data))
+  },
   onDeployLogEntry: (callback: (entry: any) => void) => {
     ipcRenderer.on(IpcChannels.DEPLOY_LOG_ENTRY, (_event, entry) => callback(entry))
   },
