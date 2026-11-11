@@ -293,8 +293,8 @@ export const useDeployStore = defineStore('deploy', () => {
    * 取消进行中的上传
    */
   async function cancelUpload() {
-    // 取消本窗口的全部会话（含还在排队的），队列也要一起清
-    pendingUploads.value = []
+    // 只取消当前正在传的那个任务：后端 abortCurrent 不动排队中的，
+    // 所以这里也不清 pendingUploads（它们会依次被提升）。
     try {
       await window.deployApi.cancelDeploy()
     } catch (error) {
@@ -306,7 +306,8 @@ export const useDeployStore = defineStore('deploy', () => {
     // 立即复位会出现“界面已结束、取消日志还没落”的空窗（用户报的“取消后没有日志”）。
     // 3 秒兜底：后端迟迟不返回时仍允许继续操作，不让界面卡死。
     setTimeout(() => {
-      if (isUploading.value) {
+      // 只在没有排队任务时才兜底复位：否则会把已提升的弹窗误关掉
+      if (isUploading.value && pendingUploads.value.length === 0) {
         isUploading.value = false
         queuedAhead.value = 0
       }

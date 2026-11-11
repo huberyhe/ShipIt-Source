@@ -76,6 +76,8 @@ interface DeploySession {
   aborted: boolean
   /** 已拿到执行链（用于算排队位置） */
   started: boolean
+  /** 任务标识：取消只针对“当前这个任务”，不牵连排队中的 */
+  taskId: string
   /** 中止本地流式复制（F3） */
   controller: AbortController
   /** 中止远端 I/O 的钩子：断连后挂起的 put/uploadFrom 才会抛错，release() 才执行 */
@@ -178,6 +180,27 @@ export class DeployService {
       target: session.target,
       ...(session.windowId === undefined ? {} : { windowId: session.windowId })
     }))
+  }
+
+  /**
+   * 取消本窗口**当前正在执行**的任务，排队中的保留。
+   *
+   * 与 abort() 的区别：abort 会取消本窗口全部会话，用户点一次“取消”
+   * 就把后面排队的任务一起干掉，与“取消当前这个上传”的直觉不符。
+   * 若当前没有执行中的会话（都在排队），退化为取消队首，
+   * 避免“刚提交就点取消，结果什么都没取消”。
+   */
+  abortCurrent(owner: DeployOwner, windowId?: number): void {
+    const candidates = [...this.sessions].filter(
+      (session) => session.owner === owner && (windowId === undefined || session.windowId === windowId)
+    )
+    if (candidates.length === 0) return
+    const running = candidates.filter((session) => session.started)
+    if (running.length > 0) {
+      for (const session of running) markAborted(session)
+      return
+    }
+    markAborted(candidates[0])
   }
 
   /**
@@ -356,6 +379,7 @@ export class DeployService {
       target: target.name,
       aborted: false,
       started: false,
+      taskId: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
       windowId: options.windowId,
       controller: new AbortController(),
       abortHooks: [],
@@ -400,7 +424,7 @@ export class DeployService {
       this.sessions.delete(session)
       release()
       return {
-        taskId: Date.now().toString(36),
+        taskId: session.taskId,
         targetName: target.name,
         timestamp: Date.now(),
         totalFiles: tasks.length,
@@ -415,7 +439,7 @@ export class DeployService {
 
     const startTime = Date.now()
     const result: DeployResult = {
-      taskId: Date.now().toString(36),
+      taskId: session.taskId,
       targetName: target.name,
       timestamp: startTime,
       totalFiles: tasks.length,

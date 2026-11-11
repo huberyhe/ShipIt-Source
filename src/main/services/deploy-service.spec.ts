@@ -140,6 +140,33 @@ describe('上传串行化（INV-6 / AC-019）', () => {
     expect(existsSync(join(destRoot, 'out', 'sig.txt'))).toBe(false)
   })
 
+  it('取消只针对当前执行的任务，排队中的照常执行', async () => {
+    const service = new DeployService()
+
+    // 大文件让第一个任务“确实在执行”，第二个在排队
+    const big = join(srcDir, 'big-cancel.bin')
+    const fd = openSync(big, 'w')
+    ftruncateSync(fd, 160 * 1024 * 1024)
+    closeSync(fd)
+    const bigTask: UploadTask = {
+      localPath: big,
+      remotePath: '/out/big-cancel.bin',
+      relativePath: 'dist/big-cancel.bin',
+      size: 160 * 1024 * 1024
+    }
+
+    const first = service.deploy([bigTask], target(), undefined, 'desktop')
+    const second = service.deploy([uploadTask('after-cancel.txt')], target(), undefined, 'desktop')
+
+    await new Promise((resolve) => setTimeout(resolve, 60))
+    service.abortCurrent('desktop')
+
+    const [r1, r2] = await Promise.all([first, second])
+    expect(r1.cancelled).toBe(true)
+    // 关键：排队中的第二个不能被一起取消
+    expect(r2.succeeded).toBe(1)
+  })
+
   it('并发提交时后一个会话收到排队位置（排队 UI 依赖它）', async () => {
     const service = new DeployService()
     const queued: number[] = []

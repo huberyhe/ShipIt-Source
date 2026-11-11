@@ -231,7 +231,8 @@ export function buildAdminHandlers (rt: Runtime, events: EventHub): Record<strin
     },
 
     deployCancel: async (ctx) => {
-      rt.deployService.abort('desktop', body(ctx).windowId)
+      // 只取消当前正在执行的那个任务：排队中的继续（用户点“取消”指的是眼前这个上传）
+      rt.deployService.abortCurrent('desktop', body(ctx).windowId)
       return ok(null)
     },
 
