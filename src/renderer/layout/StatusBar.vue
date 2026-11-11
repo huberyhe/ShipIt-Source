@@ -43,6 +43,8 @@ const queueTone = computed<'on' | 'off'>(() =>
 const analyzingText = computed(() => {
   if (gitStore.isAnalyzing) return '正在分析 Git 状态...'
   if (gitStore.isLoading) return '正在加载提交历史...'
+  // 文件树刷新不查 Git：靠这个通用反馈，否则按了 F5 看起来毫无反应
+  if (uiStore.isRefreshing) return '正在刷新...'
   return ''
 })
 

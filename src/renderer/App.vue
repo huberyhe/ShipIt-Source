@@ -194,6 +194,8 @@ function onGlobalKeydown(e: KeyboardEvent) {
   if (isTextInputTarget(e.target)) return
   if (document.querySelector('[role="dialog"][aria-modal="true"]')) return // 弹窗打开时不动背后的列表
   e.preventDefault() // 屏蔽 Electron/Chromium 默认重载
+  // 状态栏的短反馈：文件树刷新不查 Git，没有它用户看不到任何“已收到”的信号
+  uiStore.markRefreshing()
   // 统一在 App.vue 处理，各视图按需响应（当前挂载的视图才会收到）
   window.dispatchEvent(new CustomEvent('refresh-view'))
 }

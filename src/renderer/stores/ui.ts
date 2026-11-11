@@ -12,6 +12,22 @@ export const useUiStore = defineStore('ui', () => {
   const theme = ref<Theme>('auto')
   /** 应用版本（启动时预取，供关于对话框同步展示，避免首帧空态） */
   const appVersion = ref('')
+  /**
+   * 通用刷新反馈（F5 / 工具栏刷新）。
+   *
+   * Git 视图有自己的精确忙碌态（分析中/加载中）；但文件树刷新根本不查 Git，
+   * 状态栏就什么也不显示 —— 用户会以为“按了没反应”。这里给所有刷新一个短反馈。
+   */
+  const isRefreshing = ref(false)
+  let refreshTimer: ReturnType<typeof setTimeout> | null = null
+  function markRefreshing (ms = 500): void {
+    isRefreshing.value = true
+    if (refreshTimer) clearTimeout(refreshTimer)
+    refreshTimer = setTimeout(() => {
+      refreshTimer = null
+      isRefreshing.value = false
+    }, ms)
+  }
   /** 打包时注入的 build 号（YYYYMMDDHHmm）；开发态为空 */
   const appBuildNumber = ref('')
 
@@ -166,6 +182,8 @@ function viewStateSnapshot(): { activeView: ActiveView; logPanelExpanded: boolea
     theme,
     appVersion,
     appBuildNumber,
+    isRefreshing,
+    markRefreshing,
     initAppVersion,
     setTheme,
     initTheme,

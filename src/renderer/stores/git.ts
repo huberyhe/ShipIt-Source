@@ -35,6 +35,66 @@ const reposScanTruncated = ref(false)
   const isAnalyzing = ref(false)
 
   /**
+   * 忙碌态的最小显示时长。
+   *
+   * 本地 Git 查询经常只有几毫秒：直接 true→false 切换时，Vue 的批处理可能把两个状态
+   * 合并掉，状态栏一闪而过甚至完全不显示（“点刷新没反应”）。这里保证至少显示 400ms。
+   */
+  const MIN_BUSY_MS = 400
+  let analyzingShownAt = 0
+  let analyzingOffTimer: ReturnType<typeof setTimeout> | null = null
+  let loadingShownAt = 0
+  let loadingOffTimer: ReturnType<typeof setTimeout> | null = null
+
+  function markAnalyzing (on: boolean): void {
+    if (on) {
+      if (analyzingOffTimer) {
+        clearTimeout(analyzingOffTimer)
+        analyzingOffTimer = null
+      }
+      if (!isAnalyzing.value) {
+        isAnalyzing.value = true
+        analyzingShownAt = Date.now()
+      }
+      return
+    }
+    const elapsed = Date.now() - analyzingShownAt
+    if (elapsed >= MIN_BUSY_MS) {
+      isAnalyzing.value = false
+      return
+    }
+    if (analyzingOffTimer) return
+    analyzingOffTimer = setTimeout(() => {
+      analyzingOffTimer = null
+      isAnalyzing.value = false
+    }, MIN_BUSY_MS - elapsed)
+  }
+
+  function markLoading (on: boolean): void {
+    if (on) {
+      if (loadingOffTimer) {
+        clearTimeout(loadingOffTimer)
+        loadingOffTimer = null
+      }
+      if (!isLoading.value) {
+        isLoading.value = true
+        loadingShownAt = Date.now()
+      }
+      return
+    }
+    const elapsed = Date.now() - loadingShownAt
+    if (elapsed >= MIN_BUSY_MS) {
+      isLoading.value = false
+      return
+    }
+    if (loadingOffTimer) return
+    loadingOffTimer = setTimeout(() => {
+      loadingOffTimer = null
+      isLoading.value = false
+    }, MIN_BUSY_MS - elapsed)
+  }
+
+  /**
    * 数据快照时刻：只有**最新一次成功响应真正落到 state** 才更新。
    *
    * 表头的「刚刚刷新 / N分钟前刷新」据此计算，因此不能在调用前先写时间：
@@ -107,7 +167,7 @@ const reposScanTruncated = ref(false)
     if (statusInFlight.has(dir)) return
     statusInFlight.add(dir)
     const seq = ++statusSeq
-    if (!silent) { statusPending++; isAnalyzing.value = true }
+    if (!silent) { statusPending++; markAnalyzing(true) }
     try {
       const has = await window.deployApi.checkGitRepo(dir)
       if (seq !== statusSeq) return
@@ -141,7 +201,7 @@ const reposScanTruncated = ref(false)
       statusInFlight.delete(dir)
       if (!silent) {
         statusPending = Math.max(0, statusPending - 1)
-        if (statusPending === 0) isAnalyzing.value = false
+        if (statusPending === 0) markAnalyzing(false)
       }
     }
   }
@@ -163,7 +223,7 @@ const reposScanTruncated = ref(false)
     if (logInFlight.has(dir)) return
     logInFlight.add(dir)
     const seq = ++logSeq
-    if (!silent) { logPending++; isLoading.value = true }
+    if (!silent) { logPending++; markLoading(true) }
     try {
       // 筛选值由调用方（视图）显式传入：store 不再持有第二份筛选状态，
       // 避免"下拉显示"与"实际查询"各持一份而漂移（此前是 4 份副本 + 3 处手工同步）。
@@ -183,7 +243,7 @@ const reposScanTruncated = ref(false)
       logInFlight.delete(dir)
       if (!silent) {
         logPending = Math.max(0, logPending - 1)
-        if (logPending === 0) isLoading.value = false
+        if (logPending === 0) markLoading(false)
       }
     }
   }
