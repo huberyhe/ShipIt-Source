@@ -193,7 +193,12 @@ export function createServerHost (options: HostOptions): ServerHost {
     // stopping 时不再重连（F11）：退出流程中每秒连一个已死的端口毫无意义
     if (stopped || stopping) return
     if (sseTimer) return
-    sseTimer = setTimeout(connectSse, 1000)
+    // 回调里必须清空：否则定时器触发后 sseTimer 仍然非空，
+    // 第二次断线起 `if (sseTimer) return` 会永久短路（SSE 只重连一次）。
+    sseTimer = setTimeout(() => {
+      sseTimer = null
+      connectSse()
+    }, 1000)
   }
 
   /** SSE 订阅：校验指纹（INV-11），断线 1s 重连 */
@@ -301,7 +306,11 @@ export function createServerHost (options: HostOptions): ServerHost {
       try {
         ready = await waitReady(current, 20_000)
       } catch (error) {
-        // 超时/早退时子进程还在：不清理的话上层重试会再多一个后端进程
+        // 超时/早退时子进程还在：不清理的话上层重试会再多一个后端进程。
+        // 必须先置 stopping 再 kill：exit 回调只看 stopped/stopping，
+        // 否则被 kill 的旧 host 会在 500ms 后自己再 fork 一个，
+        // 与 main 新建的 host 形成**两个后端**（两个配置写者）。
+        stopping = true
         try {
           current.kill()
         } catch {

@@ -411,7 +411,10 @@ export class DeployService {
     // 排队位置：前面还有几个「已登记但未开始」的会话。
     // 用独立回调而不是 onProgress —— 后者语义是“文件开始/完成”，
     // 混入排队信号会让“严格串行”的用例误判（第二个任务“已经开始”）。
-    const ahead = [...this.sessions].filter((item) => item !== session && !item.started).length
+    // 前面有几个会话 —— **含正在执行的那个**。
+    // 只数未 started 的会让“桌面排在 CLI 任务后面”时 ahead=0（CLI 已 started），
+    // 界面就不显示排队，用户看到的是一个不动的进度条。
+    const ahead = Math.max(0, this.sessions.size - 1)
     if (ahead > 0) options.onQueued?.(ahead)
     try {
       await previous.catch(() => undefined)
@@ -477,11 +480,8 @@ export class DeployService {
         // 网络中断时 ssh2 会 emit 'error'；不消费就会变成未捕获异常
         // （后端曾因此在断网瞬间直接重启，连带桌面客户端的在途请求全部 ECONNRESET）。
         sftpClient.on?.('error', () => undefined)
-        await sftpClient.connect(this.buildSftpOptions(target))
-        this.armSftpWatchdog(sftpClient)
-        // 取消时强制断连（F3）：让挂起的 put 抛错，才能走到 finally 释放串行链。
-        // 先 destroy 底层 socket（end() 在断网场景自己也可能挂）：这是唯一能
-        // 把“已发出但永远等不到回应”的写操作立刻拉回的手段。
+        // 取消钩子必须在**建连前**注册：不可达主机的 SSH 握手要等很久，
+        // 那时用户点取消如果完全无效，会一直转圈到握手超时（实测 33s）。
         const activeSftp = sftpClient
         session.abortHooks.push(() => {
           try {
@@ -492,12 +492,29 @@ export class DeployService {
           }
           void activeSftp.end().catch(() => undefined)
         })
+        // 建连也要与取消熔断竞速：否则“正在取消”会一直挂到握手超时。
+        // 熔断 reject 不能冒泡出 deploy（外层没有 catch），这里就地转成 aborted，
+        // 交给循环开头的检查统一结案（所有文件标 cancelled）。
+        const connecting = sftpClient.connect(this.buildSftpOptions(target))
+        connecting.catch(() => undefined)
+        try {
+          await Promise.race([connecting, abortPromise])
+        } catch (error) {
+          if (!session.aborted) throw error
+        }
+        if (!session.aborted) this.armSftpWatchdog(sftpClient)
       } else {
         const Ftp = await loadFtpCtor()
         ftpClient = new Ftp(30_000)
-        await ftpClient.access(this.buildFtpOptions(target))
         const activeFtp = ftpClient
         session.abortHooks.push(() => { try { activeFtp.close() } catch { /* 已关闭 */ } })
+        const connecting = ftpClient.access(this.buildFtpOptions(target))
+        connecting.catch(() => undefined)
+        try {
+          await Promise.race([connecting, abortPromise])
+        } catch (error) {
+          if (!session.aborted) throw error
+        }
       }
 
       // 取消发生在第几个文件（-1 表示不是取消结束）
@@ -665,9 +682,11 @@ export class DeployService {
    * 背景：`connect()` 里的 keepaliveInterval 被 ssh2-sftp-client 丢弃（实测无效），
    * 断网后 put 会挂到 TCP 自己超时（分钟级），任务看起来永远“传不完”。
    *
-   * 两层：
-   * 1) setKeepAlive：应用层心跳，5s 一次、连续 2 次无回应即判连接死
-   * 2) socket 空闲超时：30s 无数据流动就 destroy（传输中的数据流会不断重置它，不会误杀）
+   * 实测：ssh2@1.17 的 Client 没有 `setKeepAlive` 方法（keepalive 只能走 connect options，
+   * 而 ssh2-sftp-client 不透传）——所以真正生效的是下面那条 socket 超时。
+   * 保留 setKeepAlive 的尝试只是为了兼容将来可能新增该方法的版本。
+   *
+   * socket 空闲 30s 无数据流动就 destroy；传输中的数据流会不断重置计时，不会误杀。
    */
   private armSftpWatchdog (client: SftpInstance): void {
     type Underlying = {

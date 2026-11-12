@@ -137,19 +137,32 @@ jobs:
           echo "BUILD_NUMBER=$BUILD_NUMBER" >> $GITHUB_ENV
           echo "Build number: $BUILD_NUMBER"
 
+      # cli-e2e.spec 会真实启动 dist-cli/index.js：必须先有产物，否则 CI 上 npm test 必挂
+      # （它不在 git 里，globalSetup 只负责 dist-server）
+      - name: Build CLI/MCP bundle
+        run: npm run build:cli
+
       - name: Unit tests
         run: npm test
 
       - name: Build Vite
         run: npm run build
 
-      - name: Build CLI/MCP bundle
-        # 安装包 extraFiles 依赖 dist-cli：必须先构建，否则打包只有一条 warn 并静默缺少 cli/
-        run: npm run build:cli
-
-      - name: Verify CLI bundle
+      # 打包直接调 npx electron-builder（不经过 scripts/build.js），必须显式补齐：
+      #   dist-server：否则安装包里没有后端（单后端架构下应用起不来）
+      #   build-info.json：否则关于页显示不出 build 号
+      - name: Build backend bundle + build info
         shell: bash
-        run: test -f dist-cli/index.js
+        run: |
+          npm run build:server
+          node -e "require('fs').writeFileSync('dist-electron/build-info.json', JSON.stringify({ buildNumber: process.env.BUILD_NUMBER || '' }))"
+
+      - name: Verify bundles
+        shell: bash
+        run: |
+          test -f dist-cli/index.js
+          test -f dist-server/index.js
+          test -f dist-electron/build-info.json
 
       - name: Build Windows installer
         if: matrix.platform == 'win'

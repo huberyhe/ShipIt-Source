@@ -196,6 +196,32 @@ describe('上传串行化（INV-6 / AC-019）', () => {
     expect(result.details.some((d) => d.relativePath.endsWith('c4.txt') && d.status === 'cancelled')).toBe(true)
   })
 
+  it('建连阶段也能取消（不可达主机不等握手超时）', async () => {
+    const service = new DeployService()
+    // 192.0.2.0/24 是 TEST-NET-1（RFC 5737）：保证不可达，握手会挂到超时
+    const sftpTarget: DeployTarget = {
+      id: 't-sftp',
+      name: 'unreachable',
+      protocol: 'sftp',
+      host: '192.0.2.1',
+      port: 22,
+      username: 'nobody',
+      password: 'x',
+      mappings: [{ id: 'm1', localPrefix: 'dist/', remotePath: '/upload' }]
+    }
+    const running = service.deploy([uploadTask('c.txt')], sftpTarget, undefined, 'desktop')
+
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    const t0 = Date.now()
+    service.abortCurrent('desktop')
+    const result = await running
+    const cancelMs = Date.now() - t0
+
+    // 修复前：会一直等到握手超时（实测 33s / readyTimeout 20s）
+    expect(cancelMs).toBeLessThan(5_000)
+    expect(result.cancelled).toBe(true)
+  }, 30_000)
+
   it('取消只针对当前执行的任务，排队中的照常执行', async () => {
     const service = new DeployService()
 

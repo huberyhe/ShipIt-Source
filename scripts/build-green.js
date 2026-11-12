@@ -36,6 +36,18 @@ run('node scripts/build-server.js')
 run('node scripts/build-cli.js')
 run('npx vite build')
 
+// 绿色包同样要有 build 号：关于页读 dist-electron/build-info.json（打包时进 asar）
+const now = new Date()
+const buildNumber = [
+  now.getFullYear(),
+  String(now.getMonth() + 1).padStart(2, '0'),
+  String(now.getDate()).padStart(2, '0'),
+  String(now.getHours()).padStart(2, '0'),
+  String(now.getMinutes()).padStart(2, '0')
+].join('')
+writeFileSync(join(ROOT, 'dist-electron', 'build-info.json'), JSON.stringify({ buildNumber }, null, 2), 'utf-8')
+console.log(`[green] build 号：${buildNumber}`)
+
 console.log('[green] 目录打包')
 run('npx electron-builder --win dir')
 
