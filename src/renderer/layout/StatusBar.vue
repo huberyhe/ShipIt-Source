@@ -191,6 +191,7 @@ watch(
 .status-item.error { color: var(--red-text); }
 .status-item.error .dot { background: currentColor; opacity: 1; }
 .status-text { display: flex; align-items: center; gap: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.analyzing { color: var(--fg2); }
+/* 显式声明与 InlineNote 的 tone-pending 同色：父/子 scoped 类优先级相同，靠注入顺序会飘 */
+.analyzing { color: var(--blue); }
 /* 转圈图标与 @keyframes spin 已收进 InlineNote（tone=pending） */
 </style>

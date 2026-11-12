@@ -901,7 +901,7 @@ function removeTempMapping(idx: number) {
               @keyup.enter="commitTempMapping"
             />
             <button class="mini-add-btn" @click="commitTempMapping">{{ editingMapIndex === null ? '添加' : '更新' }}</button>
-            <button v-if="editingMapIndex !== null" class="mini-btn" title="取消编辑" @click="resetTempMapping"><X :size="12" /></button>
+            <button v-if="editingMapIndex !== null" class="mini-btn" aria-label="取消编辑" title="取消编辑" @click="resetTempMapping"><X :size="12" /></button>
           </div>
         </div>
     </div>
@@ -1114,7 +1114,8 @@ function removeTempMapping(idx: number) {
 /* 路径标记改用 MetaChip（green/blue + mono），形态与列表视图一致；
    .mapping-line 的 code 保持原样——它没有底色，只是等宽字，不属于 chip 场景 */
 .map-arrow { color: var(--fg2); flex-shrink: 0; }
-.map-desc { color: var(--fg2); font-size: 11px; margin: auto; }
+/* 备注居中占剩余空间：不用 margin:auto（auto 推开的 px 不是设计间距，会被间距网格检查抓到） */
+.map-desc { color: var(--fg2); font-size: 11px; flex: 1; text-align: center; }
 .edit-mapping-add { margin: 4px; padding: 8px; border-top: 1px dashed var(--border); }
 .inline-form { display: flex; align-items: center; gap: 4px; }
 /* 视觉交给全局表单基座；这里只调紧凑尺寸与自适应宽度 */
