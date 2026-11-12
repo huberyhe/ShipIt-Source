@@ -115,7 +115,11 @@ function onDocClick() { emit('close') }
 // （右键不会触发 document click，若不互斥会多个菜单层叠）
 function closeSelf() { emit('close') }
 
+/** 菜单打开前的焦点元素：关闭后要还回去（否则键盘用户会掉到 body） */
+let prevActive: HTMLElement | null = null
+
 onMounted(() => {
+  prevActive = (document.activeElement as HTMLElement | null) ?? null
   // 先广播再注册监听，避免自己收到
   window.dispatchEvent(new CustomEvent('ctx-menu-open'))
   // 菜单打开后聚焦首项：键盘用户可直接用 ↑/↓ + Enter 操作（menu 模式惯例）
@@ -133,6 +137,12 @@ onBeforeUnmount(() => {
   document.removeEventListener('contextmenu', onDocClick)
   window.removeEventListener('keydown', onKeydown, true)
   window.removeEventListener('ctx-menu-open', closeSelf)
+  // 焦点还给触发元素：右键/键盘打开再关后，不应把焦点甩给 body
+  // （元素可能已被整行重渲染，所以先确认它还在文档里）
+  if (prevActive && document.contains(prevActive)) {
+    prevActive.focus()
+  }
+  prevActive = null
 })
 </script>
 
