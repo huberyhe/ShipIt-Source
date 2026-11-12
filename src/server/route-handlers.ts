@@ -11,7 +11,7 @@ import { loadServerConfig, rotateToken, saveServerConfig } from '../main/service
 import type { RequestContext, RouteHandler } from '../main/services/local-server'
 import type { Runtime } from './runtime'
 import type { EventHub } from './events'
-import { applySecrets, cloneSecrets, mergeDraftTarget, toTargetView } from './target-secrets'
+import { applySecrets, cloneSecrets, resolveDraftConnection, toTargetView } from './target-secrets'
 import { toSlashes } from '../shared/paths'
 import { deployTargetSignature } from '../shared/deploy-signature'
 
@@ -203,14 +203,12 @@ export function buildAdminHandlers (rt: Runtime, events: EventHub): Record<strin
       const saved = targetId
         ? (await rt.configStore.load()).deploymentTargets.find((item) => item.id === targetId)
         : undefined
-      let resolved = mergeDraftTarget(saved, target)
-      // 草稿里的 SecretOp / 复制来源必须一并生效（R7）：否则“清除密码/从其他目标复制”
-      // 在测试时仍用旧凭据，测出来的结果与保存后的实际行为不一致。
-      if (secrets) resolved = applySecrets(resolved, secrets)
-      if (cloneFrom) {
-        const source = (await rt.configStore.load()).deploymentTargets.find((item) => item.id === cloneFrom)
-        if (source) resolved = cloneSecrets(source, resolved)
-      }
+      // 草稿里的 SecretOp / 复制来源必须生效（R7），且顺序与保存一致：
+      // 先 cloneSecrets 再 applySecrets —— 否则“复制后改密码/清除密码”测的是源目标的旧凭据。
+      const cloneSource = cloneFrom
+        ? (await rt.configStore.load()).deploymentTargets.find((item) => item.id === cloneFrom)
+        : undefined
+      const resolved = resolveDraftConnection(saved, target, secrets, cloneSource)
       return ok(await rt.deployService.testConnection(resolved))
     },
 

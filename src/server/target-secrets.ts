@@ -47,6 +47,25 @@ export function mergeDraftTarget (saved: DeployTarget | undefined, incoming: any
 }
 
 /** 对外视图：永不包含明文秘密 */
+/**
+ * 草稿连接的实际配置（"/test-connection/draft" 用）。
+ *
+ * 顺序必须与**保存**一致：先复制源秘密，再叠加本次 SecretOp（F5）。
+ * 反过来的话，"复制目标后改密码/清除密码"测试的是源目标的旧凭据，
+ * 而保存的是用户新填的 —— 测出来的结果与保存后的实际行为不一致。
+ */
+export function resolveDraftConnection (
+  saved: DeployTarget | undefined,
+  incoming: any,
+  secrets: TargetSecrets | undefined,
+  cloneSource: DeployTarget | undefined
+): DeployTarget {
+  let resolved = mergeDraftTarget(saved, incoming)
+  if (cloneSource) resolved = cloneSecrets(cloneSource, resolved)
+  if (secrets) resolved = applySecrets(resolved, secrets)
+  return resolved
+}
+
 export function toTargetView (target: DeployTarget): TargetView {
   const { password, passphrase, ...rest } = target
   return {

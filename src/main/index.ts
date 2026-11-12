@@ -1080,6 +1080,15 @@ function registerIpcHandlers() {
         else if (entry.role !== 'project' && imeToggleOwnerId === entry.win.webContents.id) releaseImeSafeToggle()
       }
     }
+    // 窗口镜像必须同步：后端靠这份列表判「局域网作用域」（已打开项目 / 允许根）。
+    // 主窗口「就地」打开或关闭项目不会触发 focus，不补这一次推送就会出现：
+    // 就地打开的项目被判出范围、就地解绑的项目继续被授权。
+    // onWindowOpened 自身幂等（同 id 先删后写，projectPath=null 即移除）。
+    statusMirror?.onWindowOpened({
+      id: _event.sender.id,
+      projectPath,
+      focused: entry ? !entry.win.isDestroyed() && entry.win.isFocused() : false
+    })
     if (focusedWindowId === _event.sender.id) syncCurrentProject()
     trayHandle?.refresh()
     return entry?.projectPath ?? null

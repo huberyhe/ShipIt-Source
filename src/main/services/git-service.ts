@@ -455,25 +455,32 @@ export class GitService {
     dir: string,
     filePath: string
   ): Promise<{ repoDir: string; pathInRepo: string }> {
-    if (await this.isGitRepo(dir)) return { repoDir: dir, pathInRepo: filePath }
-
     const rel = toSlashes(filePath)
-    let scan: { repos: string[]; scanTruncated: boolean }
+    // 先找“拥有这个文件的内层仓库”，**不管项目根本身是不是仓库**。
+    // 此前根是仓库就直接返回：多仓库项目里 `frontend/app.ts` 在父仓库中是未跟踪目录，
+    // `git diff HEAD -- frontend/app.ts` 恒为空，随后被格式化成“全新增”—— 差异视图全错。
+    let scan: { repos: string[]; scanTruncated: boolean } | null = null
     try {
       scan = await this.findSubRepos(dir)
     } catch {
-      return { repoDir: dir, pathInRepo: filePath }
+      scan = null
     }
-    const owner = scan.repos
-      .map((repoPath) => ({ repoDir: repoPath, prefix: this.relativeToProject(dir, repoPath) }))
+    const owner = (scan?.repos ?? [])
+      .map((repoPath) => ({ repoDir: repoPath, prefix: this.relativeToProject(dir, repoPath).replace(/\/+$/, '') }))
       .filter((candidate) => candidate.prefix !== '' && isUnder(rel, candidate.prefix))
       // 最内层仓库优先：外层仓库可能把内层目录当成一个未跟踪条目，文件真正归属内层
       .sort((a, b) => b.prefix.length - a.prefix.length)[0]
-    if (!owner) return { repoDir: dir, pathInRepo: filePath }
-    return { repoDir: owner.repoDir, pathInRepo: rel.slice(owner.prefix.length + 1) }
+    if (owner) return { repoDir: owner.repoDir, pathInRepo: rel.slice(owner.prefix.length + 1) }
+    return { repoDir: dir, pathInRepo: filePath }
   }
 
   async getFileDiff(dir: string, filePath: string): Promise<string> {
+    // 路径必须是项目内相对路径：下游会 `join(repoDir, pathInRepo)` 读文件，
+    // 不拒 `../` 与绝对路径就等于给管理端点开了一次任意读。
+    const lexical = toSlashes(filePath)
+    if (!lexical || lexical.split('/').includes('..') || /^([A-Za-z]:)?\//.test(lexical)) {
+      throw new Error(`非法的文件路径：${filePath}`)
+    }
     const target = await this.resolveDiffTarget(dir, filePath)
     const git = this.getGit(target.repoDir)
     let result: string

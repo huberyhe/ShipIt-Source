@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { DeployTarget } from '../shared/types'
-import { applySecrets, cloneSecrets, mergeDraftTarget, toTargetView } from './target-secrets'
+import { applySecrets, cloneSecrets, mergeDraftTarget, resolveDraftConnection, toTargetView } from './target-secrets'
 
 const base: DeployTarget = {
   id: 't1',
@@ -15,6 +15,30 @@ const base: DeployTarget = {
 }
 
 describe('server/target-secrets', () => {
+  it('草稿测试与保存同序：复制后改密码 → 用新密码（不破源目标覆盖）', () => {
+    const source: DeployTarget = { ...base, id: 'src', name: 'src', password: 'source-pass' }
+    const resolved = resolveDraftConnection(
+      undefined,
+      { name: '副本', host: '10.0.0.1' },
+      { password: { op: 'set', value: 'user-typed' } },
+      source
+    )
+    // 旧实现先 apply 再 clone，测的就是 source-pass —— 与保存后的实际行为不一致
+    expect(resolved.password).toBe('user-typed')
+  })
+
+  it('草稿测试：复制后清除密码 → 真的清（不降级成源目标的密码）', () => {
+    const source: DeployTarget = { ...base, id: 'src', name: 'src', password: 'source-pass', passphrase: 'source-pp' }
+    const resolved = resolveDraftConnection(
+      undefined,
+      { name: '副本', host: '10.0.0.1' },
+      { password: { op: 'clear' }, passphrase: { op: 'clear' } },
+      source
+    )
+    expect(resolved.password).toBeUndefined()
+    expect(resolved.passphrase).toBeUndefined()
+  })
+
   it('A5：已存目标 + 改主机、密码留空 → 沿用已存密码', () => {
     const merged = mergeDraftTarget(base, { host: '10.0.0.2', password: '' })
     expect(merged.host).toBe('10.0.0.2')

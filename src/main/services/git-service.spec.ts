@@ -183,6 +183,28 @@ describe('git-service 多仓库（多根项目）', () => {
     expect(diff).toContain('diff --git')
   })
 
+  it('根是仓库时，子仓库里的改动仍读内层仓库（不冒充“全新增”）', async () => {
+    // 项目根是仓库，`frontend/` 是另一个仓库
+    initRepo(projectDir)
+    const sub = join(projectDir, 'frontend')
+    initRepo(sub)
+    writeFileSync(join(sub, 'app.ts'), 'line1\n', 'utf-8')
+    git(sub, ['add', '-A'])
+    git(sub, ['commit', '-qm', 'add app'])
+    writeFileSync(join(sub, 'app.ts'), 'line1\nline2\n', 'utf-8')
+
+    const diff = await new GitService().getFileDiff(projectDir, 'frontend/app.ts')
+
+    // 旧实现：根是仓库就短路 → 父仓库里这是未跟踪目录 → 空 diff → 格式化成全新增（+line1 +line2）
+    expect(diff).toContain('+line2')
+    expect(diff).not.toContain('new file mode')
+  })
+
+  it('getFileDiff 拒绕路径（../ 与绝对路径不上抛就去读文件）', async () => {
+    await expect(new GitService().getFileDiff(projectDir, '../outside.txt')).rejects.toThrow(/非法/)
+    await expect(new GitService().getFileDiff(projectDir, '/etc/passwd')).rejects.toThrow(/非法/)
+  })
+
   it('项目里没有任何仓库时，getFileDiff 上抛而不是回空串', async () => {
     await expect(new GitService().getFileDiff(projectDir, 'a.ts')).rejects.toThrow(/读取文件差异失败/)
   })
