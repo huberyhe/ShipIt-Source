@@ -112,7 +112,7 @@ export const useDeployStore = defineStore('deploy', () => {
   const currentTargetId = ref<string>('')
   const deployLogs = ref<DeployLogEntry[]>([])
   const isUploading = ref(false)
-  const uploadProgress = ref({ current: 0, total: 0, file: '' })
+  const uploadProgress = ref<{ current: number; total: number; file: string; bytes?: { done: number; total: number } }>({ current: 0, total: 0, file: '' })
   /**
    * 本次上传在排队时 >0：前面还有几个会话。
    * 界面据此显示“排队中（第 N 位）”，而不是先弹一个不动的进度条（用户会误以为在传）。

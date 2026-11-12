@@ -273,7 +273,10 @@ describe('上传串行化（INV-6 / AC-019）', () => {
     await service.deploy(
       [uploadTask('p1.txt'), uploadTask('p2.txt')],
       target(),
-      (current, total) => seen.push([current, total]),
+      // 只记文件级回调；字节级（第 4 参）是本次新增的，每个 chunk 都会触发
+      (current, total, _file, bytes) => {
+        if (!bytes) seen.push([current, total])
+      },
       'desktop'
     )
     // 每个文件两次：开始（当前已完成数）+ 完成（+1）

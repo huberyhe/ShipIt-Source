@@ -14,6 +14,12 @@ type SftpInstance = {
   list (path: string): Promise<unknown>
   mkdir (path: string, recursive?: boolean): Promise<unknown>
   put (local: string, remote: string): Promise<unknown>
+  /** 并行分块上传（支持 step 进度回调）；部分服务器不支持，调用方需回退 put */
+  fastPut? (
+    local: string,
+    remote: string,
+    options?: { step?: (transferred: number, chunk: number, total: number) => void }
+  ): Promise<unknown>
   end (): Promise<unknown>
   stat (remote: string): Promise<{ size?: number } | undefined>
   chmod? (remote: string, mode: number): Promise<unknown>
@@ -28,6 +34,8 @@ type FtpInstance = {
   list (path: string): Promise<unknown>
   ensureDir (path: string): Promise<unknown>
   uploadFrom (source: unknown, target: string): Promise<unknown>
+  /** 累计字节进度（传 null 取消） */
+  trackProgress? (handler: ((info: { bytes: number; bytesOverall: number }) => void) | null): void
   close (): void
 }
 // basic-ftp 的构造参数是 socket 空闲超时（毫秒）；0/不传 = 永不超时
@@ -50,6 +58,7 @@ async function loadFtpCtor (): Promise<FtpCtor> {
 }
 import { promises as fsPromises, createReadStream, createWriteStream, readFileSync, constants } from 'fs'
 import { pipeline } from 'stream/promises'
+import { Transform } from 'stream'
 import { join, relative, posix, dirname, isAbsolute, resolve } from 'path'
 import type {
   DeployTarget,
@@ -374,7 +383,17 @@ export class DeployService {
   async deploy(
     tasks: UploadTask[],
     target: DeployTarget,
-    onProgress?: (current: number, total: number, file: string) => void,
+    /**
+     * 进度回调。
+     * - current/total：文件级（已完成数 / 总数），CLI 与旧调用方依赖它
+     * - bytes：字节级（可选）。大文件传输时只有它有变化，界面据此画进度条
+     */
+    onProgress?: (
+      current: number,
+      total: number,
+      file: string,
+      bytes?: { done: number; total: number }
+    ) => void,
     owner: DeployOwner = 'desktop',
     options: DeployOptions = {}
   ): Promise<DeployResult> {
@@ -541,20 +560,55 @@ export class DeployService {
             // 用流式复制而不是 copyFile（F3）：copyFile 不响应取消，目标在慢速网络盘上
             // 挂住时整个串行链会被卡死。mode 传源文件权限，保持与 copyFile 一致的语义。
             const srcStat = await fsPromises.stat(task.localPath)
+            // 字节计数：大文件只能靠它看进度（文件级在当前文件传完前不变）
+            let sent = 0
+            const counter = new Transform({
+              transform (chunk: Buffer, _enc, done): void {
+                sent += chunk.length
+                onProgress?.(i, tasks.length, task.relativePath, { done: sent, total: srcStat.size })
+                done(null, chunk)
+              }
+            })
             await pipeline(
               createReadStream(task.localPath),
+              counter,
               createWriteStream(dest, { mode: srcStat.mode & 0o777 }),
               { signal: session.controller.signal }
             )
           } else {
             // 确保远程目录存在
             const remoteDir = posix.dirname(task.remotePath)
+            const size = task.size ?? 0
             if (target.protocol === 'sftp' && sftpClient) {
               await sftpClient.mkdir(remoteDir, true).catch(() => {})
-              await sftpClient.put(task.localPath, task.remotePath)
+              const step = (transferred: number, _chunk: number, totalSize: number): void => {
+                onProgress?.(i, tasks.length, task.relativePath, {
+                  done: transferred,
+                  total: totalSize || size
+                })
+              }
+              if (sftpClient.fastPut) {
+                try {
+                  await sftpClient.fastPut(task.localPath, task.remotePath, { step })
+                } catch (error) {
+                  // 取消/中断不要重试；其他情况（服务器不支持并行分块）回退逐块传输
+                  if (session.aborted) throw error
+                  await sftpClient.put(task.localPath, task.remotePath)
+                }
+              } else {
+                await sftpClient.put(task.localPath, task.remotePath)
+              }
             } else if (ftpClient) {
               await ftpClient.ensureDir(remoteDir)
-              await ftpClient.uploadFrom(task.localPath, task.remotePath)
+              ftpClient.trackProgress?.((info) =>
+                onProgress?.(i, tasks.length, task.relativePath, { done: info.bytesOverall, total: size })
+              )
+              try {
+                await ftpClient.uploadFrom(task.localPath, task.remotePath)
+              } finally {
+                // 取消订阅：否则下一次上传会把字节数累加到旧回调上
+                ftpClient.trackProgress?.(null)
+              }
             }
           }
           })()

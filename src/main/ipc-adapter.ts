@@ -41,7 +41,7 @@ export interface IpcAdapter {
   deployPreview(files: string[], projectRoot: string, target: any): Promise<unknown>
   deployDirect(
     payload: { windowId: number; tasks: any[]; targetName: string; projectRoot?: string },
-    onProgress?: (current: number, total: number, file: string) => void,
+    onProgress?: (current: number, total: number, file: string, bytes?: { done: number; total: number }) => void,
     /** 排队位置回调：前面还有几个会话（用于显示“排队中”而不是假进度） */
     onQueued?: (ahead: number) => void
   ): Promise<unknown>
@@ -124,8 +124,16 @@ export function createRemoteAdapter (host: RemoteHost): IpcAdapter {
     deployDirect: async (payload, onProgress, onQueued) => {
       const off = onProgress && host.on
         ? host.on('deploy.progress', (data) => {
-            const progress = data as { windowId?: number; current: number; total: number; file: string }
-            if (progress?.windowId === payload.windowId) onProgress(progress.current, progress.total, progress.file)
+            const progress = data as {
+              windowId?: number
+              current: number
+              total: number
+              file: string
+              bytes?: { done: number; total: number }
+            }
+            if (progress?.windowId === payload.windowId) {
+              onProgress(progress.current, progress.total, progress.file, progress.bytes)
+            }
           })
         : null
       const offQueued = onQueued && host.on

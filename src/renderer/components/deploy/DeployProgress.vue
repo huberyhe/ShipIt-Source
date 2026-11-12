@@ -30,9 +30,28 @@ const targetMeta = computed(() => {
 })
 const targetTitle = computed(() => `${projectName.value} → ${targetName.value}\n${targetMeta.value}`)
 
+/**
+ * 进度百分比。
+ *
+ * - 单文件：用**字节**比例 —— 否则传到 99% 仍显示 0%（文件级只在传完后 +1）
+ * - 多文件：仍用文件级（字节会随每个文件重置，回退看起来比不动更糟）
+ */
 const progressPercent = computed(() => {
-  if (deployStore.uploadProgress.total === 0) return 0
-  return Math.round((deployStore.uploadProgress.current / deployStore.uploadProgress.total) * 100)
+  const p = deployStore.uploadProgress
+  const bytes = p.bytes
+  if (p.total === 1 && bytes && bytes.total > 0) {
+    return Math.min(100, Math.round((bytes.done / bytes.total) * 100))
+  }
+  if (p.total === 0) return 0
+  return Math.round((p.current / p.total) * 100)
+})
+
+/** 当前文件的字节进展（多文件时补充说明，单文件已体现在百分比里） */
+const byteHint = computed(() => {
+  const bytes = deployStore.uploadProgress.bytes
+  if (!bytes || bytes.total <= 0 || deployStore.uploadProgress.total <= 1) return ''
+  const pct = Math.min(100, Math.round((bytes.done / bytes.total) * 100))
+  return `当前文件 ${pct}%`
 })
 
 /**
@@ -96,10 +115,11 @@ onUnmounted(() => {
 
       <ProgressBar :value="progressPercent" label="上传进度" />
 
-      <div class="progress-info" aria-live="polite">
-        <span class="percent">{{ progressPercent }}%</span>
-        <span class="count">{{ deployStore.uploadProgress.current }} / {{ deployStore.uploadProgress.total }}</span>
-      </div>
+        <div class="progress-info" aria-live="polite">
+          <span class="percent">{{ progressPercent }}%</span>
+          <span class="count">{{ deployStore.uploadProgress.current }} / {{ deployStore.uploadProgress.total }}</span>
+          <span v-if="byteHint" class="byte-hint">{{ byteHint }}</span>
+        </div>
 
       <!-- 不在这里展示排队信息：排队数在右下角状态栏，弹窗只关心当前这个任务 -->
 
@@ -119,6 +139,8 @@ onUnmounted(() => {
   z-index: var(--z-progress);
 }
 /* 排队态：不画进度条，只给一行文字（保留与进度条相近的高度，避免卡片抽动） */
+.byte-hint { font-size: 11px; color: var(--fg3); }
+
 .queued-line {
   display: flex;
   align-items: center;

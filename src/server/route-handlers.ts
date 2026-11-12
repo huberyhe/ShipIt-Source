@@ -219,7 +219,8 @@ export function buildAdminHandlers (rt: Runtime, events: EventHub): Record<strin
       const result = await rt.deployService.deploy(
         tasks ?? [],
         target,
-        (current, total, file) => rt.notify('deploy.progress', { windowId, current, total, file }),
+        (current, total, file, bytes) =>
+          rt.notify('deploy.progress', { windowId, current, total, file, bytes }),
         'desktop',
         {
           windowId,

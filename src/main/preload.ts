@@ -33,7 +33,7 @@ contextBridge.exposeInMainWorld('deployApi', {
     ipcRenderer.invoke(IpcChannels.DEPLOY_UPLOAD, tasks, target, projectRoot),
   cancelDeploy: () => ipcRenderer.invoke(IpcChannels.DEPLOY_CANCEL),
   // 仅桌面窗口自己的上传会话（队列任务不推逐文件进度）
-  onDeployProgress: (callback: (data: { current: number; total: number; file: string }) => void) => {
+  onDeployProgress: (callback: (data: { current: number; total: number; file: string; bytes?: { done: number; total: number } }) => void) => {
     ipcRenderer.on(IpcChannels.DEPLOY_PROGRESS, (_event, data) => callback(data))
   },
   /** 本次上传在排队：前面还有 ahead 个会话 */

@@ -931,9 +931,9 @@ function registerIpcHandlers() {
     try {
       result = (await ipcAdapter.deployDirect(
         { windowId: _event.sender.id, tasks, targetName: target?.name, projectRoot },
-        (current: number, total: number, file: string) => {
+        (current: number, total: number, file: string, bytes?: { done: number; total: number }) => {
           // 逐文件进度只回发起窗口（进度条属于该窗口的会话）
-          sendToWindow(_event.sender.id, IpcChannels.DEPLOY_PROGRESS, { current, total, file })
+          sendToWindow(_event.sender.id, IpcChannels.DEPLOY_PROGRESS, { current, total, file, bytes })
         },
         (ahead: number) => {
           // 排队提示：界面据此显示“排队中（第 N 位）”，不显示假进度
