@@ -76,7 +76,13 @@ export function matchMapping(
 
 export type SelectionResult =
   | { ok: true; files: string[] }
-  | { ok: false; code: 'NOT_A_REPO' | 'EMPTY_SELECTION' | 'USAGE'; message: string; hint?: string }
+  | {
+      ok: false
+      /** BACKEND_UNAVAILABLE：变更集合不完整（有仓库读失败 / 扫描被截断） */
+      code: 'NOT_A_REPO' | 'EMPTY_SELECTION' | 'USAGE' | 'BACKEND_UNAVAILABLE'
+      message: string
+      hint?: string
+    }
 
 /** 解析选择器 → 待处理文件绝对路径集合 */
 export async function resolveSelection(
@@ -170,8 +176,20 @@ export async function resolveSelection(
     }
   }
 
-  const relPaths =
-    kind === 'last-commit' ? await deps.listCommitFiles(projectRoot, 'HEAD') : await deps.listChangedFiles(projectRoot)
+  let relPaths: string[]
+  try {
+    relPaths =
+      kind === 'last-commit' ? await deps.listCommitFiles(projectRoot, 'HEAD') : await deps.listChangedFiles(projectRoot)
+  } catch (error) {
+    // 读不出来就不能回一份部分清单：那会让 `--all-changed` 静默少传/整树多传
+    const message = error instanceof Error ? error.message : String(error)
+    return {
+      ok: false,
+      code: 'BACKEND_UNAVAILABLE',
+      message: `读取变更集合失败：${message}`,
+      hint: '改用 --files / --dir 显式指定范围，或先修复该仓库（权限 / git 环境）'
+    }
+  }
 
   const unique = [...new Set(relPaths.map(toSlashes).filter((p) => p.length > 0))]
   if (unique.length === 0) {

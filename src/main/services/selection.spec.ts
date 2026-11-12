@@ -107,6 +107,27 @@ describe('selection（P2 回归）', () => {
     expect(r).toEqual({ ok: true, files: [join(PROJECT, 'dist/a.js')] })
   })
 
+  it('all-changed 读不全时拒绝（BACKEND_UNAVAILABLE），不回部分清单', async () => {
+    const r = await resolveSelection(
+      { kind: 'all-changed' },
+      PROJECT,
+      deps({
+        listChangedFiles: async () => {
+          throw new Error('有仓库读取失败，变更集合不完整：frontend（invalid gitfile）')
+        }
+      })
+    )
+
+    expect(r.ok).toBe(false)
+    if (!r.ok) {
+      // 不能回一份“看起来正常”的清单：那会让 --all-changed 静默少传整棵树
+      expect(r.code).toBe('BACKEND_UNAVAILABLE')
+      expect(r.message).toContain('读取变更集合失败')
+      expect(r.message).toContain('frontend')
+      expect(r.hint).toContain('--files')
+    }
+  })
+
   it('--dir 目录不可读时如实报错（不是「目录内没有文件」）', async () => {
     const r = await resolveSelection(
       { kind: 'dir', path: '.' },

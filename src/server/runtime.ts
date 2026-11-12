@@ -113,7 +113,23 @@ export function createRuntime (options: RuntimeOptions) {
     listProjects: async () => opened,
     selection: {
       isGitRepo: (dir) => git.isGitRepo(dir),
-      listChangedFiles: async (dir) => (await git.getStatusView(dir)).changes.map((c) => c.relativePath),
+      // 变更集合不完整时必须抛错，而不是回一份“看起来正常”的清单：
+      // - 某个内层仓库读失败 → 它那棵树要么完全缺席（去重后），要么以未跟踪目录的形式被整树上传
+      // - 仓库数超上限 / 扫描预算耗尽 → 深处还有没被看到的仓库
+      // 两种情况都会让 `--all-changed` 发的不是“这次真的变了的那些文件”。
+      listChangedFiles: async (dir) => {
+        const view = await git.getStatusView(dir)
+        const broken = (view.repos ?? []).filter((repo) => repo.error)
+        if (broken.length > 0) {
+          throw new Error(
+            `有仓库读取失败，变更集合不完整：${broken.map((repo) => `${repo.repoName}（${repo.error}）`).join('；')}`
+          )
+        }
+        if (view.truncated || view.scanTruncated) {
+          throw new Error('仓库数量或扫描范围超过上限，变更集合可能不完整')
+        }
+        return view.changes.map((c) => c.relativePath)
+      },
       listCommitFiles: async (dir, ref) => (await git.getCommitFiles(dir, ref)).map((f) => f.path),
       listFilesInDir: (dir, maxFiles) => files.collectFilesForUpload(dir, maxFiles),
       exists: async (abs) => {

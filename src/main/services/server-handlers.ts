@@ -583,13 +583,21 @@ export function gitStatusHandler(deps: ServerHandlerDeps): RouteHandler {
       relativePath: toSlashes(c.relativePath),
       status: c.status
     }))
+    // 追加字段（CON-1：只追加不改旧字段）：调用方据此判断“这份变更集合是不是完整的”。
+    // 此前只给 changes，内层仓库读失败或扫描被截断时，CLI/MCP 会静默少传/多传。
+    const brokenRepos = (view.repos ?? [])
+      .filter((repo) => repo.error)
+      .map((repo) => ({ path: toSlashes(repo.repoPath), name: repo.repoName, error: repo.error }))
     return okEnvelope(
       {
         projectRoot: resolved.projectRoot,
         branch: view.branch ?? null,
         ahead: view.ahead,
         behind: view.behind,
-        changes
+        changes,
+        ...(view.truncated ? { truncated: true } : {}),
+        ...(view.scanTruncated ? { scanTruncated: true } : {}),
+        ...(brokenRepos.length > 0 ? { repoErrors: brokenRepos } : {})
       },
       metaOf({
         origin: ctx.origin,

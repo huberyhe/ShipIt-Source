@@ -146,6 +146,27 @@ describe('git-service 多仓库（多根项目）', () => {
     expect(subRepo.repoName).toBe('frontend')
   })
 
+  it('内层仓库读失败时不把它的文件从外层变更里抹掉（两边都不见 = 静默少传）', async () => {
+    // 根仓库 + `frontend/` 内层仓库；把内层仓库弄成读不出来（.git 损坏）
+    initRepo(projectDir)
+    const sub = join(projectDir, 'frontend')
+    initRepo(sub)
+    writeFileSync(join(sub, 'app.ts'), 'x', 'utf-8')
+    // 让 `git status` 在该仓库里真的失败：把 .git 目录换成普通文件（目录项仍在，
+    // 所以 findSubRepos 会认它是仓库；读 status 时 git 会报 invalid gitfile）
+    rmSync(join(sub, '.git'), { recursive: true, force: true })
+    writeFileSync(join(sub, '.git'), 'garbage', 'utf-8')
+
+    const view = await new GitService().getStatusView(projectDir)
+
+    const subRepo = view.repos!.find((repo) => repo.repoPath === sub)!
+    // 内层确实读失败了
+    expect(subRepo.error).toBeTruthy()
+    // 关键：外层不能把 `frontend/` 这条未跟踪目录也丢掉 —— 否则这棵树在 changes 里彻底消失
+    const rootChanges = view.changes.map((change) => change.relativePath.replace(/\\/g, '/'))
+    expect(rootChanges.some((path) => path === 'frontend' || path.startsWith('frontend/'))).toBe(true)
+  })
+
   it('getFileDiff 在多仓库项目里按文件所属仓库读取（项目根不是仓库也能出差异）', async () => {
     // 项目根本身不是仓库，只有 frontend / backend 两个子仓库
     const frontend = join(projectDir, 'frontend')

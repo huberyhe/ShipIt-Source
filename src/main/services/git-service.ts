@@ -207,13 +207,35 @@ export class GitService {
 
     // 每个仓库的「项目相对目录」：根仓库为 ''（它覆盖整个项目），内层仓库为项目下的相对路径。
     const relPrefixes = picked.map((repoPath) => this.relativeToProject(dir, repoPath))
-    // 去重规则：内层仓库的文件不得同时算进外层仓库。git 对外层只会给出一个未跟踪目录条目
-    // （如 `前端/`），若不过滤，同一个文件会在两个仓库下各出现一次。
-    const innerDirs = relPrefixes.map((self) => relPrefixes.filter((other) => isUnder(other, self)))
-
     const results = await mapWithConcurrency(picked, REPO_STATUS_CONCURRENCY, (repoPath, index) =>
-      this.readRepoStatus(repoPath, relPrefixes[index], innerDirs[index])
+      this.readRepoStatus(repoPath, relPrefixes[index])
     )
+
+    // 去重规则：内层仓库的文件不得同时算进外层仓库（git 对外层只给一个未跟踪目录条目，
+    // 如 `前端/`；不过滤会让同一个文件在两处各出现一次）。
+    //
+    // 但只有**读取成功**的内层仓库才参与去重：失败的仓库给不出它自己的文件，
+    // 若仍按它的前缀把外层那条 `前端/` 丢掉，这棵树就两边都不见了 ——
+    // 桌面只看得到仓库上的 error，而 CLI/MCP 走 `changes`，会静默少传一整棵树。
+    // 前缀必须归一化（去掉尾斜杠）：`relativeToProject` 可能给出 `frontend/`，
+    // 而 git 的未跟踪目录条目是 `frontend`，字符串对不上就会漏过滤。
+    const norm = (value: string): string => value.replace(/\/+$/, '')
+    const okInnerPrefixes = relPrefixes
+      .map((prefix, index) => ({ prefix: norm(prefix), index }))
+      .filter((item) => item.prefix !== '' && !results[item.index].repo.error)
+      .map((item) => item.prefix)
+    const innerDirsOf = (self: string): string[] => okInnerPrefixes.filter((other) => isUnder(other, norm(self)))
+
+
+    // 先就地清洗每个仓库的 changes（单个仓库视图也要干净），再取并集
+    results.forEach((result, index) => {
+      const innerDirs = innerDirsOf(relPrefixes[index])
+      if (innerDirs.length === 0) return
+      result.repo.changes = result.repo.changes.filter((change) => {
+        const key = change.relativePath.replace(/\/+$/, '')
+        return !innerDirs.some((inner) => key === inner || key.startsWith(`${inner}/`))
+      })
+    })
 
     const rootResult = results.find((result) => result.repo.repoPath === dir)
     const changes: GitChangeInfo[] = []
@@ -301,8 +323,7 @@ export class GitService {
    */
   private async readRepoStatus(
     repoPath: string,
-    relPrefix: string,
-    innerDirs: string[]
+    relPrefix: string
   ): Promise<RepoReadResult> {
     const repoName = basename(toSlashes(repoPath).replace(/\/+$/, '')) || repoPath
     try {
@@ -319,9 +340,7 @@ export class GitService {
         const relToRepo = this.toProjectRelative(file.path, prefix)
         if (relToRepo === null) continue // 项目目录之外的变更与上传无关
         const rel = relPrefix === '' ? relToRepo : `${relPrefix}/${relToRepo}`
-        // 未跟踪的内层仓库目录会以 `内层/` 的形式出现：连同其下所有文件一起排除
-        const key = rel.replace(/\/+$/, '')
-        if (innerDirs.some((inner) => key === inner || key.startsWith(`${inner}/`))) continue
+        // 内层仓库去重移到聚合处（只对“读取成功的内层仓库”生效，见 getStatusView）
         const changeInfo = this.classifyChange({ ...file, path: rel }, status)
         if (changeInfo) changes.push(changeInfo)
       }
