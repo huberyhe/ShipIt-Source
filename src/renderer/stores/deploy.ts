@@ -494,8 +494,10 @@ export const useDeployStore = defineStore('deploy', () => {
         // 含失败文件不得用绿色成功提示上报（INV-9：失败不能伪装成成功）
         toastError(`${result.succeeded} 个成功，${result.failed} 个失败 → ${target.name}`)
       } else {
-        // 结果提示必须能回答「发到哪」：多目标并存时，光看数字无法确认调度的目标
-        toastSuccess(`已上传 ${result.succeeded} 个文件 → ${target.name}`)
+        // 结果提示必须能回答「发到哪」：多目标并存时，光看数字无法确认调度的目标。
+        // 跳过数也必须报：只报“已上传 N 个”会让人以为全部都传了。
+        const skippedNote = result.skipped > 0 ? `（跳过 ${result.skipped} 个，详见日志）` : ''
+        toastSuccess(`已上传 ${result.succeeded} 个文件 → ${target.name}${skippedNote}`)
       }
       return result
     } catch (err: any) {

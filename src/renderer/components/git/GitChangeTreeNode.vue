@@ -88,7 +88,7 @@ function onContextMenu(e: MouseEvent) {
 
   if (props.node.isDirectory) {
     items.push({
-      label: '快速上传',
+      label: '上传所选',
       icon: Wrench,
       shortcut: shortcutLabel('uploadSelection'),
       action: () => emit('quickDeploy', props.node)
@@ -101,7 +101,7 @@ function onContextMenu(e: MouseEvent) {
     })
   } else if (props.node.change) {
     items.push({
-      label: '快速上传',
+      label: '上传所选',
       icon: Wrench,
       shortcut: shortcutLabel('uploadSelection'),
       action: () => emit('quickDeploy', props.node)

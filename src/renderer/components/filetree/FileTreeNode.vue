@@ -121,7 +121,7 @@ function onContextMenu(e: MouseEvent) {
     filesStore.selectDeployEntry(props.entry)
   }
   const items: ContextMenuItem[] = [{
-    label: '快速上传', icon: Wrench, shortcut: shortcutLabel('uploadSelection'),
+    label: '上传所选', icon: Wrench, shortcut: shortcutLabel('uploadSelection'),
     action: () => doDeploy()
   }, {
     label: '上传到', icon: Server, shortcut: shortcutLabel('uploadTo'),
