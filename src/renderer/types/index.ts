@@ -88,7 +88,8 @@ export interface DeployApi {
   testConnection: (target: any) => Promise<{ success: boolean; error?: string }>
   /** 预览：会上传的任务 + 被跳过的条目（含真实原因，与上传同一趟筛选） */
   previewDeployFiles: (files: string[], projectRoot: string, target: any) => Promise<UploadPreview>
-  deployFiles: (tasks: any[], target: any, projectRoot?: string) => Promise<any>
+  /** files = 选中的源路径；服务端重算任务并与 expectFiles 比对（不再由界面指定 localPath/remotePath） */
+  deployFiles: (files: string[], target: any, projectRoot: string, expectFiles?: string[]) => Promise<any>
   cancelDeploy: () => Promise<void>
   /** 仅桌面窗口自己的上传会话（队列任务不推逐文件进度） */
   onDeployProgress: (callback: (data: { current: number; total: number; file: string; bytes?: { done: number; total: number } }) => void) => void

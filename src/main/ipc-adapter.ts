@@ -40,7 +40,17 @@ export interface IpcAdapter {
   // 部署类（T9 批 3）
   deployPreview(files: string[], projectRoot: string, target: any): Promise<unknown>
   deployDirect(
-    payload: { windowId: number; tasks: any[]; targetName: string; projectRoot?: string },
+    payload: {
+      windowId: number
+      /** 选中的源路径（服务端重算任务，不接受客户端给的 localPath/remotePath） */
+      files: string[]
+      projectRoot: string
+      targetName: string
+      /** 预览时看到的相对路径集合：重算后不一致就拒绝（PLAN_STALE） */
+      expectFiles: string[]
+      /** 预览时的目标配置签名：确认后被改过就拒绝 */
+      targetSignature: string
+    },
     onProgress?: (current: number, total: number, file: string, bytes?: { done: number; total: number }) => void,
     /** 排队位置回调：前面还有几个会话（用于显示“排队中”而不是假进度） */
     onQueued?: (ahead: number) => void

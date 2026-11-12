@@ -29,8 +29,8 @@ contextBridge.exposeInMainWorld('deployApi', {
   testConnection: (target: any) => ipcRenderer.invoke(IpcChannels.DEPLOY_TEST_CONN, target),
   previewDeployFiles: (files: string[], projectRoot: string, target: any): Promise<UploadPreview> =>
     ipcRenderer.invoke(IpcChannels.DEPLOY_PREVIEW, files, projectRoot, target),
-  deployFiles: (tasks: any[], target: any, projectRoot?: string) =>
-    ipcRenderer.invoke(IpcChannels.DEPLOY_UPLOAD, tasks, target, projectRoot),
+  deployFiles: (files: string[], target: any, projectRoot: string, expectFiles?: string[]) =>
+    ipcRenderer.invoke(IpcChannels.DEPLOY_UPLOAD, files, target, projectRoot, expectFiles),
   cancelDeploy: () => ipcRenderer.invoke(IpcChannels.DEPLOY_CANCEL),
   // 仅桌面窗口自己的上传会话（队列任务不推逐文件进度）
   onDeployProgress: (callback: (data: { current: number; total: number; file: string; bytes?: { done: number; total: number } }) => void) => {

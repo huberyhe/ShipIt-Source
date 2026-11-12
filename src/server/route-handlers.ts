@@ -12,6 +12,8 @@ import type { RequestContext, RouteHandler } from '../main/services/local-server
 import type { Runtime } from './runtime'
 import type { EventHub } from './events'
 import { applySecrets, cloneSecrets, mergeDraftTarget, toTargetView } from './target-secrets'
+import { toSlashes } from '../shared/paths'
+import { deployTargetSignature } from '../shared/deploy-signature'
 
 type Body = Record<string, any>
 
@@ -213,11 +215,54 @@ export function buildAdminHandlers (rt: Runtime, events: EventHub): Record<strin
     },
 
     deployDirect: async (ctx) => {
-      const { windowId, tasks, targetName } = body(ctx)
+      const b = body(ctx)
+      const { windowId, files, targetName, expectFiles, targetSignature } = b
+      const projectRoot = typeof b.projectRoot === 'string' ? b.projectRoot : ''
       if (rt.isDraining()) return errEnvelope('BACKEND_UNAVAILABLE', '后端正在退出，拒绝新任务')
-      const target = await rt.targetByName(targetName)
+      // 策略 D′：项目根必填。此前这个字段被直接丢弃，客户端给的 localPath/remotePath 原样执行。
+      if (!projectRoot) {
+        return errEnvelope('USAGE', '缺少项目根：上传必须显式指定项目（不接受跟随窗口焦点）')
+      }
+      const target = await rt.targetByName(targetName).catch(() => null)
+      if (!target) return errEnvelope('NO_TARGET', `目标不存在：${targetName ?? '(未命名)'}`)
+
+      // 1) 确认之后目标配置被改过 → 拒绝。
+      // 否则"弹窗里的路径"与"实际连的机器/映射"可以不是同一套（另一个窗口保存了新主机）。
+      if (typeof targetSignature === 'string' && targetSignature && targetSignature !== deployTargetSignature(target)) {
+        return errEnvelope(
+          'PLAN_STALE',
+          '目标配置在确认后已被修改（主机/端口/账号/映射/上传后脚本）',
+          '请重新预览并确认；配置可能被另一个窗口改过'
+        )
+      }
+
+      // 2) 服务端重算任务：客户端只能指定"选哪些路径"，不能指定 localPath / remotePath。
+      // 这一步同时负责“链接不跟随 + 真实路径在项目内 + 映射匹配”，与 /plan 完全同一套。
+      const tasks = await rt.deployService.buildUploadTasks(
+        Array.isArray(files) ? files.map(String) : [],
+        projectRoot,
+        target
+      )
+      if (tasks.length === 0) {
+        return errEnvelope('EMPTY_SELECTION', '没有可上传的文件', '请重新选择文件，或检查目标的目录映射')
+      }
+
+      // 3) 集合漂移：与公开 /deploy 的 expectFiles 同口径（确认时 5 个、现在 6 个就不能静默多传）
+      if (Array.isArray(expectFiles)) {
+        const actual = tasks.map((task) => toSlashes(task.relativePath)).sort()
+        const want = [...new Set(expectFiles.map((path) => toSlashes(String(path))))].sort()
+        const drift = want.length !== actual.length || want.some((path, index) => path !== actual[index])
+        if (drift) {
+          return errEnvelope(
+            'PLAN_STALE',
+            `计划已过期：当前将上传的文件集合与确认时不一致（确认时 ${want.length} 个，现在 ${actual.length} 个）`,
+            '请重新预览确认后再上传（文件可能在确认之后被修改/删除/新增）',
+            { expected: want, actual }
+          )
+        }
+      }
       const result = await rt.deployService.deploy(
-        tasks ?? [],
+        tasks,
         target,
         (current, total, file, bytes) =>
           rt.notify('deploy.progress', { windowId, current, total, file, bytes }),

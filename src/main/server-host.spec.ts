@@ -1,8 +1,9 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createRevisionBridge, createServerHost, type ServerHost } from './server-host'
+import { deployTargetSignature } from '../shared/deploy-signature'
 
 const ENTRY = join(process.cwd(), 'dist-server/index.js')
 const hosts: ServerHost[] = []
@@ -94,7 +95,14 @@ describe('main/server-host', () => {
 
     const events: Array<{ windowId?: number; current: number; total: number; file: string }> = []
     const off = host.on('deploy.progress', (data) => events.push(data as (typeof events)[number]))
-    const res = await host.post('/deploy/direct', { windowId: 12345, tasks, targetName: '本地' }, 60_000)
+    // 新契约：界面只给「选中的源路径」+「确认时的文件集合」，任务由服务端重算
+    const res = await host.post('/deploy/direct', {
+      windowId: 12345,
+      files: ['a.txt'],
+      projectRoot: projectDir,
+      targetName: '本地',
+      expectFiles: tasks.map((t: any) => t.relativePath)
+    }, 60_000)
     off()
 
     expect(res.ok).toBe(true)
@@ -107,6 +115,106 @@ describe('main/server-host', () => {
     // 进度按“已完成文件数”报：开始时报 0/1（不再一开拍就 100%）
     expect(events[0].current).toBe(0)
     expect(events[0].total).toBe(1)
+  })
+
+  it('/deploy/direct 不再接受客户端指定的 localPath/remotePath；集合漂移按 PLAN_STALE 拒绝', async () => {
+    const host = setup()
+    await host.start()
+
+    const projectDir = mkdtempSync(join(tmpdir(), 'shipit-proj2-'))
+    const dstDir = mkdtempSync(join(tmpdir(), 'shipit-dst2-'))
+    dirs.push(projectDir, dstDir)
+    writeFileSync(join(projectDir, 'a.txt'), 'hello')
+
+    const target = {
+      id: 't2',
+      name: '本地2',
+      protocol: 'local',
+      host: dstDir,
+      port: 0,
+      username: 'local',
+      mappings: [{ id: 'm1', localPrefix: 'a.txt', remotePath: 'a.txt' }]
+    }
+    expect((await host.post('/targets/add', { target })).ok).toBe(true)
+
+    // 客户端多塞一个 tasks：服务端必须忽略它，只按 files 重算
+    const res = await host.post('/deploy/direct', {
+      windowId: 1,
+      files: ['a.txt'],
+      projectRoot: projectDir,
+      targetName: '本地2',
+      expectFiles: ['a.txt'],
+      tasks: [{ localPath: '/etc/passwd', remotePath: 'forged.txt', relativePath: 'forged.txt', size: 1 }]
+    }, 60_000)
+    expect(res.ok).toBe(true)
+    // 伪造的远端路径不得出现（说明 tasks 没被采纳）
+    expect(existsSync(join(dstDir, 'forged.txt'))).toBe(false)
+    expect(existsSync(join(dstDir, 'a.txt'))).toBe(true)
+
+    // 确认时看到的集合与重算结果不一致 → 拒绝，且不产生新文件
+    const stale = await host.post('/deploy/direct', {
+      windowId: 1,
+      files: ['a.txt'],
+      projectRoot: projectDir,
+      targetName: '本地2',
+      expectFiles: ['a.txt', 'b.txt']
+    }, 60_000)
+    expect(stale.ok).toBe(true)
+    if (stale.ok) {
+      expect(stale.envelope.ok).toBe(false)
+      if (!stale.envelope.ok) expect(stale.envelope.error.code).toBe('PLAN_STALE')
+    }
+
+    // 缺项目根 → 直接拒绝（策略 D′：不接受“跟随焦点”）
+    const noRoot = await host.post('/deploy/direct', { windowId: 1, files: ['a.txt'], targetName: '本地2' }, 60_000)
+    if (noRoot.ok) {
+      expect(noRoot.envelope.ok).toBe(false)
+      if (!noRoot.envelope.ok) expect(noRoot.envelope.error.code).toBe('USAGE')
+    }
+  })
+
+  it('/deploy/direct 目标配置在确认后被改过 → PLAN_STALE（不把文件发到新主机）', async () => {
+    const host = setup()
+    await host.start()
+
+    const projectDir = mkdtempSync(join(tmpdir(), 'shipit-proj3-'))
+    const dstA = mkdtempSync(join(tmpdir(), 'shipit-dstA-'))
+    const dstB = mkdtempSync(join(tmpdir(), 'shipit-dstB-'))
+    dirs.push(projectDir, dstA, dstB)
+    writeFileSync(join(projectDir, 'a.txt'), 'hello')
+
+    const target = {
+      id: 't3',
+      name: '本地3',
+      protocol: 'local',
+      host: dstA,
+      port: 0,
+      username: 'local',
+      mappings: [{ id: 'm1', localPrefix: 'a.txt', remotePath: 'a.txt' }]
+    }
+    expect((await host.post('/targets/add', { target })).ok).toBe(true)
+    // 确认时用户看到的那个目标（弹窗展示的草稿快照）
+    const signatureAtConfirm = deployTargetSignature(target)
+
+    // 另一个窗口把目标改到了另一个目录并保存
+    expect((await host.post('/targets/update', { id: 't3', updates: { host: dstB } })).ok).toBe(true)
+
+    const res = await host.post('/deploy/direct', {
+      windowId: 1,
+      files: ['a.txt'],
+      projectRoot: projectDir,
+      targetName: '本地3',
+      expectFiles: ['a.txt'],
+      targetSignature: signatureAtConfirm
+    }, 60_000)
+
+    expect(res.ok).toBe(true)
+    if (res.ok) {
+      expect(res.envelope.ok).toBe(false)
+      if (!res.envelope.ok) expect(res.envelope.error.code).toBe('PLAN_STALE')
+    }
+    // 两个目标目录都不应有任何新文件（拒绝了就不发）
+    expect(existsSync(join(dstB, 'a.txt'))).toBe(false)
   })
 
   it('主动停止后不再自动重启（R1）', async () => {

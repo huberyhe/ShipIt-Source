@@ -74,6 +74,7 @@ import type { IpcAdapter } from './ipc-adapter'
 import { createStatusMirror } from './status-mirror'
 import type { ServerHost } from './server-host'
 import { queueTextOf } from '../shared/queue-text'
+import { deployTargetSignature } from '../shared/deploy-signature'
 import type { ServerConfig } from '../shared/types'
 
 /**
@@ -924,13 +925,22 @@ function registerIpcHandlers() {
     return ipcAdapter.deployPreview(files, projectRoot, target)
   })
 
-  // 执行：直接上传已确认的任务列表（与预览完全一致）
-  ipcMain.handle(IpcChannels.DEPLOY_UPLOAD, async (_event, tasks: any[], target: any, projectRoot?: string) => {
+  // 执行：把「选中的源路径 + 确认时看到的文件集合 + 目标配置签名」交给后端重算并校验。
+  // 界面不再传 localPath/remotePath —— 那些由服务端按同一套 plan 规则重新得出。
+  ipcMain.handle(IpcChannels.DEPLOY_UPLOAD, async (_event, files: string[], target: any, projectRoot: string, expectFiles?: string[]) => {
     const startedAt = Date.now()
     let result: any
     try {
       result = (await ipcAdapter.deployDirect(
-        { windowId: _event.sender.id, tasks, targetName: target?.name, projectRoot },
+        {
+          windowId: _event.sender.id,
+          files: Array.isArray(files) ? files : [],
+          projectRoot: projectRoot ?? '',
+          targetName: target?.name,
+          expectFiles: Array.isArray(expectFiles) ? expectFiles : [],
+          // 签名在主进程算：渲染层传来的 target 就是弹窗里展示的那一份（草稿快照）
+          targetSignature: deployTargetSignature(target)
+        },
         (current: number, total: number, file: string, bytes?: { done: number; total: number }) => {
           // 逐文件进度只回发起窗口（进度条属于该窗口的会话）
           sendToWindow(_event.sender.id, IpcChannels.DEPLOY_PROGRESS, { current, total, file, bytes })
@@ -944,7 +954,7 @@ function registerIpcHandlers() {
       // 请求本身失败（后端不可达、连接中断等）也必须留一条日志：
       // 否则用户点完上传只看到弹窗消失、日志面板空白，完全不知道发生了什么。
       const message = error instanceof Error ? error.message : String(error)
-      const total = Array.isArray(tasks) ? tasks.length : 0
+      const total = Array.isArray(expectFiles) ? expectFiles.length : 0
       broadcast(IpcChannels.DEPLOY_LOG_ENTRY, {
         taskId: `failed-${Date.now().toString(36)}`,
         targetName: target?.name ?? '-',

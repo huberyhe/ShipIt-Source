@@ -152,8 +152,10 @@ export const useDeployStore = defineStore('deploy', () => {
   const isPreviewing = ref(false)
   const confirmFiles = ref<UploadPreviewItem[]>([])
   /** 被跳过的条目：数量与列表必须可见，不能因为「不参与上传」就从界面消失 */
-  const confirmSkipped = ref<UploadPreviewSkip[]>([])
-  const confirmTargetId = ref<string>('')
+const confirmSkipped = ref<UploadPreviewSkip[]>([])
+const confirmTargetId = ref<string>('')
+/** 预览时的源路径：执行时交给服务端重算（界面不再回传 localPath/remotePath） */
+const confirmSourceFiles = ref<string[]>([])
   /** 正在上传的目标（进度卡据此显示 项目 → 目标（协议 + 主机）） */
   const uploadTarget = ref<UploadTargetSummary | null>(null)
 
@@ -265,6 +267,9 @@ export const useDeployStore = defineStore('deploy', () => {
     const seq = ++previewSeq
     confirmFiles.value = []
     confirmSkipped.value = []
+    // 记住「预览用的是哪些源路径」：执行时把它交给服务端重算，
+    // 而不是把界面算出的 localPath/remotePath 回传（那等于让界面决定发什么）。
+    confirmSourceFiles.value = [...files]
     confirmTargetId.value = target.id
     isPreviewing.value = true
     showConfirm.value = true
@@ -450,7 +455,8 @@ export const useDeployStore = defineStore('deploy', () => {
     }
 
     try {
-      // 直接用弹窗展示的任务列表（与预览一致）
+      // 弹窗展示的清单只用于「告诉用户确认了什么」，不再当作执行输入：
+      // 服务端会拿源路径重新算一遍，并用 expectFiles 校验集合没变。
       const tasks = confirmFiles.value
         .map(f => ({ localPath: f.localPath, remotePath: f.remotePath, relativePath: f.relativePath, size: f.size }))
 
@@ -462,10 +468,15 @@ export const useDeployStore = defineStore('deploy', () => {
       }
 
       // 带上项目根：主进程会把结果广播给其他窗口的日志面板（按 taskId 去重，本窗口不会重复）
+      // 第三个参数是「确认时看到的文件集合」：服务端重算后若集合变了（文件被改/删/新增）
+      // 会直接拒绝（PLAN_STALE），而不是静默多传或少传。
+      // 注意：ref 里的数组是 Vue 响应式 proxy，直接过 IPC 会 "An object could not be cloned"
+      // （实测：整条上传链路在结构化克隆阶段就挂了，界面只显示“上传失败”）。传前先展开成普通数组。
       const result = await window.deployApi.deployFiles(
-        tasks,
+        [...(confirmSourceFiles.value.length ? confirmSourceFiles.value : tasks.map((t) => t.localPath))],
         JSON.parse(JSON.stringify(target)),
-        projectStore.projectPath ?? undefined
+        projectStore.projectPath ?? '',
+        confirmFiles.value.map((f) => f.relativePath)
       )
       // 日志要能回答“这次到底涉及哪些文件”：把被跳过的文件也拼进明细
       // （主进程只认识实际要传的 tasks，skipped 是渲染层一侧的信息）
