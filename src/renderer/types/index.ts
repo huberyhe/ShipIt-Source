@@ -19,6 +19,10 @@ export interface DeployApi {
   getWindowInit: () => { role: 'main' | 'project' | 'settings'; projectPath: string | null; section: 'targets' | 'server' }
   /** 打开全局设置窗口（单实例） */
   openSettings: (section?: 'targets' | 'server') => Promise<null>
+  /** 设置窗口开始创建：显示遮罩（新窗口要几秒才出现） */
+  onSettingsOpening: (callback: () => void) => void
+  /** 设置窗口已可见：撤掉遮罩 */
+  onSettingsReady: (callback: () => void) => void
   /** 设置窗口上报未保存状态（关窗守门用） */
   reportSettingsDirty: (dirty: boolean) => void
   /** 设置窗口：关闭被拦下（有未保存改动） */

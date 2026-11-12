@@ -20,6 +20,23 @@ export const useUiStore = defineStore('ui', () => {
    */
   const isRefreshing = ref(false)
   let refreshTimer: ReturnType<typeof setTimeout> | null = null
+
+  /**
+   * 正在打开全局设置。
+   *
+   * 设置是独立 BrowserWindow：创建 + 首帧绘制要好几秒，期间发起窗口看起来完全没反应。
+   * 主进程在开始时发 SETTINGS_OPENING、窗口可见时发 SETTINGS_READY，这里只负责翻转标志。
+   */
+  const isOpeningSettings = ref(false)
+
+  function listenSettingsOpening (): void {
+    window.deployApi.onSettingsOpening(() => {
+      isOpeningSettings.value = true
+    })
+    window.deployApi.onSettingsReady(() => {
+      isOpeningSettings.value = false
+    })
+  }
   function markRefreshing (ms = 500): void {
     isRefreshing.value = true
     if (refreshTimer) clearTimeout(refreshTimer)
@@ -184,6 +201,8 @@ function viewStateSnapshot(): { activeView: ActiveView; logPanelExpanded: boolea
     appBuildNumber,
     isRefreshing,
     markRefreshing,
+    isOpeningSettings,
+    listenSettingsOpening,
     initAppVersion,
     setTheme,
     initTheme,

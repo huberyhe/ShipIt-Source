@@ -518,17 +518,35 @@ function openProjectInWindow(id: number, projectPath: string): boolean {
  * 并发编辑冲突就"结构上不可能"发生（比事后提示更可靠）。
  * 已存在则聚焦并切到指定标签页；不存在则创建（role=settings，关窗即销毁）。
  */
-function showSettingsWindow(section: SettingsSection = 'targets'): void {
+function showSettingsWindow(section: SettingsSection = 'targets', requesterId?: number): void {
+  // 新窗口创建 + 首帧绘制要几秒：期间发起窗口只是“没反应”。
+  // 开始时就通知它盖遮罩，窗口可见后再撤。
+  const notify = (channel: string): void => {
+    if (requesterId !== undefined) sendToWindow(requesterId, channel, {})
+  }
+
   for (const entry of appWindows.values()) {
     if (entry.role !== 'settings' || entry.win.isDestroyed()) continue
     if (entry.win.isMinimized()) entry.win.restore()
     entry.win.show()
     entry.win.focus()
     entry.win.webContents.send(IpcChannels.SETTINGS_SECTION, section)
+    notify(IpcChannels.SETTINGS_READY)
     return
   }
+
+  notify(IpcChannels.SETTINGS_OPENING)
   // 初始标签页随启动参数传入（窗口首次加载即可用，不必等 did-finish-load）
-  createAppWindow({ role: 'settings', section })
+  const win = createAppWindow({ role: 'settings', section })
+  let settled = false
+  const done = (): void => {
+    if (settled) return
+    settled = true
+    notify(IpcChannels.SETTINGS_READY)
+  }
+  win.once('ready-to-show', done)
+  // 兜底：事件丢失（窗口已就绪后才注册）时别让遮罩永远盖着
+  setTimeout(done, 4000).unref?.()
 }
 
 /** 聚焦指定窗口（托盘菜单/同项目聚焦） */
@@ -686,7 +704,7 @@ function registerIpcHandlers() {
 
   // 打开全局设置窗口（指定标签页）：项目/主窗口的「上传目标管理」「本地服务管理」都走这里
   ipcMain.handle(IpcChannels.SETTINGS_OPEN, async (_event, section: unknown) => {
-    showSettingsWindow(section === 'server' ? 'server' : 'targets')
+    showSettingsWindow(section === 'server' ? 'server' : 'targets', _event.sender.id)
     return null
   })
 
@@ -764,7 +782,7 @@ function registerIpcHandlers() {
         break
       case 'open-settings':
         // 所有窗口的配置入口都汇聚到这里 → 全局设置窗口（单实例）
-        showSettingsWindow(payload === 'server' ? 'server' : 'targets')
+        showSettingsWindow(payload === 'server' ? 'server' : 'targets', _e.sender.id)
         break
       case 'open-main-window':
         // 与托盘菜单「打开主窗口」同一语义（始终给主窗口）

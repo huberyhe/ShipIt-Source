@@ -67,6 +67,14 @@ contextBridge.exposeInMainWorld('deployApi', {
 
   /** 打开全局设置窗口（单实例；section: 'targets' | 'server'） */
   openSettings: (section?: 'targets' | 'server') => ipcRenderer.invoke(IpcChannels.SETTINGS_OPEN, section ?? 'targets'),
+  /** 设置窗口开始创建：显示遮罩（否则新窗口要几秒才会出现，界面看起来卡住） */
+  onSettingsOpening: (callback: () => void) => {
+    ipcRenderer.on(IpcChannels.SETTINGS_OPENING, () => callback())
+  },
+  /** 设置窗口已可见：撤掉遮罩 */
+  onSettingsReady: (callback: () => void) => {
+    ipcRenderer.on(IpcChannels.SETTINGS_READY, () => callback())
+  },
   /** 设置窗口上报未保存状态（关窗守门用） */
   reportSettingsDirty: (dirty: boolean) => ipcRenderer.send(IpcChannels.SETTINGS_DIRTY, dirty),
   /** 设置窗口：关闭被拦下（有未保存改动） */

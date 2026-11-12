@@ -99,6 +99,10 @@ export const IpcChannels = {
   APP_GET_VERSION: 'app:get-version',
   /** 打包时注入的 build 号（YYYYMMDDHHmm），未注入时为空串 */
   APP_GET_BUILD_NUMBER: 'app:get-build-number',
+  /** 主进程 → 发起窗口：正在打开全局设置（渲染层显示遮罩） */
+  SETTINGS_OPENING: 'settings:opening',
+  /** 主进程 → 发起窗口：设置窗口已可见（撤掉遮罩） */
+  SETTINGS_READY: 'settings:ready',
   /** 用系统浏览器打开外部链接（仅限白名单域名 + https） */
   APP_OPEN_EXTERNAL: 'app:open-external',
 

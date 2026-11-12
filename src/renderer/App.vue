@@ -154,6 +154,8 @@ onMounted(async () => {
   deployStore.listenServerDeployLogs()
   // 上传进度只注册一次（此前每次上传都注册，长会话监听器持续累积）
   deployStore.listenDeployProgress()
+  // 打开全局设置时的遮罩（新窗口要几秒才出现，否则界面看起来卡住）
+  uiStore.listenSettingsOpening()
 
   // 状态栏：服务端状态与队列状态（首次拉取 + 主进程推送，无轮询）。
   // 这一步失败不能连累后面的快捷键与菜单监听：否则 F5 / Ctrl+1..3 / Ctrl+W 会静默失效。
@@ -349,6 +351,14 @@ async function loadProjectData(path: string) {
     </template>
   </BaseDialog>
   <AboutDialog v-if="!isSettingsWindow && showAbout" @close="showAbout = false" />
+
+  <!-- 打开全局设置：新窗口创建 + 首帧要几秒，先用遮罩给出反馈 -->
+  <Transition name="overlay-fade">
+    <div v-if="uiStore.isOpeningSettings" class="loading-overlay" role="status" aria-live="polite">
+      <ProgressBar :value="null" :height="2" label="正在打开设置" />
+      <div class="loading-hint">正在打开设置…</div>
+    </div>
+  </Transition>
 
   <!-- 项目数据加载遮罩（延迟出现，避免快速加载时闪烁） -->
   <Transition name="overlay-fade">
