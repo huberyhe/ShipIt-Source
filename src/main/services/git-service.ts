@@ -188,14 +188,10 @@ export class GitService {
   async getStatusView(dir: string): Promise<GitStatusView> {
     // 根仓库仍用 rev-parse 判定（不能用 `<dir>/.git`）：项目根常常是仓库的子目录，
     // 只认 `.git` 存在会把这种情况误判成「不是仓库」。
-    let rootIsRepo = false
-    try {
-      rootIsRepo = await this.isGitRepo(dir)
-    } catch {
-      // git 本身不可用（未安装 / dubious ownership / 超时）：与改动前一致，报「没有可用的 git」，
-      // 不能落成「发现了仓库但全都读失败」（那会把环境问题说成仓库问题）。
-      return { hasGit: false, changes: [], ahead: 0, behind: 0 }
-    }
+    // git 本身不可用（未安装 / dubious ownership / 超时）时**上抛**（GitUnavailableError）：
+    // 调用方据此报环境类错误（BACKEND_UNAVAILABLE）。此前收成 hasGit:false，
+    // 公开接口再报成 NOT_A_REPO —— 把「git 没装」说成「这不是仓库」，排障方向全错。
+    const rootIsRepo = await this.isGitRepo(dir)
 
     const { repos: subRepos, scanTruncated } = await this.findSubRepos(dir)
     const candidates = rootIsRepo ? [dir, ...subRepos] : subRepos

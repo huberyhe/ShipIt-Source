@@ -204,7 +204,23 @@ export function createServerHost (options: HostOptions): ServerHost {
   /** SSE 订阅：校验指纹（INV-11），断线 1s 重连 */
   function connectSse (): void {
     if (stopped || stopping || !admin) return
+    // 指纹必须在**握手阶段**钉死：https.get 一旦拿到 socket 就会把请求头（含管理 token）
+    // 发出去，等到 response 回调再校验已经晚了。checkServerIdentity 在证书校验时执行，
+    // 失败即握手失败 —— 与 HTTP 客户端同一套口径。
+    const agent = new https.Agent({
+      rejectUnauthorized: false,
+      checkServerIdentity: (_host, cert) => {
+        const actual = (cert?.fingerprint256 ?? '').replace(/:/g, '').toLowerCase()
+        if (!actual) return new Error('TLS 证书指纹读取失败')
+        if (actual !== admin!.fingerprint) {
+          emit('tls-mismatch', { actual })
+          return new Error('TLS 指纹不匹配，已中止（不发送管理令牌）')
+        }
+        return undefined
+      }
+    })
     const request = https.get({
+      agent,
       host: '127.0.0.1',
       port: admin.port,
       path: '/events',

@@ -4,7 +4,8 @@
  * - 默认不监听（INV-4）：`config.enabled === false` 时 `start()` 直接返回未监听。
  * - 绑定范围决定可达面：`local` → 127.0.0.1；`lan` → 0.0.0.0。
  * - 通道统一 TLS 自签，证书指纹写入连接信息文件供前端固定（INV-11）。
- * - 鉴权靠令牌，协议版本必须一致（INV-8）；执行全部在桌面主进程（INV-2）。
+ * - 鉴权靠令牌，协议版本必须一致（INV-8）；本文件只负责 listener 与鉴权，
+ *   执行由 `shipit-server` 后端进程的 Runtime 提供（INV-2 已随单后端化修正）。
  * - 令牌与凭据不进入输出与日志（INV-5）。
  */
 import { timingSafeEqual } from 'crypto'

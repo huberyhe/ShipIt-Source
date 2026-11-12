@@ -574,7 +574,18 @@ export function gitStatusHandler(deps: ServerHandlerDeps): RouteHandler {
     const resolved = await requireGitRepo(deps, ctx)
     if (!resolved.ok) return resolved.envelope
 
-    const view = await deps.git.getStatusView(resolved.projectRoot)
+    let view
+    try {
+      view = await deps.git.getStatusView(resolved.projectRoot)
+    } catch (error) {
+      // git 不可用（未安装 / safe.directory / 超时）属于环境问题，不能伪装成 NOT_A_REPO
+      const message = error instanceof Error ? error.message : String(error)
+      return errEnvelope(
+        'BACKEND_UNAVAILABLE',
+        `读取 Git 状态失败：${message}`,
+        '请确认 git 可用（PATH、仓库所有权 / safe.directory）'
+      )
+    }
     // getStatusView 内部吞掉异常并返回 hasGit:false；必须据此报错，
     // 否则「目录在两次调用之间不可读」会返回空清单冒充成功（AC-010）
     if (!view.hasGit) return notARepo(resolved.projectRoot)

@@ -512,9 +512,10 @@ const confirmSourceFiles = ref<string[]>([])
         toastError(`${result.succeeded} 个成功，${result.failed} 个失败 → ${target.name}`)
       } else {
         // 结果提示必须能回答「发到哪」：多目标并存时，光看数字无法确认调度的目标。
-        // 跳过数也必须报：只报“已上传 N 个”会让人以为全部都传了。
-        const skippedNote = result.skipped > 0 ? `（跳过 ${result.skipped} 个，详见日志）` : ''
-        toastSuccess(`已上传 ${result.succeeded} 个文件 → ${target.name}${skippedNote}`)
+        // 跳过数不在这里报：执行器的 `result.skipped` 恒为 0（跳过发生在计划阶段），
+        // 真实跳过数在日志明细里（来自 confirmSkipped）—— 留着这个分支就是死代码，
+        // 反而会让人以为“跳过数报过了”。
+        toastSuccess(`已上传 ${result.succeeded} 个文件 → ${target.name}`)
       }
       return result
     } catch (err: any) {

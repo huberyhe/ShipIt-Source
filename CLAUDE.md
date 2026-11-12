@@ -31,14 +31,14 @@ npm run gen:icon       # 换图标后重新生成 build/icon.ico
 
 ## 架构速览
 
-- **主进程** `src/main/`：`index.ts`（窗口 / IPC 注册 / 菜单动作分发）、`preload.ts`（暴露 `window.deployApi`）、`services/`（GitService/DeployService/FileService/ConfigStore，无 UI 依赖；纯逻辑（如 `branch-parse.ts`）拆成独立模块便于单测）。
+- **主进程** `src/main/`：`index.ts`（窗口 / IPC 注册 / 菜单动作分发）、`preload.ts`（暴露 `window.deployApi`）。**注意：主进程不持有执行体** —— IPC 只是门面，真正的 Git/Deploy/File/Config 由后端进程 `shipit-server` 执行（`src/server/`）。`src/main/services/` 里的 `GitService/DeployService/FileService/ConfigStore` 被后端调用（历史路径，目录名不代表进程）。
 - **渲染进程** `src/renderer/`：`layout/` 框架（AppLayout / AppMenuBar）、`views/` 三视图、`components/common/`（BaseDialog/ContextMenu 共享组件）、`composables/`（服务器菜单 · 全局热键）、`stores/`（Pinia：project/files/git/deploy/ui）。
 - **共享层** `src/shared/`：`types.ts` 领域类型唯一来源；`ipc-channels.ts` IPC 通道常量唯一来源。
 
 ## 铁律（改代码前必读）
 
 1. **类型**：领域类型（DeployTarget/DeployResult/GitCommitInfo 等）只改 `src/shared/types.ts`，主进程服务和渲染进程 store 都从那里导入，禁止在别处重复定义。
-2. **IPC**：新增/改动通道必须先在 `src/shared/ipc-channels.ts` 声明常量，主进程 `index.ts` 注册 handler、`preload.ts` 暴露 API，三处用同一个常量。
+2. **IPC**：新增/改动通道必须先在 `src/shared/ipc-channels.ts` 声明常量，主进程 `index.ts` 注册 handler、`preload.ts` 暴露 API，三处用同一个常量。**但 IPC 只是门面**：桌面专属能力的实体要落在管理端点（`src/server/`），主进程 handler 负责转发；只有纯界面态（窗口/托盘/对话框）才止于主进程。
 3. **主题**：颜色一律用 `var(--*)`（定义在 `App.vue`），禁止硬编码 hex；涉及状态色用 `--green/--yellow/--red/--blue`。
 4. **无障碍**：可点击元素优先 `<button>` 且带 `aria-label`（目录展开按钮带 `aria-expanded`）；**Tab 焦点的覆盖范围＝核心功能**：视图导航、主操作按钮、表单控件、弹窗内控件；筛选栏（`select`）、日志面板的「清空日志」、行内快捷动作等**非核心控件允许 `tabindex=-1`**，由鼠标与快捷键触达（这是产品决策，不是可访问性遗漏，评审不必再报）；**例外**：树/列表行是 `div[role="treeitem"]` + 容器 `tabindex=0` 单停靠点（`TreeRow.vue`），行本身不进 Tab 序列。已补齐树语义：容器 `role="tree"`（文件树带 `aria-multiselectable`）+ 子层 `role="group"` + 行 `aria-selected`；行内操作区**只在悬停时显示**（焦点行不显示，避免与悬浮行出现两份“快速上传”；可 Tab 的行用 `.show-actions-on-focus` 例外）；「上传本行」的键盘路径是 `Alt+Enter`（与 `Ctrl+X` 的“整个选区”区分）。弹窗复用 `BaseDialog`（自带 role/aria-modal/Esc 关闭）；表单 `label for` 关联。
 5. **菜单与快捷键**：Electron 原生菜单已移除，菜单栏为渲染进程自绘（`layout/AppMenuBar.vue`）；新增主进程动作走 `app:action` IPC 分发；全局快捷键统一在 `App.vue` 处理（输入控件聚焦时不拦截）。`Ctrl+X` = 上传选区：**应用没有剪贴板剪切语义**，不处理与系统剪切的冲突（产品决策，不必再报）。F5 = 刷新当前视图（键盘专用，不在按钮/快捷键弹窗展示）：`App.vue` 统一监听后派发 `refresh-view` 事件，各视图只在自己挂载期间响应；弹窗打开时不分发。
@@ -50,7 +50,7 @@ npm run gen:icon       # 换图标后重新生成 build/icon.ico
    - 徐标/临时标记 → 绝对定位或 `opacity` 切换（参考 `ViewSwitcher` 的 badge、行内“快速上传”按钮）
    - 整块状态切换（空状态 ↔ 列表）可接受；按钮文案变化（“测试” ↔ “测试中”）注意宽度抖动
 9. **多仓库（多根项目）的 Git 状态**：`GitService.getStatusView(dir)` 回答的是「项目 → 若干仓库」——`dir` 自己可能是仓库，**任意深度**的子目录里含 `.git`（目录或 worktree 的 `.git` 文件）的也各算一个（IDEA 的多根就是这个口径：`manage/console/controllers/temp` 也算一个根）。扫描成本靠**目录访问预算**（`maxScanDirs`，默认 2000；每层只做一次 readdir，`.git` 直接当目录项看到）而不是固定深度；跳过 `services/ignore-dirs.ts` 的 `IGNORE_DIRS` 与点目录，别再写第二份清单。预算耗尽时返回 `scanTruncated: true`，渲染层显示「仓库扫描未完成」——不能把“没扫完”当成“没仓库”。三条硬规矩：① **去重**：内层仓库的文件不得计入外层仓库（git 对外层只会给出未跟踪条目），否则同一文件会出现两次、被上传两次；② **兼容**：`changes` 永远是**所有仓库的并集**（去重后）、`branch` 只是**根仓库**的分支、`hasGit` = 至少发现一个仓库，`repos` / `truncated` 是新增字段——CLI/MCP 与上传链路只认旧字段，改结构时不能改它们的语义；③ **隔离**：单仓库读取失败只在该仓库上标 `error`，其余照常返回，总并发 ≤ 4，仓库数超上限（12）置 `truncated: true` 而不是静默截断（与扫描预算的 `scanTruncated` 是两个不同的信号，不要合并）。仓库内的文件路径一律**项目相对**（`toProjectRelative` + 仓库相对目录），否则上传映射全断。渲染层**不再有“项目目录”虚拟根**：单仓库（就是项目根）时变更树直接是顶层（避免 `ssmp/ssmp` 这种冗余）；多仓库（或唯一仓库不是项目根）时**每个仓库各是一个顶层节点，并列多个根**。仓库行复用目录行的选择/键盘/右键/aria 语义。代价：原先“点项目根一次性上传本次全部变更”的入口没了，批量场景用 `Ctrl+A`（选当前可见行）或逐个选目录。
-10. **部署流程**：预览与上传共用同一批任务列表 —— `deploy:preview`（主进程 `buildUploadPlan` 一趟遍历同时算出 `tasks` 与 `skipped`）→ 确认 → `deploy:upload` 原样上传 `confirmFiles`，弹窗展示数量必须等于实际上传数量。`skipped` 必须过 IPC 并在弹窗里逐条显示**真实原因**（`missing` / `no-mapping`），不要用差集猜、也不要给兜底文案；`buildUploadTasks` 仅为薄封装（返回 `tasks`），CLI `plan` 依赖它，别删。
+10. **部署流程**：`deploy:preview` 一趟遍历算出 `tasks` + `skipped`（带真实原因）→ 确认 → `deploy:upload` 传**源路径 + `expectFiles` + 目标签名**，由服务端 `buildUploadTasks` 重算任务（界面给的 `localPath/remotePath` 一律不采纳）。集合与确认时不一致 → `PLAN_STALE`；目标配置在确认后被改过 → 也 `PLAN_STALE`（否则确认的路径与实际连的机器可以不是同一套）。`skipped` 必须过 IPC 并在弹窗里逐条显示**真实原因**（`missing` / `no-mapping`），不要用差集猜、也不要给兜底文案；`buildUploadTasks` 仅为薄封装（返回 `tasks`），CLI `plan` 依赖它，别删。
 
 ## 常见改法
 
@@ -87,7 +87,7 @@ npm run gen:icon       # 换图标后重新生成 build/icon.ico
 - **渲染层失败必须可见**（`utils/report-error.ts`：`reportError` 弹提示 + 留痕；`warnOnly` 只在启动期/高频路径留痕），不要再写空 catch
 - **归一化只允许一份实现**：局域网白名单走 `shared/allowed-roots.ts`（主进程与设置页共用，`isDirty` 与 patch 用同一结果）
 - **ui-audit 的"没报问题"要能自证**：报告含「规则命中统计」与「本轮覆盖 N/M」（取自真实执行轨迹，不是按 findings 反推）；通用规则而非选择器白名单（`layout/child-overflow` 用于抓"子元素溢出不可滚动父容器"这类隐形问题，且跳过脱离文档流的子元素以免误报）
-- **"虚拟窗口"（弹窗）自己拥有未保存提示**：目标编辑弹窗的「未保存」chip 放在**弹窗标题旁**（`#header-extras`），不上浮到设置窗口顶部（那里的徽标只反映设置窗口自身的内容）；弹窗内的未保存状态只作**被动提示**，Esc/✕/取消一律直接关闭（不做二次确认，避免与「取消」形成两条重复路径、也避免插入横条造成布局跳动）
+- **"虚拟窗口"（弹窗）自己拥有未保存提示**：目标编辑弹窗的「未保存」chip 放在**弹窗标题旁**（`#header-extras`），不上浮到设置窗口顶部（那里的徽标只反映设置窗口自身的内容）；弹窗内的未保存状态只作**被动提示**，Esc/✕/取消在有未保存改动时**弹「放弃未保存的修改？」确认框**（`ConfirmDialog`，不用两段式按钮、也不插横条）；无改动时直接关
 - **弹窗 footer 的"就近反馈"**：状态类文案（如测试连接结果）要**紧贴它所解释的那个按钮**左侧，不要用 `margin-right: auto` 推到容器最左端（视线要横跨整个 footer）；文案可能很长时用 `max-width` + 省略号 + `title` 保证按钮不被挤走
 - **跨进程共享模块（`shared/`）绝不能用 Node 全局**：渲染层没有 `process`（contextIsolation）。曾因 `platform = process.platform` 默认参数导致设置页「点确定毫无反应、未保存提示不消失」——报错被 `confirm()` 的 finally 吞掉，只表现为"没反应"。必须用 `typeof process` 守卫（`shared/allowed-roots.ts` 是范本），并有 `shared/cross-process.guard.spec.ts` 静态守卫
 - **提示不要用"插入式"元素**：`<p>`/确认条插入会顶下内容造成抖动；表头用**固定高度**（`height: 44px`），状态提示用 **toast** 或表头内的 chip（右上方）
@@ -106,7 +106,7 @@ npm run gen:icon       # 换图标后重新生成 build/icon.ico
 - **「加载更多」类按钮要与"是否还有更多"绑定**：Git 日志以「返回条数 < 请求上限」判定取完（`gitStore.logExhausted`），取完后隐藏按钮并显示「（已全部加载）」——按钮留着点了也不变，会让人以为还有更多。审计 `git-log` 步骤有对应断言
 - **自动化界面检查（`npm run audit:ui`）**：全量步骤 × 浅/深双主题（步骤数以脚本为准，报告末尾会打印「本轮覆盖」；新增步骤时同步 `.audit/ui-audit-report.md` 覆盖说明，别在文档里写死数字）。重点步骤：`deploy-local-upload`（本地目标一次**真实成功上传**）、`narrow-filetree` / `narrow-deploy-confirm`（720×600 与 600×480 窄窗：无横向溢出、弹窗完整可见）、`filetree-refresh-keeps-expanded`（F5 保留展开态）。跑之前先关掉其它 ShipIt / `electron:dev` 实例，否则 `Execution context was destroyed`；**采样前必须等动画结束**（`waitForAnimations`：忽略无限动画、要求有限动画连续两次归零）——曾在淡入过渡中途采样，把视图切换标签记成对比度 2.08（稳定态 4.55），造成间歇性假问题；步骤 teardown **不得关闭窗口**（页面销毁后页面内 await 永不返回 → 30s "Runtime.evaluate 超时"），确需关闭时用 `closesWindow: true`（不等应答 + Node 侧确认窗口消失）
 - **CLI 帮助分两级**：顶层 `--help` 只列**命令名 + 常用参数**（按用途分类：上传流程/查询/集成）；**完整参数在各命令自己的帮助里** —— `shipit help <命令>` 与 `shipit <命令> --help` 等价，内容来自 `args.ts` 的 `COMMAND_HELP`（新增命令/参数时同一处维护，`helpText(cmd)` 是渲染入口）
-- **设置页保存语义（最终）**：目标编辑=**虚拟弹窗**，弹窗内「加入待保存」只把改动**暂存**到草稿并关弹窗（**不写配置**）——**不要再叫「确定」**，否则用户会以为已落盘；设置窗口底部统一「取消 / 保存」——`保存` 按当前分区落盘（目标=差异写回：新增/修改/删除）成功后关闭页面，`取消` 两段式（有未保存改动时第一次只把按钮变成红的「确认放弃」）。**未保存提示只在设置窗口右上角**（弹窗内不重复提示），且表头固定 44px、提示用"黄点+可读文字"（不用边框/底色，避免像按钮）
+- **设置页保存语义（最终）**：目标编辑=**虚拟弹窗**，弹窗内「加入待保存」只把改动**暂存**到草稿并关弹窗（**不写配置**）——**不要再叫「确定」**，否则用户会以为已落盘；设置窗口底部统一「取消 / 保存」——`保存` 把**所有脏分区**落盘（目标=差异写回：新增/修改/删除）成功后关闭页面，`取消` 两段式（有未保存改动时第一次只把按钮变成红的「确认放弃」）。**未保存提示只在设置窗口右上角**（弹窗内不重复提示），且表头固定 44px、提示用"黄点+可读文字"（不用边框/底色，避免像按钮）
 - **类型不要从 `.vue` 导出**：`vue-tsc` 能解析 `.vue` 的导出，但**纯 `npx tsc --noEmit` 不能**（未声明 `*.vue` 模块 → TS2614）。共享类型放 `src/renderer/types/*.ts`（如 `ContextMenuItem`），组件与 composable 都从那里导入；CI 同时跑 `vue-tsc` 与 `tsc --noEmit` 两套口径
 - **`type-check` 通过 ≠ 能构建**：SFC 级错误（如 `duplicate defineExpose()`、模板语法）只会在 `vite build` 暴露；
   改完 .vue 必须跑 `npm run build` 并检查退出码（本仓库曾因此让 ui-audit 长期审计**旧构建**，得出"0 findings"的假结论）
@@ -205,7 +205,7 @@ node --experimental-websocket scripts/ui-audit.mjs \
 
 - 单进程多窗口：**主窗口**（项目选择页 + 服务入口，`role=main`）与**每个项目一个窗口**（`role=project`）；托盘、服务端、配置、上传队列全局唯一。
 - 窗口由 `src/main/window-manager.ts` 的纯函数驱动（角色/标题/同项目聚焦/阈值/托盘菜单收纳），窗口生命周期在 `src/main/index.ts`；窗口角色与初始项目通过 `webPreferences.additionalArguments` 传给 preload。
-- **桌面当前项目 = 最近聚焦的项目窗口**（CLI/MCP 缺省项目口径）；无项目窗口时为空。
+- **项目相关请求必须显式携带项目根**（策略 D′）；`projectContext.current` 仅用于展示/状态栏，**不参与执行路径**，也不再是 CLI/MCP 的缺省项目。窗口镜像（`statusMirror.onWindowOpened/onWindowClosed`）在创建、focus、关闭、以及**就地打开/解绑项目**时都要推送 —— 局域网作用域认的就是这份列表。
 - 配置变更必须**广播**给所有窗口（`config:changed`），否则其他窗口会拿旧目标上传。
 - 同项目禁止多开（聚焦已有）；窗口数达到 6 个时提示。
 - **关窗语义按角色区分**（`closeActionFor`）：**项目窗口关窗 = 关闭该项目**（窗口销毁、托盘列表移除、释放渲染进程）；**主窗口关窗 = 只隐藏**（托盘常驻的"家"）；退出流程放行。渲染层的「关闭项目」对项目窗口同样走关闭窗口（`closeSelf`）。

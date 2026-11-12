@@ -31,11 +31,43 @@ export type ResolveProjectResult =
  * 否则显式传入的项目会被当成「未指定」，静默回退到别的项目（可能部署错项目）。
  */
 export function normalizePath(input: string): string {
-  const slashed = input.replace(/\\/g, '/')
+  const raw = input.replace(/\\/g, '/')
+  // 全是分隔符：原样保留（`/`、`//` 都是有意义的前缀，折叠会丢语义）
+  if (/^\/+$/.test(raw)) return raw
+  // 再折叠 `.` / `..`：不折叠时 `允许根/不存在/../../外面` 会被前缀比较判成“在范围内”
+  // （`realPath` 对不存在的路径回退词法路径，这里是唯一能挡住它的地方）。
+  const slashed = collapseDotSegments(raw)
   const stripped = slashed.replace(/\/+$/, '')
   if (stripped === '') return slashed // 全是分隔符：原样保留（'/'、'//' 都是有意义的前缀）
   if (/^[A-Za-z]:$/.test(stripped)) return `${stripped}/`
   return stripped
+}
+
+/**
+ * 折叠 `.` 与 `..` 路径段（纯词法，不碰文件系统）。
+ *
+ * 保留：开头的 `/`（POSIX 根）、`C:` 盘符（Windows）。
+ * 相对路径开头无法上跳的 `..` 原样保留（不能凭空消失）。
+ */
+function collapseDotSegments(slashed: string): string {
+  const unc = slashed.startsWith('//')
+  const absolute = slashed.startsWith('/')
+  const out: string[] = []
+  for (const seg of slashed.split('/')) {
+    if (seg === '' || seg === '.') continue
+    if (seg === '..') {
+      const last = out[out.length - 1]
+      // 盘符/根之后不能继续上跳；相对路径的 `..` 保留
+      if (out.length > 0 && last !== '..' && !/^[A-Za-z]:$/.test(last)) out.pop()
+      else out.push('..')
+      continue
+    }
+    out.push(seg)
+  }
+  const joined = out.join('/')
+  // UNC（`//server/share`）必须保留双斜杠：削成 `/server` 会变成另一条路径
+  if (unc) return `//${joined}`
+  return absolute ? `/${joined}` : joined
 }
 
 /** 路径是否表示同一目录（Windows 下忽略大小写） */
