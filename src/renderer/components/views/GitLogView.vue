@@ -530,8 +530,8 @@ async function deployCommitFiles(targetId?: string) {
                 >
                   <Wrench :size="12" /> 全部上传
                 </button>
-                <!-- 旁注常驻：上传范围与"提交快照"的区别必须在动手前看到（不改变上传行为） -->
-                <span class="detail-scope-hint" :title="UPLOAD_SCOPE_HINT">上传当前工作区内容（非该提交快照）</span>
+                <!-- 上传范围的说明只在按钮的 title 里：常驻文字占位且与按钮重复。
+                     不改变上传行为（仍是“当前工作区内容”，非该提交快照）。 -->
                 <!-- 贴在行尾：出现/消失不移动左侧按钮与旁注 -->
                 <span v-if="deletedCount(commit.hash) > 0" class="detail-deleted-note">
                   {{ deletedCount(commit.hash) }} 个已删除文件不会被上传
@@ -639,7 +639,7 @@ async function deployCommitFiles(targetId?: string) {
 .commit-detail { padding: 4px 0 8px 48px; border-bottom: 1px solid var(--bg3); background: var(--bg); }
 /* 一行内：按钮、上传范围旁注、已删除文件计数（计数贴行尾，出现不推左边的按钮/旁注） */
 .detail-actions { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
-.detail-scope-hint { font-size: 11px; color: var(--fg2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+
 .detail-deleted-note { margin-left: auto; font-size: 11px; color: var(--red-text); white-space: nowrap; }
 .deploy-commit-btn { display: flex; align-items: center; gap: 4px; padding: 4px 12px; background: var(--accent); color: var(--on-accent); border-radius: 4px; font-size: 11px; }
 .deploy-commit-btn:hover { background: var(--accent2); }
