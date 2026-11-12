@@ -156,6 +156,15 @@ const confirmSkipped = ref<UploadPreviewSkip[]>([])
 const confirmTargetId = ref<string>('')
 /** 预览时的源路径：执行时交给服务端重算（界面不再回传 localPath/remotePath） */
 const confirmSourceFiles = ref<string[]>([])
+/**
+ * 当前弹窗展示的是「哪一批」文件。
+ *
+ * 用来区分「弹窗还开着但已换成第二批预览」与「弹窗展示的就是刚传完那批」：
+ * 上传结束时只能清空自己那批，否则会在第一批上传完成时把第二批还没确认的
+ * 列表清掉（表现为弹窗里突然变成「没有可上传的文件 / 将上传 0 个文件」）。
+ */
+let confirmBatch = 0
+let confirmBatchSeq = 0
   /** 正在上传的目标（进度卡据此显示 项目 → 目标（协议 + 主机）） */
   const uploadTarget = ref<UploadTargetSummary | null>(null)
 
@@ -282,6 +291,8 @@ const confirmSourceFiles = ref<string[]>([])
 
       if (seq !== previewSeq) return // 已有更新的请求：丢弃本次结果
 
+      // 新一批预览 → 换批次号（之后老任务结束时就不会误清这一批）
+      confirmBatch = ++confirmBatchSeq
       // 弹窗的数量必须等于实际上传数量：这里只放真正会上传的文件
       confirmFiles.value = preview.tasks
       // 跳过项同样由主进程给出（含 relativePath 与真实 reason），渲染层不再做差集猜测。
@@ -414,6 +425,8 @@ const confirmSourceFiles = ref<string[]>([])
    */
   async function executeDeploy(projectRoot: string) {
     if (isPreviewing.value) return // 预览计算未完成：忽略，防止上传空/过期列表
+    // 本次上传对应的批次：结束时只有弹窗还停在这一批才清空列表
+    const myBatch = confirmBatch
     const target = targets.value.find(t => t.id === confirmTargetId.value)
     if (!target) throw new Error('未找到上传目标')
 
@@ -518,8 +531,12 @@ const confirmSourceFiles = ref<string[]>([])
     } catch (err: any) {
       reportError('上传失败', err)
     } finally {
-      confirmFiles.value = []
-      confirmSkipped.value = []
+      // 只清自己那批：上传期间用户可能又预览了另一批（弹窗还是同一个组件），
+      // 无条件清空会把别人的确认列表抹掉（“将上传 0 个文件”）。
+      if (confirmBatch === myBatch) {
+        confirmFiles.value = []
+        confirmSkipped.value = []
+      }
       // 只有「当前显示的那个任务」结束时才推进队列/开关弹窗。
       // 并发的排队长传结束时若也跑这段，会把状态搞乱（弹窗卡住不关）。
       finishedTokens.add(myToken)
