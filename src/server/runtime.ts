@@ -211,13 +211,14 @@ export function createRuntime (options: RuntimeOptions) {
 
   async function doSyncPublicListener () {
     const config = await loadServerConfig(options.configPath)
-    serverConfigCache = { bind: config.bind, allowedRoots: config.allowedRoots }
-    published = config.enabled
-
+    // 先停旧 listener，再换作用域缓存：反过来的话，lan → local 切换期间旧套接字
+    // 还在 0.0.0.0 上监听，而 enforce 已经按新配置变成 false（等于暂时不查作用域）。
     if (publicServer) {
       await publicServer.stop()
       publicServer = null
     }
+    serverConfigCache = { bind: config.bind, allowedRoots: config.allowedRoots }
+    published = config.enabled
 
     if (!config.enabled) {
       publicState = { listening: false, port: null, bound: '', error: undefined }

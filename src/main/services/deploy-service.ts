@@ -248,6 +248,11 @@ export class DeployService {
   private resolveLocalDest(task: UploadTask, target: DeployTarget): string {
     // remotePath 是 POSIX 口径；交给 join 按**当前平台**归一分隔符。
     // 不能手工把 `/` 换成 `\`：在 POSIX 上会把 `\out\a.txt` 当成一个文件名（CI 上就是这么挂的）。
+    // remotePath 不得跑出 host：映射里写 `../` 或手工任务都能把文件写到 host 外面
+    const remote = task.remotePath.replace(/\\/g, '/')
+    if (remote === '..' || remote.startsWith('../') || remote.includes('/../')) {
+      throw new Error(`远端路径不得包含 ..：${task.remotePath}`)
+    }
     return target.host ? join(target.host, task.remotePath) : task.remotePath
   }
 
@@ -292,17 +297,24 @@ export class DeployService {
 
   resolveRemotePath(localPath: string, projectRoot: string, mappings: DirectoryMapping[]): string | null {
     const relPath = relative(projectRoot, localPath).replace(/\\/g, '/')
+    // 映射前缀归一化：允许用户写 `./dist` / `dist\\` / `Dist`（Windows）。
+    // 不归一化时 `Dist/a.js` 与映射 `dist/` 会静默落成 no-mapping（看起来“什么都没变”）。
+    const caseInsensitive = process.platform === 'win32'
+    const eq = (a: string, b: string): boolean => (caseInsensitive ? a.toLowerCase() === b.toLowerCase() : a === b)
+    const hit = (rel: string, prefix: string): boolean =>
+      (caseInsensitive ? rel.toLowerCase().startsWith(prefix.toLowerCase()) : rel.startsWith(prefix))
+
+    const normPrefix = (raw: string): string => {
+      const slashed = raw.replace(/\\/g, '/').replace(/^\.\//, '')
+      return slashed.endsWith('/') ? slashed : `${slashed}/`
+    }
 
     // 按 localPrefix 长度降序（最长匹配优先）
     const sorted = [...mappings].sort((a, b) => b.localPrefix.length - a.localPrefix.length)
 
     for (const mapping of sorted) {
-      let prefix = mapping.localPrefix.replace(/\\/g, '/')
-      if (!prefix.endsWith('/')) {
-        prefix += '/'
-      }
-
-      if (relPath.startsWith(prefix) || relPath === prefix.slice(0, -1)) {
+      const prefix = normPrefix(mapping.localPrefix)
+      if (hit(relPath, prefix) || eq(relPath, prefix.slice(0, -1))) {
         const subPath = relPath.slice(prefix.length)
         const remoteFullPath = posix.join(mapping.remotePath, subPath)
         return remoteFullPath
@@ -335,7 +347,8 @@ export class DeployService {
       // 解析后仍不在项目内的直接归为 outside-project——不能报 missing，也不能去 stat 项目外的路径。
       const filePath = isAbsolute(rawPath) ? rawPath : resolve(projectRoot, rawPath)
       const rel = toSlashes(relative(projectRoot, filePath))
-      if (!rel || rel.startsWith('..') || isAbsolute(rel)) {
+      // 用段级判断：`startsWith('..')` 会误杀项目内名为 `..secret` 的真实文件
+      if (!rel || rel === '..' || rel.startsWith('../') || isAbsolute(rel)) {
         skipped.push({ relativePath: rel || toSlashes(rawPath), reason: 'outside-project' })
         continue
       }

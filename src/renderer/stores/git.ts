@@ -163,6 +163,9 @@ const reposScanTruncated = ref(false)
     if (dir !== statusDir) {
       statusDir = dir
       statusUpdatedAt.value = null
+      // 切目录必须使在途请求失效：B 的结果会按序号写进当前视图，
+      // 而视图已经是 A —— 变更树就是上传集合，串了就是发错项目。
+      statusSeq++
     }
     if (statusInFlight.has(dir)) return
     statusInFlight.add(dir)

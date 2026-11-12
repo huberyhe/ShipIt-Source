@@ -532,7 +532,9 @@ export class GitService {
     try {
       prefix = (await this.getGit(dir, true).raw(['rev-parse', '--show-prefix'])).trim()
     } catch {
-      prefix = null
+      // 瞬时失败**不写缓存**：否则一次失败之后，子目录项目的路径会一直按仓库根相对拼接，
+      // 上传就找不到文件。失败时下次调用重试，代价只是一次 git 调用。
+      return null
     }
     this.prefixCache.set(dir, prefix)
     return prefix

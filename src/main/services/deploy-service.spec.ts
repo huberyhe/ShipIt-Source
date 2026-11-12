@@ -506,6 +506,35 @@ describe('预览计划：跳过项带真实原因', () => {
     expect(plan.skipped).toEqual([{ relativePath: 'linked/a.js', reason: 'outside-project' }])
   })
 
+  it('映射前缀归一化：`./dist` / 尾反斜杠 / Windows 大小写不落成 no-mapping', async () => {
+    const service = new DeployService()
+    const root = project()
+
+    for (const localPrefix of ['./dist', 'dist\\', 'DIST/']) {
+      const target: DeployTarget = {
+        ...planTarget(),
+        mappings: [{ id: 'm1', localPrefix, remotePath: '/out' }]
+      }
+      const plan = await service.buildUploadPlan([join(root, 'dist', 'a.js')], root, target)
+      expect(plan.tasks.map((t) => t.relativePath)).toEqual([join('dist', 'a.js')])
+    }
+  })
+
+  it('项目内真名为 `..secret` 的文件不被当成越界', async () => {
+    const service = new DeployService()
+    const root = project()
+    writeFileSync(join(root, '..secret'), 's')
+
+    const plan = await service.buildUploadPlan([join(root, '..secret')], root, {
+      ...planTarget(),
+      mappings: [{ id: 'm1', localPrefix: '..secret', remotePath: '/out/x' }]
+    })
+
+    // 旧实现用 rel.startsWith('..')，会把这个合法文件判成 outside-project（于是静默不传）
+    expect(plan.skipped).toEqual([])
+    expect(plan.tasks.length).toBe(1)
+  })
+
   it('buildUploadTasks 仍只回任务列表（CLI/MCP 的 /plan 契约不变）', async () => {
     const service = new DeployService()
     const root = project()

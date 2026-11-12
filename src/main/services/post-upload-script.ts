@@ -167,7 +167,9 @@ function execLocal(
   return new Promise((resolve) => {
     const child = spawn(scriptPath, [], {
       cwd: target.host || undefined,
-      shell: process.platform === 'win32' || /\.(bat|cmd|ps1)$/i.test(scriptPath),
+      // Windows 上只有 .bat/.cmd 必须走 cmd.exe：一律 shell:true 会让路径里的 & | ^ 被当成
+    // 命令分隔符（远端执行是加引号的 sh -c，这里此前没有）。其他扩展名直接 spawn。
+    shell: process.platform === 'win32' && /\.(bat|cmd)$/i.test(scriptPath),
       windowsHide: true,
       timeout: timeoutMs
     })
