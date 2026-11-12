@@ -498,14 +498,11 @@ const confirmSourceFiles = ref<string[]>([])
       lastDeployTime.value = new Date(result.timestamp).toLocaleTimeString()
       if (result.cancelled) {
         // 设计规范（.project/design/DESIGN.md:163）：取消时**必须写明**已上传部分不回滚。
-        // 有 interrupted 文件时还要说清“远端可能留有半截文件”——这是用户最需要知道的事。
+        // 有 interrupted 文件时把中断数报出来（远端可能有半截文件，但不再展开解释——产品决定不显示那句）
         const interrupted = (result.details as Array<{ status: string }>).filter(
           (d) => d.status === 'interrupted'
         ).length
-        const tail =
-          interrupted > 0
-            ? `，${interrupted} 个中断（远端可能留有未完成的部分文件，不会自动清理）`
-            : '（已上传的文件不会回滚）'
+        const tail = interrupted > 0 ? `，${interrupted} 个中断` : '（已上传的文件不会回滚）'
         toastError(`上传已取消 · 已完成 ${result.succeeded} 个${tail}`)
       } else if (result.failed > 0) {
         // 含失败文件不得用绿色成功提示上报（INV-9：失败不能伪装成成功）
