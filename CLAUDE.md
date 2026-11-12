@@ -110,6 +110,7 @@ npm run gen:icon       # 换图标后重新生成 build/icon.ico
 - **类型不要从 `.vue` 导出**：`vue-tsc` 能解析 `.vue` 的导出，但**纯 `npx tsc --noEmit` 不能**（未声明 `*.vue` 模块 → TS2614）。共享类型放 `src/renderer/types/*.ts`（如 `ContextMenuItem`），组件与 composable 都从那里导入；CI 同时跑 `vue-tsc` 与 `tsc --noEmit` 两套口径
 - **`type-check` 通过 ≠ 能构建**：SFC 级错误（如 `duplicate defineExpose()`、模板语法）只会在 `vite build` 暴露；
   改完 .vue 必须跑 `npm run build` 并检查退出码（本仓库曾因此让 ui-audit 长期审计**旧构建**，得出"0 findings"的假结论）
+  现在脚本会自己拦：主流程开头比对源码与 `dist/` 的 mtime，源码更新时**退出码 2** 并提示先 build（要审计旧构建才加 `--allow-stale`）
 - **git 参数必须走白名单**：`branch`/`hash` 会拼进 git argv，`--output=<path>` 之类可写/截断任意文件；
   统一用 `shared/git-rev.ts` 的 `isSafeGitRev`（CLI 与主进程同源），且服务层要"抛错而非静默返回空"
 - **ui-audit 退出码约定**：0 = 无界面类 Major；1 = 有界面类 Major；2 = 脚本/环境故障。
