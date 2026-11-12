@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { toastError } from '../../utils/toast'
+import { reportError } from '../../utils/report-error'
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { GitCommit, File, ChevronRight, ChevronDown, Wrench, RefreshCw } from 'lucide-vue-next'
 import { useGitStore } from '../../stores/git'
@@ -338,7 +339,7 @@ async function loadCommitFiles(hash: string): Promise<void> {
     commitFilesMap.value = { ...commitFilesMap.value, [hash]: files }
   } catch (error: any) {
     expandedCommits.value = expandedCommits.value.filter((h) => h !== hash)
-    toastError(error?.message || '读取提交文件列表失败')
+    reportError('读取提交文件列表失败', error)
   } finally {
     loadingHashes.value = loadingHashes.value.filter((h) => h !== hash)
   }
@@ -432,7 +433,7 @@ async function deployCommitFiles(targetId?: string) {
     try {
       files = await window.deployApi.getCommitFiles(dir, hash)
     } catch (error: any) {
-      toastError(error?.message || '读取提交文件列表失败')
+      reportError('读取提交文件列表失败', error)
       return
     }
   }
@@ -444,7 +445,7 @@ async function deployCommitFiles(targetId?: string) {
     return
   }
   try { await deployStore.previewDeploy(allPaths, dir, targetId) } catch (e: any) {
-    toastError(e?.message || '上传失败')
+    reportError('上传失败', e)
   }
 }
 

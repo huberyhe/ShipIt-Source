@@ -162,7 +162,7 @@ async function deployThis(): Promise<void> {
       await deployStore.previewDeploy([props.entry.path], root)
     }
   } catch (error: any) {
-    toastError(error?.message || '上传失败')
+    reportError('上传失败', error)
   } finally {
     isDeploying.value = false
   }

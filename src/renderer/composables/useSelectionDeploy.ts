@@ -9,6 +9,7 @@
 import { useDeployStore } from '../stores/deploy'
 import { useFilesStore } from '../stores/files'
 import { useProjectStore } from '../stores/project'
+import { reportError } from '../utils/report-error'
 import { toastError } from '../utils/toast'
 
 export function useSelectionDeploy() {
@@ -51,7 +52,7 @@ export function useSelectionDeploy() {
       }
       await deployStore.previewDeploy(paths, projectRoot, targetId)
     } catch (error: any) {
-      toastError(error?.message || '上传失败')
+      reportError('上传失败', error)
     }
   }
 

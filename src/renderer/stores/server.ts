@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { queueTextOf } from '../../shared/queue-text'
+import { userMessage } from '../utils/report-error'
 import type { QueueSnapshot, ServerBind } from '../../shared/types'
 
 /**
@@ -62,7 +63,9 @@ export const useServerStore = defineStore('server', () => {
   /** 状态栏文案：服务运行状态 */
   const stateText = computed(() => {
     if (listening.value) return `服务运行中 ${port.value}`
-    if (error.value) return `服务异常：${error.value}`
+    // 后端回的是 `listen EADDRINUSE: address already in use ...` 这类技术串：
+    // 状态栏只有 24px 高，换成一句能行动的话（原始串仍在 error.log 与悬停里）
+    if (error.value) return `服务异常：${userMessage(error.value)}`
     return '服务未开启'
   })
 

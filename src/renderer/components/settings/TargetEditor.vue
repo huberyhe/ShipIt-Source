@@ -341,7 +341,7 @@ async function saveTarget(): Promise<boolean> {
     toastSuccess('已加入待保存的修改（点页面底部「保存」后生效）')
     return true
   } catch (err: any) {
-    toastError('保存失败: ' + (err?.message || String(err)))
+    reportError('保存失败', err)
     return false
   }
 }
@@ -398,7 +398,7 @@ async function persistDraft(): Promise<boolean> {
     syncDraftFromStore()
     return true
   } catch (err: any) {
-    toastError('保存失败: ' + (err?.message || String(err)))
+    reportError('保存失败', err)
     return false
   }
 }

@@ -490,7 +490,7 @@ export const useDeployStore = defineStore('deploy', () => {
       }
       return result
     } catch (err: any) {
-      toastError('上传失败: ' + (err?.message || String(err)))
+      reportError('上传失败', err)
     } finally {
       confirmFiles.value = []
       confirmSkipped.value = []
