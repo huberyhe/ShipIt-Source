@@ -931,6 +931,8 @@ function buildWalker() {
       // --project=<真实仓库>：提交数远超一页（50 条满页），「已全部加载」类断言属夹具专用
       assertScript: REAL_PROJECT ? '(async () => [])()' : `(async () => {
         const problems = []
+        // 列表刚出现时底部统计可能还没挂载：等一会儿，否则会把时序问题报成「缺少已全部加载」
+        for (let i = 0; i < 25 && !document.querySelector('.loaded-count'); i++) await new Promise(r => setTimeout(r, 200))
         const count = document.querySelectorAll('.commit-item').length
         const btn = document.querySelector('.load-more-btn')
         const text = (document.querySelector('.loaded-count') || {}).textContent
@@ -1164,7 +1166,17 @@ function buildWalker() {
         if (!host || !host.value) problems.push('主机未带过来')
         return problems
       })()`,
-      teardown: `(async () => { const c = document.querySelector('.base-dialog-close'); if (c) c.click(); await new Promise(r=>setTimeout(r,600)); return 'ok' })()`
+      // 复制后的编辑表单有未保存改动 → ✕ 会先弹「放弃未保存的修改？」，teardown 需替用户确认，否则弹窗不关、后续步骤全级联失败
+      teardown: `(async () => {
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms))
+        const close = document.querySelector('.base-dialog-close')
+        if (close) close.click()
+        await sleep(500)
+        const confirm = Array.from(document.querySelectorAll('.confirm-btn')).find(b => (b.textContent || '').includes('放弃'))
+        if (confirm) confirm.click()
+        await sleep(600)
+        return 'ok'
+      })()`
     },
     {
       id: 'settings-add-target',
@@ -1177,7 +1189,16 @@ function buildWalker() {
       id: 'settings-add-target-close',
       role: 'settings',
       label: '新增目标弹窗：✕ 关闭',
-      setup: `(async () => { document.querySelector('.base-dialog-close').click(); await new Promise(r=>setTimeout(r,700)); return 'ok' })()`,
+      // 前面的排序步骤把目标列表改脏 → ✕ 会先弹「放弃未保存的修改？」，这里替用户确认
+      setup: `(async () => {
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms))
+        document.querySelector('.base-dialog-close').click()
+        await sleep(500)
+        const confirm = Array.from(document.querySelectorAll('.confirm-btn')).find(b => (b.textContent || '').includes('放弃'))
+        if (confirm) confirm.click()
+        await sleep(700)
+        return 'ok'
+      })()`,
       expect: [{ selector: '.add-btn' }],
       absent: ['.base-dialog']
     },
@@ -1192,7 +1213,16 @@ function buildWalker() {
         return 'ok'
       })()`,
       expect: [{ selector: '.base-dialog' }],
-      teardown: `(async () => { const c = document.querySelector('.base-dialog-close'); if (c) c.click(); await new Promise(r=>setTimeout(r,500)); return 'ok' })()`
+      teardown: `(async () => {
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms))
+        const c = document.querySelector('.base-dialog-close')
+        if (c) c.click()
+        await sleep(400)
+        const confirm = Array.from(document.querySelectorAll('.confirm-btn')).find(b => (b.textContent || '').includes('放弃'))
+        if (confirm) confirm.click()
+        await sleep(500)
+        return 'ok'
+      })()`
     },
     {
       id: 'hover-filetree-row',
@@ -1351,6 +1381,7 @@ function buildWalker() {
       label: '目标弹窗：已添加的映射可就地编辑',
       setup: `(async () => {
         const sleep = (ms) => new Promise(r => setTimeout(r, ms))
+        // 上一步打开的是「新增目标」弹窗：映射从空开始，只有本步加的那一行
         const row = document.querySelector('.edit-mapping-row')
         if (!row) return 'no-mapping-row'
         const editBtn = Array.from(row.querySelectorAll('.mini-btn')).find(b => (b.getAttribute('aria-label') || '').startsWith('编辑映射'))
@@ -1376,10 +1407,20 @@ function buildWalker() {
         const problems = []
         if (!rows.some(t => t.includes('/opt/y'))) problems.push('更新后的映射未生效（实际：' + rows.join(' / ').slice(0, 120) + '）')
         if (rows.some(t => t.includes('/opt/x'))) problems.push('旧值 /opt/x 仍在列表里')
+        // 新增弹窗原有 1 条（src/→/opt/x）：就地更新不得变成 2 行
         if (rows.length !== 1) problems.push('不该新增行，实际行数：' + rows.length)
         return problems
       })()`,
-      teardown: `(async () => { const c = document.querySelector('.base-dialog-close'); if (c) c.click(); await new Promise(r=>setTimeout(r,600)); return 'ok' })()`
+      teardown: `(async () => {
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms))
+        const c = document.querySelector('.base-dialog-close')
+        if (c) c.click()
+        await sleep(400)
+        const confirm = Array.from(document.querySelectorAll('.confirm-btn')).find(b => (b.textContent || '').includes('放弃'))
+        if (confirm) confirm.click()
+        await sleep(600)
+        return 'ok'
+      })()`
     },
     {
       id: 'server-dirty-state',
@@ -1480,9 +1521,14 @@ function buildWalker() {
       assertTarget: 'target-dialog',
       // 只关弹窗，**不关设置窗口**：关闭窗口后页面被销毁，后续页面内 await 永不返回（会报 evaluate 超时）
       teardown: `(async () => {
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms))
         const c = document.querySelector('.base-dialog-close')
         if (c) c.click()
-        await new Promise(r=>setTimeout(r,600))
+        await sleep(500)
+        // 上一步改了名称 → 有未保存改动，✕ 会先弹确认（产品行为），这里替用户确认掉
+        const confirm = Array.from(document.querySelectorAll('.confirm-btn')).find(b => (b.textContent || '').includes('放弃'))
+        if (confirm) confirm.click()
+        await sleep(600)
         return 'ok'
       })()`
     },
@@ -1500,6 +1546,8 @@ function buildWalker() {
         set.call(input, String(Number(input.value) + 2))
         input.dispatchEvent(new Event('input', { bubbles: true }))
         await new Promise(r=>setTimeout(r,500))
+        // 等残留 toast 消失：断言只看「点取消后不得有新 toast」，上几步遗留的不算
+        for (let i = 0; i < 40 && document.querySelector('.toast'); i++) await new Promise(r=>setTimeout(r,200))
         const cancel = Array.from(document.querySelectorAll('.page-footer button')).find(x => x.textContent.trim() === '取消')
         if (!cancel) return 'no-cancel-btn'
         cancel.click()
