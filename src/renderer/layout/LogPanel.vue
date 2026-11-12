@@ -9,6 +9,13 @@ function projectLabel(log: DeployLogEntry): string {
 }
 
 /** 来源三值标注：桌面 / CLI / MCP（D-25 / AC-037） */
+/** 来源标签的色调（与 MetaChip 的 tone 对齐） */
+function originTone(origin: DeployLogEntry['origin']): 'neutral' | 'blue' | 'yellow' {
+  if (origin === 'cli') return 'blue'
+  if (origin === 'mcp') return 'yellow'
+  return 'neutral'
+}
+
 function originLabel(origin: DeployLogEntry['origin']): string {
   if (origin === 'cli') return 'CLI'
   if (origin === 'mcp') return 'MCP'
@@ -30,6 +37,7 @@ import { useDeployStore } from '../stores/deploy'
 import EmptyState from '../components/common/EmptyState.vue'
 import IconButton from '../components/common/IconButton.vue'
 import ConfirmDialog from '../components/common/ConfirmDialog.vue'
+import MetaChip from '../components/common/MetaChip.vue'
 import { shortenPath } from '../utils/path-display'
 
 /** 清空日志的确认弹窗（一键即删太容易误触） */
@@ -220,12 +228,8 @@ function onLogListKeydown(event: KeyboardEvent): void {
           </span>
           <component :is="entryIcon(log)" :size="12" :class="entryClass(log)" />
           <span class="log-time" :title="formatTime(log.timestamp)">{{ formatTime(log.timestamp) }}</span>
-          <span
-            class="log-origin"
-            :class="log.origin"
-            :title="originTitle(log)"
-          >{{ originLabel(log.origin) }}</span>
-          <span v-if="projectLabel(log)" class="log-project" :title="log.projectRoot ?? ''">{{ projectLabel(log) }}</span>
+          <MetaChip appearance="outline" :tone="originTone(log.origin)" :title="originTitle(log)">{{ originLabel(log.origin) }}</MetaChip>
+          <MetaChip v-if="projectLabel(log)" appearance="outline" :title="log.projectRoot ?? ''">{{ projectLabel(log) }}</MetaChip>
           <span class="log-target">→ {{ log.targetName }}</span>
           <span
             class="log-result"
@@ -241,12 +245,12 @@ function onLogListKeydown(event: KeyboardEvent): void {
             :is="d.status === 'success' ? Check : d.status === 'skipped' || d.status === 'cancelled' || d.status === 'interrupted' ? Minus : X"
             :size="10"
           />
-          <span v-if="d.status === 'skipped'" class="log-file-skip">跳过</span>
-          <span v-else-if="d.status === 'cancelled'" class="log-file-skip">未上传</span>
-          <span v-else-if="d.status === 'interrupted'" class="log-file-skip">中断</span>
+          <MetaChip v-if="d.status === 'skipped'" appearance="outline">跳过</MetaChip>
+          <MetaChip v-else-if="d.status === 'cancelled'" appearance="outline">未上传</MetaChip>
+          <MetaChip v-else-if="d.status === 'interrupted'" appearance="outline">中断</MetaChip>
             <span class="log-file-path" :title="d.relativePath">{{ pathText(d.relativePath) }}</span>
             <span class="log-file-arrow">→</span>
-            <code class="log-file-remote" :title="d.remotePath">{{ pathText(d.remotePath) }}</code>
+            <MetaChip tone="blue" mono :title="d.remotePath">{{ pathText(d.remotePath) }}</MetaChip>
             <span v-if="d.error" class="log-file-error" :title="d.error">{{ truncateText(d.error) }}</span>
           </div>
         </div>
@@ -286,10 +290,6 @@ function onLogListKeydown(event: KeyboardEvent): void {
   box-shadow: inset 0 2px 0 var(--status-bar), inset 0 -2px 0 var(--status-bar);
 }
 .log-count { color: var(--fg2); font-size: 11px; }
-.log-origin { font-size: 11px; padding: 0 4px; border: 1px solid var(--border); border-radius: 4px; color: var(--fg3); }
-.log-project { font-size: 11px; padding: 0 4px; border: 1px solid var(--bg4); border-radius: 4px; color: var(--fg2); }
-.log-origin.cli { color: var(--blue); border-color: var(--blue-bg); }
-.log-origin.mcp { color: var(--yellow); border-color: var(--yellow-bg); }
 /* 视觉由 IconButton 提供；.clear-btn 只负责贴右 */
 .clear-btn { margin-left: auto; }
 .log-content { max-height: 200px; overflow-y: auto; background: var(--bg); padding: 4px 12px; user-select: text; }
@@ -317,10 +317,8 @@ function onLogListKeydown(event: KeyboardEvent): void {
 .log-file-row.skipped { color: var(--fg2); }
 .log-file-row.cancelled { color: var(--yellow); }
 .log-file-row.interrupted { color: var(--yellow); }
-.log-file-skip { font-size: 11px; color: var(--fg2); border: 1px solid var(--bg4); border-radius: 4px; padding: 0 4px; }
 .log-file-path { color: var(--fg); }
 .log-file-arrow { color: var(--fg2); margin: 0 4px; }
 /* 不再用 max-width + text-overflow 二次截断：省略只在 pathText 里做一次 */
-.log-file-remote { padding: 1px 4px; background: var(--blue-bg); color: var(--blue); border-radius: 4px; font-size: 11px; white-space: nowrap; }
 .log-file-error { color: var(--red); margin: 4px; }
 </style>
