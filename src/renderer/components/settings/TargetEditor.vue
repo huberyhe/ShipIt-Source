@@ -862,9 +862,9 @@ function removeTempMapping(idx: number) {
           class="edit-mapping-row"
           :class="{ 'is-editing': editingMapIndex === idx }"
         >
-          <code>{{ m.localPrefix }}</code>
+          <MetaChip tone="green" mono>{{ m.localPrefix }}</MetaChip>
           <span class="map-arrow">→</span>
-          <code>{{ m.remotePath }}</code>
+          <MetaChip tone="blue" mono>{{ m.remotePath }}</MetaChip>
           <span v-if="m.description" class="map-desc">{{ m.description }}</span>
           <button
             class="mini-btn"
@@ -1120,9 +1120,8 @@ function removeTempMapping(idx: number) {
 .browse-btn:hover { background: var(--bg5); color: var(--fg3); }
 
 .edit-mapping-row { display: flex; align-items: center; gap: 4px; padding: 4px 0; font-size: 11px; }
-.edit-mapping-row code { padding: 4px 4px; border-radius: 4px; font-size: 11px; }
-.edit-mapping-row code:first-child { background: var(--green-bg); color: var(--green); }
-.edit-mapping-row code:last-of-type { background: var(--blue-bg); color: var(--blue); }
+/* 路径标记改用 MetaChip（green/blue + mono），形态与列表视图一致；
+   .mapping-line 的 code 保持原样——它没有底色，只是等宽字，不属于 chip 场景 */
 .map-arrow { color: var(--fg2); flex-shrink: 0; }
 .map-desc { color: var(--fg2); font-size: 11px; margin: auto; }
 .edit-mapping-add { margin: 4px; padding: 8px; border-top: 1px dashed var(--border); }

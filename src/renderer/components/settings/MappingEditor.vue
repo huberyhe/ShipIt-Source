@@ -7,6 +7,7 @@ import { useDeployStore } from '../../stores/deploy'
 import BaseButton from '../common/BaseButton.vue'
 import SectionHeader from '../common/SectionHeader.vue'
 import ConfirmDialog from '../common/ConfirmDialog.vue'
+import MetaChip from '../common/MetaChip.vue'
 import FormField from '../common/FormField.vue'
 import EmptyState from '../common/EmptyState.vue'
 
@@ -89,9 +90,9 @@ async function doRemove() {
 
     <div v-for="mapping in mappings" :key="mapping.id" class="mapping-item has-row-actions show-actions-on-focus">
       <div class="mapping-row">
-        <code class="local-path">{{ mapping.localPrefix }}</code>
+        <MetaChip tone="green" mono>{{ mapping.localPrefix }}</MetaChip>
         <ArrowRight :size="12" class="arrow" />
-        <code class="remote-path">{{ mapping.remotePath }}</code>
+        <MetaChip tone="blue" mono>{{ mapping.remotePath }}</MetaChip>
         <span v-if="mapping.description" class="desc">{{ mapping.description }}</span>
         <RowActions class="mapping-actions">
           <button class="mini-btn" @click="startEdit(mapping)">编辑</button>
@@ -146,8 +147,7 @@ async function doRemove() {
 .mapping-editor { margin: 8px; border-top: 1px solid var(--border); padding: 8px; }
 .mapping-item { padding: 4px 0; }
 .mapping-row { display: flex; align-items: center; gap: 4px; font-size: 12px; }
-code.local-path { padding: 1px 4px; background: var(--green-bg); color: var(--green); border-radius: 4px; font-size: 11px; }
-code.remote-path { padding: 1px 4px; background: var(--blue-bg); color: var(--blue); border-radius: 4px; font-size: 11px; }
+/* 两个路径标记改用 MetaChip（green/blue + mono），形态由组件统一 */
 .arrow { color: var(--fg2); flex-shrink: 0; }
 .desc { color: var(--fg2); font-size: 11px; }
 /* margin:auto 会把按钮推到整行中间（悬空、与内容脱节）；改为贴行尾，与目标卡片的操作列对齐 */
