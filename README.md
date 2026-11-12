@@ -174,7 +174,7 @@ build/                  # 应用图标（icon.png 源图 / icon.ico）
 
 ## 扩展指南
 
-- **新增传输协议**（如 WebDAV）：在 `DeployService` 增加分支（参照 `uploadViaSftp` / FTP 逻辑），`Protocol` 类型与 `buildUploadTasks` 的路径解析复用即可。
+- **新增传输协议**（如 WebDAV）：在 `DeployService.deploy()` 的上传循环里增加分支（参照现有的 sftp / ftp / local 三支），`Protocol` 类型与 `buildUploadTasks` 的路径解析复用即可。
 - **新增视图**：`components/views/` 新建视图组件 → `ViewSwitcher.vue` 注册按钮与路由分支 → `stores/ui.ts` 的 `ActiveView` 加取值。
 - **新增菜单项**：在 `layout/AppMenuBar.vue` 的 `menus` 中加条目；需要主进程动作时调用 `window.deployApi.appAction('action')`，主进程在 `APP_ACTION` handler 中分发（原生菜单已移除）。
 - **更换应用图标**：替换 `build/icon.png`（512×512+ 正方形）后执行 `npm run gen:icon` 重新生成 `icon.ico`。
