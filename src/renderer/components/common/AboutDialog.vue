@@ -72,10 +72,15 @@ function openLink(url: string): void {
  * 按中线对齐：baseline 会让“无文字基线”的图标按钮按盒底对齐，
  * 结果图标比文字高出一截（用户一眼就看到“没对齐”）。
  */
-.meta-line { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--fg2); }
+/* 这行是「文字 + code + 图标」混排：必须按**基线**对齐。
+   用 align-items:center 时，`<code>` 的盒子（monospace 行高不同）按盒子居中 →
+   视觉上版本号比「版本」两个字偏低，看起来不在一条线上。 */
+.meta-line { display: flex; align-items: baseline; gap: 8px; font-size: 12px; color: var(--fg2); }
+/* 图标不是文字：基线对齐会把它顶高，单独拉回垂直居中 */
+.meta-line > .icon-btn, .meta-line > button { align-self: center; }
 /* 版本号与 build 号之间要有间距：version-wrap 里是 inline 内容，靠 gap 分隔 */
-.version-wrap { display: inline-flex; align-items: center; gap: 4px; }  /* 4/8 网格：6px 曾被 audit 判为不在网格内 */
-.version-num { font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace; font-size: 12px; color: var(--fg); }
+.version-wrap { display: inline-flex; align-items: baseline; gap: 4px; }  /* 4/8 网格：6px 曾被 audit 判为不在网格内 */
+.version-num { font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace; font-size: 12px; line-height: 1.2; color: var(--fg); }
 .sep { color: var(--fg2); }
 .tagline { color: var(--fg2); }
 .desc { margin: 12px 0 0; font-size: 12px; color: var(--fg); line-height: 1.7; }
