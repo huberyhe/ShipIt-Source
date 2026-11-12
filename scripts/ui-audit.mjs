@@ -25,7 +25,7 @@
  */
 import { createRequire } from 'module'
 import { execFileSync, spawn } from 'child_process'
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync } from 'fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, statSync, readdirSync } from 'fs'
 import { tmpdir } from 'os'
 import { join, resolve, dirname } from 'path'
 
@@ -2075,8 +2075,52 @@ function renderReport(all, themes, fixture, stepResults = []) {
   return lines.join('\n') + '\n'
 }
 
+// ---------------- 构建新鲜度守卫 ----------------
+/**
+ * 本脚本启动的是 Electron + dist/ 里的渲染产物（`spawn(ELECTRON, ['.'])`），
+ * 不会自动重建。只改源码不重建会让审计**静默地检查旧界面**，得出“0 findings”的假结论
+ * （本仓库已踩过不止一次）。这里直接比对 mtime，不靠人记。
+ */
+function newestMtime(p) {
+  if (!existsSync(p)) return 0
+  const st = statSync(p)
+  if (!st.isDirectory()) return st.mtimeMs
+  let newest = 0
+  for (const e of readdirSync(p, { withFileTypes: true })) {
+    if (e.name === 'node_modules' || e.name === '.git') continue
+    const child = join(p, e.name)
+    newest = Math.max(newest, e.isDirectory() ? newestMtime(child) : statSync(child).mtimeMs)
+  }
+  return newest
+}
+
+function assertFreshBuild() {
+  if (!existsSync(resolve('dist/index.html'))) {
+    console.error('[audit] dist/index.html 不存在：先跑 `npx vite build`（或 npm run build）')
+    process.exit(2)
+  }
+  if (argv.includes('--allow-stale')) return
+  const srcNewest = Math.max(
+    newestMtime(resolve('src')),
+    newestMtime(resolve('index.html')),
+    newestMtime(resolve('vite.config.ts'))
+  )
+  const distNewest = newestMtime(resolve('dist'))
+  // 1s 容差：同一秒内的写入顺序不可靠
+  if (srcNewest > distNewest + 1000) {
+    console.error(
+      '[audit] dist/ 比源码旧，审计会检查旧界面（假 0 findings）：\n' +
+      `  源码最新：${new Date(srcNewest).toLocaleString()}\n` +
+      `  dist 最新：${new Date(distNewest).toLocaleString()}\n` +
+      '  先跑 `npx vite build`；确实要审计旧构建时加 --allow-stale'
+    )
+    process.exit(2)
+  }
+}
+
 // ---------------- 主流程 ----------------
 async function main() {
+  assertFreshBuild()
   const base = mkdtempSync(join(tmpdir(), 'shipit-ui-audit-'))
   const fixture = prepareFixture(base)
   console.log(`[audit] 夹具就绪：${base}`)
