@@ -4,11 +4,11 @@
  * 真实执行需要 SFTP/SSH，这里只覆盖不依赖网络的决定性行为：
  * 内容寻址的文件名 + 「同尺寸即跳过上传」。
  */
-import { mkdtempSync, rmSync } from 'fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterAll, describe, expect, it } from 'vitest'
-import { REMOTE_SCRIPT_DIR, postUploadOf, runPostUploadScript, scriptRemotePath, shouldUploadScript } from './post-upload-script'
+import { REMOTE_SCRIPT_DIR, postUploadOf, runPostUploadScript, scriptRemotePath } from './post-upload-script'
 import type { DeployTarget } from '../../shared/types'
 
 const workDir = mkdtempSync(join(tmpdir(), 'shipit-post-upload-'))
@@ -32,10 +32,52 @@ describe('post-upload-script', () => {
     expect(path).not.toMatch(/[^\x00-\x7F]/)   // 没有非 ASCII
   })
 
-  it('远端不存在（null）或尺寸不同 → 需要上传；尺寸一致 → 跳过', () => {
-    expect(shouldUploadScript(null, 1024)).toBe(true)
-    expect(shouldUploadScript(1024, 1024)).toBe(false)
-    expect(shouldUploadScript(1023, 1024)).toBe(true)
+  it('远端已有同名文件且尺寸相同 → 仍然覆盖上传（不再按尺寸跳过）', async () => {
+    const calls: string[] = []
+    const scriptFile = join(workDir, 'deploy.sh')
+    writeFileSync(scriptFile, 'echo hi\n')
+    const sftp = {
+      mkdir: async (): Promise<void> => {},
+      // stat 返回“尺寸与本地完全一致”：旧实现据此跳过上传（同尺寸不同内容也能混进去）
+      stat: async (): Promise<{ size: number }> => ({ size: 8 }),
+      put: async (): Promise<void> => { calls.push('put') },
+      chmod: async (): Promise<void> => { calls.push('chmod') },
+      // 故意不给可用 client：执行阶段失败无妨，这里只验证“上传与 chmod 一定会发生”
+      client: undefined
+    }
+    const result = await runPostUploadScript({
+      target: {
+        protocol: 'sftp', host: 'h', port: 22, username: 'u',
+        postUpload: { kind: 'script', value: scriptFile }
+      } as unknown as DeployTarget,
+      sftpClient: sftp as never,
+      isLocal: false
+    })
+    expect(calls).toContain('put')
+    expect(calls.filter((c) => c === 'chmod').length).toBeGreaterThanOrEqual(2) // 目录 + 脚本
+    expect(result.uploaded).toBe(true)
+  })
+
+  it('chmod 失败时上抛（不静默继续执行）', async () => {
+    const scriptFile = join(workDir, 'chmod-fail.sh')
+    writeFileSync(scriptFile, 'echo hi\n')
+    const sftp = {
+      mkdir: async (): Promise<void> => {},
+      stat: async (): Promise<{ size: number }> => ({ size: 1 }),
+      put: async (): Promise<void> => {},
+      chmod: async (): Promise<void> => { throw new Error('permission denied') },
+      client: undefined
+    }
+    const result = await runPostUploadScript({
+      target: {
+        protocol: 'sftp', host: 'h', port: 22, username: 'u',
+        postUpload: { kind: 'script', value: scriptFile }
+      } as unknown as DeployTarget,
+      sftpClient: sftp as never,
+      isLocal: false
+    })
+    expect(result.status).toBe('failed')
+    expect(result.message).toContain('permission denied')
   })
 
   it('未配置脚本时不产生远端路径（调用方据此跳过整段）', () => {

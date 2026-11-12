@@ -675,10 +675,12 @@ export class DeployService {
         }
       }
 
-      // 上传后脚本：全部文件传完后执行一次（失败不影响已上传文件的成功状态）
-      // 取消/超时后必须跳过：此时只有部分文件到位，脚本可能是重启服务/切版本，
-      // 在半成品目录上执行属于不可回滚的副作用（F4）。
-      if (!session.aborted && postUploadOf(target)) {
+      // 上传后脚本：全部文件传完后执行一次（脚本失败不影响已上传文件的成功状态）。
+      // 取消/超时/有文件失败 → 全部跳过：三者都意味着目标目录是**半成品**，
+      // 而脚本常是重启服务/切版本，在半成品上执行属于不可回滚的副作用（F4）。
+      // 此前只判 aborted，文件失败走的是同一条半成品路径却被漏掉。
+      const incomplete = session.aborted || result.failed > 0
+      if (!incomplete && postUploadOf(target)) {
         result.postUpload = await runPostUploadScript({
           target,
           sftpClient: target.protocol === 'sftp' ? sftpClient : null,

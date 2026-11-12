@@ -283,6 +283,28 @@ describe('上传串行化（INV-6 / AC-019）', () => {
     expect(seen).toEqual([[0, 2], [1, 2], [1, 2], [2, 2]])
   })
 
+  it('有文件失败时也不执行上传后脚本（与取消同样属于半成品路径）', async () => {
+    const service = new DeployService()
+    const ok = uploadTask('a.txt')
+    const bad: UploadTask = {
+      localPath: join(srcDir, 'definitely-missing.txt'),
+      remotePath: '/out/missing.txt',
+      relativePath: 'dist/missing.txt',
+      size: 1
+    }
+    const withScript = {
+      ...target(),
+      postUpload: { kind: 'command' as const, value: 'shipit-should-not-run' }
+    }
+
+    const result = await service.deploy([ok, bad], withScript, () => {}, 'desktop')
+
+    expect(result.failed).toBe(1)
+    expect(result.succeeded).toBe(1)
+    // 脚本根本没被调用：不是“跑了但失败”，而是完全没执行（半成品目录上重启/切版本不可回滚）
+    expect(result.postUpload).toBeUndefined()
+  })
+
   it('取消后不执行上传后脚本（F4）', async () => {
     // 部分文件已传完再取消：脚本不能跑。这类脚本常是“重启服务/切版本”，
     // 在只传了一半的目录上执行是不可回滚的副作用。

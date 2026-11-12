@@ -3,8 +3,9 @@
  *
  * 语义（与产品约定一致）：
  * - 只对 `sftp` / `local` 生效；FTP 系列没有 exec 能力，返回 `skipped` 并说明原因；
- * - 远端路径是**内容寻址**的（`/tmp/shipit-scripts/<name>-<sha256 前12位><ext>`）：
- *   远端已存在同尺寸文件即跳过上传（同名 ⇒ 同内容），避免每次发布重复传输；
+ * - 远端路径是**内容寻址**的（`/tmp/shipit-scripts/<name>-<sha256 前12位><ext>`），
+ *   名字便于排查；但**每次都覆盖上传**：只比尺寸会允许「同长度不同内容」的文件被跳过，
+ *   而路径可预测 + 多用户共享的机器上，那就是一次代码执行；
  * - 执行结果（退出码 / stdout / stderr）随任务结果返回，日志据此区分"脚本跑对没跑对"；
  * - 脚本失败**不改变已上传文件的成功状态**，只体现在 `postUpload.status` 上。
  */
@@ -24,11 +25,6 @@ export function scriptRemotePath(localPath: string, sha256: string): string {
   const ext = extname(localPath)
   const base = basename(localPath, ext).replace(/[^A-Za-z0-9._-]/g, '_')
   return `${REMOTE_SCRIPT_DIR}/${base}-${sha256.slice(0, 12)}${ext.replace(/[^A-Za-z0-9.]/g, '')}`
-}
-
-/** 远端已存在且尺寸一致 → 跳过上传 */
-export function shouldUploadScript(remoteSize: number | null, localSize: number): boolean {
-  return remoteSize === null || remoteSize !== localSize
 }
 
 function truncate(text: string): string {
@@ -128,14 +124,23 @@ export async function runPostUploadScript(options: RunScriptOptions): Promise<Po
     const sha = createHash('sha256').update(content).digest('hex')
     remotePath = scriptRemotePath(scriptPath, sha)
 
-    await sftp.mkdir(REMOTE_SCRIPT_DIR, true).catch(() => undefined)
-    const existing = await sftp.stat(remotePath).catch(() => null)
-    const needUpload = shouldUploadScript((existing?.size as number | undefined) ?? null, content.length)
-    if (needUpload) {
-      await sftp.put(scriptPath, remotePath)
-      uploaded = true
+    // 目录必须能建/能进：以前把 mkdir 的失败吞掉，目录被别人抢占时会直接往里写。
+    // recursive mkdir 对“已存在”也可能报错，所以失败后再 stat 一次确认目录真的在。
+    try {
+      await sftp.mkdir(REMOTE_SCRIPT_DIR, true)
+    } catch {
+      const dir = await sftp.stat(REMOTE_SCRIPT_DIR).catch(() => null)
+      if (!dir) throw new Error(`无法创建或访问远端脚本目录：${REMOTE_SCRIPT_DIR}`)
     }
-    await sftp.chmod?.(remotePath, 0o700).catch(() => undefined)
+    // 目录权限收紧到 0700：默认 umask 下同机器的其他用户可以读/改这份脚本。
+    // 有能力 chmod 却失败 → 上抛（失败即不执行）；服务端不支持 chmod 则跳过。
+    if (sftp.chmod) await sftp.chmod(REMOTE_SCRIPT_DIR, 0o700)
+
+    // 每次都覆盖上传，不再按“尺寸相同”跳过：路径是可预测的（内容寻址），
+    // 多用户共享的机器上别人放一个同长度文件就能被当成我们的脚本执行。
+    await sftp.put(scriptPath, remotePath)
+    uploaded = true
+    if (sftp.chmod) await sftp.chmod(remotePath, 0o700)
 
     const command = `sh ${shellQuote(remotePath)}`
     const result = await execRemote(sftp.client, command, timeoutMs)
