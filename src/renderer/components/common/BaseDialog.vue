@@ -5,6 +5,7 @@ import { getCurrentInstance, onMounted, onUnmounted, ref } from 'vue'
 import type { Component } from 'vue'
 import { isTextInputTarget } from '../../utils/dom'
 import { isTopEscLayer, popEscLayer, pushEscLayer } from '../../utils/esc-stack'
+import MetaChip from './MetaChip.vue'
 
 const props = withDefaults(defineProps<{
   title: string
@@ -103,7 +104,7 @@ onUnmounted(() => {
       <div class="base-dialog-header">
         <component :is="icon" v-if="icon" :size="16" class="base-dialog-icon" />
         <span class="base-dialog-title" :id="titleId">{{ title }}</span>
-        <span v-if="badge" class="base-dialog-badge">{{ badge }}</span>
+        <MetaChip v-if="badge" tone="accent" shape="square">{{ badge }}</MetaChip>
         <slot name="header-extras" />
         <button class="base-dialog-close" aria-label="关闭" @click="emit('close')">
           <Kbd keys="Esc" variant="hint" /><X :size="14" />
@@ -151,11 +152,6 @@ onUnmounted(() => {
 }
 .base-dialog-icon { color: var(--fg2); flex-shrink: 0; }
 .base-dialog-title { font-size: 16px; font-weight: 600; white-space: nowrap; }
-.base-dialog-badge {
-  font-size: 11px; padding: 1px 8px;
-  background: var(--accent); color: var(--on-accent);
-  border-radius: 4px;
-}
 .base-dialog-close {
   margin-left: auto; padding: 4px;
   display: inline-flex; align-items: center; gap: 4px;

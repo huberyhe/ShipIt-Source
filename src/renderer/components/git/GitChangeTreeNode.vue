@@ -5,6 +5,7 @@ import ContextMenu from '../common/ContextMenu.vue'
 import ServerTargetMenu from '../common/ServerTargetMenu.vue'
 import TreeRow from '../common/TreeRow.vue'
 import StatusBadge from '../common/StatusBadge.vue'
+import MetaChip from '../common/MetaChip.vue'
 import type { ContextMenuItem } from '../../types/context-menu'
 import type { ChangeTreeNode } from '../../types/git'
 import { useServerMenu } from '../../composables/useServerMenu'
@@ -198,7 +199,7 @@ function dirStatsTitle(n: ChangeTreeNode): string {
       <!-- 仓库分组行：文件数 + 分支 chip + 读取失败提示（三者都不影响其它行的位置） -->
       <span v-if="repoInfo.isRepo" class="repo-meta">
         <span class="repo-count">{{ repoInfo.countLabel }}</span>
-        <span v-if="repoInfo.branch" class="repo-branch" :title="`当前分支：${repoInfo.branch}`">{{ repoInfo.branch }}</span>
+        <MetaChip v-if="repoInfo.branch" tone="accent" shape="pill" :title="`当前分支：${repoInfo.branch}`" class="repo-branch-chip">{{ repoInfo.branch }}</MetaChip>
         <span v-if="repoInfo.error" class="repo-error" :title="repoInfo.error">读取失败</span>
       </span>
       <span v-else class="dir-badge" :title="dirStatsTitle(node)">{{ getDirStats(node) }}</span>
@@ -315,11 +316,13 @@ function dirStatsTitle(n: ChangeTreeNode): string {
   font-size: 11px; white-space: nowrap;
 }
 .repo-count { color: var(--fg2); }
-.repo-branch {
-  padding: 0 6px; border-radius: 999px;
-  background: var(--accent3); color: var(--accent-text);
-  font-size: 11px; line-height: 16px;
-  max-width: 160px; overflow: hidden; text-overflow: ellipsis;
+/* 壳换成 MetaChip（accent 实底 + 反白）：单靠 --accent3 淡底 + --accent-text
+   在深色主题只有 3.94:1。这里只补“不换行 + 超长省略”这条业务约束 */
+.repo-branch-chip {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .repo-error { color: var(--red-text); }
 /*
@@ -328,7 +331,7 @@ function dirStatsTitle(n: ChangeTreeNode): string {
  * - 选中行：文件数与错误提示跟随行文字色（"读取失败"四个字本身已说明问题，不靠红色）；
  *   chip 自己带底色，不需要改。
  */
-.theme-dark .repo-branch { color: var(--on-accent); }
+
 .tree-row.selected .repo-count,
 .tree-row.selected .repo-error { color: inherit; }
 

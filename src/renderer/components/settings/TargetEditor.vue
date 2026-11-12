@@ -18,6 +18,7 @@ type DraftTarget = Omit<DeployTarget, 'mappings'> & { mappings: DraftMapping[] }
 import BaseButton from '../common/BaseButton.vue'
 import SectionHeader from '../common/SectionHeader.vue'
 import ConfirmDialog from '../common/ConfirmDialog.vue'
+import MetaChip from '../common/MetaChip.vue'
 import FormField from '../common/FormField.vue'
 import EmptyState from '../common/EmptyState.vue'
 
@@ -637,7 +638,7 @@ function removeTempMapping(idx: number) {
         <div class="target-info">
           <div class="target-primary">
             <span class="target-name">{{ target.name }}</span>
-            <span class="target-protocol">{{ (target.protocol as string).toUpperCase() }}</span>
+            <MetaChip tone="accent" shape="square" mono>{{ (target.protocol as string).toUpperCase() }}</MetaChip>
             <!-- 本地目录没有端口语义：不显示 :22（此前会把 SFTP 默认端口接到目录路径后面） -->
           <span class="target-host">{{ target.protocol === 'local' ? target.host : `${target.host}:${target.port || (target.protocol === 'ftp' ? 21 : 22)}` }}</span>
             <!-- 测试结果内联显示（不占额外行、无空白、天然无抖动） -->
@@ -1014,7 +1015,7 @@ function removeTempMapping(idx: number) {
  * 所以名字不收缩，让地址去吸收剩余宽度（地址本来就是辅助信息）。
  */
 .target-name { flex: 0 0 auto; font-weight: 500; color: var(--fg3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%; }
-.target-protocol { font-size: 11px; padding: 1px 4px; background: var(--accent); color: var(--on-accent); border-radius: 4px; }
+
 .target-host { flex: 1 1 auto; font-size: 12px; color: var(--fg2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .target-actions { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
 /* 三个带文字的按钮：图标与文字用同一套 flex 对齐（此前复制/编辑用 Unicode 字符充当图标，
