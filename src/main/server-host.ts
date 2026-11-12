@@ -295,7 +295,21 @@ export function createServerHost (options: HostOptions): ServerHost {
           void this.start().catch((error) => emit('fatal', { message: String(error) }))
         }, 500)
       })
-      const ready = await waitReady(current, 8000)
+      // 首次冷启动叮 20s 是正常的（杀毒扫描 asar、磁盘繁忙都可能超过 8s），
+      // 超时太短会让“能起来的后端”被当成启动失败。
+      let ready: any
+      try {
+        ready = await waitReady(current, 20_000)
+      } catch (error) {
+        // 超时/早退时子进程还在：不清理的话上层重试会再多一个后端进程
+        try {
+          current.kill()
+        } catch {
+          // 已退出
+        }
+        child = null
+        throw error
+      }
       bridge.setInstance(ready.instanceId)
       admin = ready.admin
       client = createHttpClient({

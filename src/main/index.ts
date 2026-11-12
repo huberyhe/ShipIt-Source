@@ -1150,9 +1150,8 @@ app.whenReady().then(async () => {
   configStore = new ConfigStore()
 
   // 单后端：桌面只通过管理端点执行（不再有进程内模式）
-  let built: Awaited<ReturnType<typeof createAdapter>>
-  try {
-    built = await createAdapter({
+  const buildAdapter = () =>
+    createAdapter({
       host: {
         entry: app.isPackaged
           ? join(app.getAppPath(), 'dist-server/index.js')
@@ -1163,16 +1162,57 @@ app.whenReady().then(async () => {
         dataDir: dirname(configStore.path)
       }
     })
-  } catch (error) {
-    // 后端是唯一执行体：起不来就没有可用应用。明确提示后退出，不回退 embedded
-    const message = error instanceof Error ? error.message : String(error)
-    writeFatalLog('backend', `后端启动失败：${message}`)
-    dialog.showErrorBox('后端启动失败', message)
-    app.exit(1)
-    throw error
+
+  let built: Awaited<ReturnType<typeof createAdapter>> | null = null
+  let lastError = ''
+
+  /** 尝试一次；失败写日志并返回 false（不弹窗、不退进程） */
+  const tryStart = async (): Promise<boolean> => {
+    try {
+      built = await buildAdapter()
+      return true
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error)
+      writeFatalLog('backend', `后端启动失败：${lastError}`)
+      return false
+    }
   }
-  ipcAdapter = built.adapter
-  serverHost = built.host
+
+  // 启动是唯一一次“没后端就真用不了”的路径，但失败往往是临时的
+  // （首次冷启动、杀毒扫描 80MB asar、磁盘繁忙）。先自己重试一次再说。
+  if (!(await tryStart())) {
+    await new Promise((resolve) => setTimeout(resolve, 700))
+    await tryStart()
+  }
+
+  // 仍失败：用**人话**问用户接下来怎么办，而不是一句“等待 ready 超时”判死刑
+  while (!built) {
+    const choice = await dialog.showMessageBox({
+      type: 'warning',
+      title: 'ShipIt 无法启动',
+      message: '后台服务未能启动',
+      detail:
+        '这通常是临时问题（首次启动较慢、杀毒软件正在扫描、磁盘繁忙），重试一般就能恢复。\n\n' +
+        '如果反复出现，请点「打开日志目录」，把其中的 error.log 发给开发者。',
+      buttons: ['重试', '打开日志目录', '退出'],
+      defaultId: 0,
+      cancelId: 2,
+      noLink: true
+    })
+    if (choice.response === 2) {
+      app.exit(1)
+      return
+    }
+    if (choice.response === 1) {
+      void shell.openPath(dirname(configStore.path))
+      continue
+    }
+    await tryStart()
+  }
+  // while 循环保证走到这里时 built 非空（TS 的控制流看不到闭包里的赋值）
+  const started = built as Awaited<ReturnType<typeof createAdapter>>
+  ipcAdapter = started.adapter
+  serverHost = started.host
   let backendFatalNotified = false
   if (serverHost) {
     statusMirror = createStatusMirror({
