@@ -146,6 +146,8 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
       v-for="menu in menus"
       :key="menu.label"
       class="menu-label"
+      aria-haspopup="menu"
+      :aria-expanded="openMenu?.label === menu.label ? 'true' : 'false'"
       :class="{ active: openMenu?.label === menu.label }"
       @click="onMenuClick(menu.label, $event)"
       @mouseenter="onMenuHover(menu.label, $event)"

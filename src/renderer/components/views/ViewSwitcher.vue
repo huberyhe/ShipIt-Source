@@ -25,6 +25,12 @@ const views = computed(() => {
   ]
 })
 
+/** 当前视图的可读名（tabpanel 的 aria-label，读屏能报出“进入哪个面板”） */
+const activeViewLabel = computed(() => {
+  const current = views.value.find((item) => item.id === uiStore.activeView)
+  return current ? current.title : '视图内容'
+})
+
 /** 整组按钮是一个 Tab 停靠点：↑/↓（含 ←/→）在可用视图间切换 */
 /**
  * Tab 命中整组时，把焦点交给「当前选中」的那个按钮：
@@ -80,6 +86,7 @@ function onSwitcherKeydown(event: KeyboardEvent): void {
         class="view-btn"
         role="tab"
         :aria-selected="uiStore.activeView === view.id"
+        :aria-controls="`view-panel-${view.id}`"
         tabindex="-1"
         :class="{ active: uiStore.activeView === view.id, disabled: view.disabled }"
         :disabled="view.disabled"
@@ -94,7 +101,13 @@ function onSwitcherKeydown(event: KeyboardEvent): void {
         <span class="btn-label">{{ view.label }}</span>
       </button>
     </div>
-    <div class="view-content">
+    <!-- tabpanel 必须与 tab 的 aria-controls 对应，否则读屏不知道“切的是哪块内容” -->
+    <div
+      class="view-content"
+      role="tabpanel"
+      :id="`view-panel-${uiStore.activeView}`"
+      :aria-label="activeViewLabel"
+    >
       <FileTreeView v-if="uiStore.activeView === 'filetree'" />
       <GitChangesView v-else-if="uiStore.activeView === 'gitchanges'" />
       <GitLogView v-else-if="uiStore.activeView === 'gitlog'" />
