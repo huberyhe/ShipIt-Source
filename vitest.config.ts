@@ -1,4 +1,5 @@
 import { defineConfig } from 'vitest/config'
+import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
 
 /**
@@ -20,6 +21,12 @@ import { resolve } from 'path'
  * 而配置路径相关用例需要切换工作目录来构造「无目录分隔符的相对路径」。
  */
 export default defineConfig({
+  /**
+   * 只加 Vue SFC 转换，让 `components/common/*.spec.ts` 能 SSR 渲染组件做契约测试。
+   * 不引入 test-utils / jsdom：组件测试在 node 环境用 `vue/server-renderer` 断言标记，
+   * 避免为几个纯展示组件多背一套 DOM 运行时。
+   */
+  plugins: [vue()],
   test: {
     environment: 'node',
     // 进程级用例 fork dist-server/index.js：缺失或过期时先构建（见脚本内说明）
