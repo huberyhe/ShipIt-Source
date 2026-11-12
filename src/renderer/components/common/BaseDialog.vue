@@ -4,6 +4,7 @@ import { X } from 'lucide-vue-next'
 import { getCurrentInstance, onMounted, onUnmounted, ref } from 'vue'
 import type { Component } from 'vue'
 import { isTextInputTarget } from '../../utils/dom'
+import { isTopEscLayer, popEscLayer, pushEscLayer } from '../../utils/esc-stack'
 
 const props = withDefaults(defineProps<{
   title: string
@@ -25,15 +26,13 @@ const emit = defineEmits<{ close: []; confirm: [] }>()
 // 唯一标题 id，供 aria-labelledby 关联
 const titleId = `dlg-title-${getCurrentInstance()?.uid ?? 'x'}`
 
-// 弹窗栈：仅最上层响应 Esc/Enter，避免叠加弹窗被同时关闭
-const dialogStack: symbol[] = []
 const selfId = Symbol('base-dialog')
 const rootRef = ref<HTMLElement | null>(null)
 /** 打开前的焦点元素，关闭后恢复 */
 let prevActive: HTMLElement | null = null
 
 function onKeydown(e: KeyboardEvent) {
-  if (dialogStack[dialogStack.length - 1] !== selfId) return
+  if (!isTopEscLayer(selfId)) return
   if (e.key === 'Escape') {
     e.preventDefault()
     emit('close')
@@ -84,14 +83,13 @@ function trapFocus(e: KeyboardEvent): void {
 
 onMounted(() => {
   prevActive = (document.activeElement as HTMLElement | null) ?? null
-  dialogStack.push(selfId)
+  pushEscLayer(selfId)
   window.addEventListener('keydown', onKeydown)
   // 焦点移入弹窗，使 Tab 键在弹窗内部循环起点正确
   rootRef.value?.focus()
 })
 onUnmounted(() => {
-  const i = dialogStack.indexOf(selfId)
-  if (i >= 0) dialogStack.splice(i, 1)
+  popEscLayer(selfId)
   window.removeEventListener('keydown', onKeydown)
   // 恢复打开前的焦点，避免键盘用户 Tab 起点丢失
   prevActive?.focus?.()

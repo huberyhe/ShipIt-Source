@@ -4,6 +4,7 @@ import { computed, onMounted, onUnmounted } from 'vue'
 import { Upload, X } from 'lucide-vue-next'
 import { useDeployStore } from '../../stores/deploy'
 import { useProjectStore } from '../../stores/project'
+import { isTopEscLayer, popEscLayer, pushEscLayer } from '../../utils/esc-stack'
 
 import ProgressBar from '../common/ProgressBar.vue'
 
@@ -48,15 +49,27 @@ const currentFile = computed(() => {
   return file.length <= MAX_FILE_CHARS ? file : '…' + file.slice(-(MAX_FILE_CHARS - 1))
 })
 
-// Esc 取消上传（与取消按钮行为一致）
+/**
+ * Esc 取消上传（与取消按钮行为一致）。
+ *
+ * 必须参与全局 Esc 栈：进度卡与任何弹窗同时存在时，一次 Esc 只能命中最上层。
+ * 否则会出现“按 Esc 想关弹窗，结果上传被取消了”（实测复现）。
+ */
+const selfEscLayer = Symbol('deploy-progress')
 function onKeydown(e: KeyboardEvent) {
-  if (e.key === 'Escape') {
-    e.preventDefault()
-    deployStore.cancelUpload()
-  }
+  if (e.key !== 'Escape') return
+  if (!isTopEscLayer(selfEscLayer)) return
+  e.preventDefault()
+  deployStore.cancelUpload()
 }
-onMounted(() => window.addEventListener('keydown', onKeydown))
-onUnmounted(() => window.removeEventListener('keydown', onKeydown))
+onMounted(() => {
+  pushEscLayer(selfEscLayer)
+  window.addEventListener('keydown', onKeydown)
+})
+onUnmounted(() => {
+  popEscLayer(selfEscLayer)
+  window.removeEventListener('keydown', onKeydown)
+})
 </script>
 
 <template>
