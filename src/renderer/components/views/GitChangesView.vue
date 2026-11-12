@@ -438,6 +438,19 @@ watch(
 )
 
 /** 树的真正顶层：开启仓库层时是仓库节点，否则直接是变更树 */
+/**
+ * 空列表的文案。
+ *
+ * 以前只有一句“工作区干净”——但空列表可能是三种情况：还在读、读取失败、真没变更。
+ * 把后两者说成“干净”会让用户以为没改动，实际是没读到。
+ */
+const emptyText = computed(() => {
+  if (gitStore.isAnalyzing) return '正在读取变更…'
+  if (gitStore.repos.some((repo) => !!repo.error)) return '部分仓库读取失败（展开仓库行看原因）'
+  if (!gitStore.hasGit) return '该项目不是 Git 仓库'
+  return '工作区干净，没有未提交的变更'
+})
+
 const displayNodes = computed<ChangeTreeNode[]>(() => {
   if (!showRepoLayer.value) return changeTree.value
   return (
@@ -616,7 +629,7 @@ const selectionText = computed(() => {
     </ViewHeader>
 
     <div class="changes-list">
-      <EmptyState v-if="displayNodes.length === 0" text="工作区干净，没有未提交的变更" size="page" />
+      <EmptyState v-if="displayNodes.length === 0" :text="emptyText" size="page" />
       <!-- role="tree"：容器单一 Tab 停靠点模型不变（行仍 tabindex=-1）；空态放在树外。
            不再套“项目目录”虚拟根：单仓库时变更树直接是顶层（避免 ssmp/ssmp），
            多仓库时每个仓库各是一个顶层节点（并列多个根）。 -->

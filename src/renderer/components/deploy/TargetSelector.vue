@@ -25,6 +25,8 @@ function openTargetSettings(): void {
     <select
       :value="deployStore.currentTargetId"
       class="target-select"
+      aria-label="上传目标"
+      title="上传目标（发到哪台服务器）"
       @change="deployStore.selectTarget(($event.target as HTMLSelectElement).value)"
     >
       <option value="" disabled>-- 选择上传目标 --</option>

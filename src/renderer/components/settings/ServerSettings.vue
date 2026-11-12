@@ -311,6 +311,8 @@ defineExpose({ save, discard, isDirty, refreshStatus })
           ref="portInput"
           class="control value"
           :class="{ invalid: !!portError }"
+          :aria-invalid="portError ? 'true' : undefined"
+          :title="portError || undefined"
           type="number"
           min="1"
           max="65535"

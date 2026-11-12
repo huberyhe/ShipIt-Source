@@ -1055,7 +1055,9 @@ function removeTempMapping(idx: number) {
 .segmented { display: inline-flex; align-self: flex-start; width: fit-content; border: 1px solid var(--border2); border-radius: 4px; overflow: hidden; }
 .segment { padding: 4px 12px; background: transparent; color: var(--fg2); font-size: 12px; border: 0; border-right: 1px solid var(--border2); }
 .segment:last-child { border-right: 0; }
-.segment:hover:not(:disabled) { background: var(--bg3); color: var(--fg); }
+/* 悬停不能盖掉选中态：`.segment.on` 的特异性低于 `.segment:hover:not(:disabled)`，
+   不排除 .on 的话鼠标一悬停，选中段就“变回未选中”了 */
+.segment:hover:not(:disabled):not(.on) { background: var(--bg3); color: var(--fg); }
 .segment.on { background: var(--accent); color: var(--on-accent); }
 .segment:disabled { opacity: 0.45; cursor: not-allowed; }
 /* 「不执行」时的保留提示：常占一行（空态用全角空格占位），切换执行方式时不会导致弹窗高度跳动 */
