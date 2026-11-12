@@ -34,6 +34,7 @@ export function skipReasonText(reason: UploadPreviewSkip['reason']): string {
   if (reason === 'missing') return '文件不存在（已删除或未提交）'
   if (reason === 'no-mapping') return '未匹配目录映射'
   if (reason === 'outside-project') return '不在项目目录内'
+  if (reason === 'symlink') return '是符号链接，不上传（不跟随链接）'
   return '原因未知'
 }
 
@@ -45,11 +46,13 @@ export function summarizeSkips(items: UploadPreviewSkip[]): string {
   const noMapping = items.filter((i) => i.reason === 'no-mapping').length
   const missing = items.filter((i) => i.reason === 'missing').length
   const outside = items.filter((i) => i.reason === 'outside-project').length
-  const unknown = items.length - noMapping - missing - outside
+  const symlink = items.filter((i) => i.reason === 'symlink').length
+  const unknown = items.length - noMapping - missing - outside - symlink
   const parts: string[] = []
   if (noMapping > 0) parts.push(`${noMapping} 个未匹配目录映射`)
   if (missing > 0) parts.push(`${missing} 个文件不存在（已删除或未提交）`)
   if (outside > 0) parts.push(`${outside} 个不在项目目录内`)
+  if (symlink > 0) parts.push(`${symlink} 个是符号链接`)
   if (unknown > 0) parts.push(`${unknown} 个原因未知`)
   return parts.join('，')
 }
@@ -73,7 +76,10 @@ function toPreviewSkip(raw: unknown): UploadPreviewSkip | null {
   const item = raw as Record<string, unknown>
   if (typeof item.relativePath !== 'string') return null
   const reason =
-    item.reason === 'missing' || item.reason === 'no-mapping' || item.reason === 'outside-project'
+    item.reason === 'missing' ||
+    item.reason === 'no-mapping' ||
+    item.reason === 'outside-project' ||
+    item.reason === 'symlink'
       ? item.reason
       : null
   return { relativePath: item.relativePath, reason }

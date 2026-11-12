@@ -94,12 +94,18 @@ describe('deploy store：预览采用服务端 skipped', () => {
     expect(skipReasonText('missing')).toBe('文件不存在（已删除或未提交）')
     expect(skipReasonText('no-mapping')).toBe('未匹配目录映射')
     expect(skipReasonText('outside-project')).toBe('不在项目目录内')
+    expect(skipReasonText('symlink')).toBe('是符号链接，不上传（不跟随链接）')
     expect(skipReasonText(null)).toBe('原因未知')
     expect(summarizeSkips([
       { relativePath: 'a', reason: 'missing' },
       { relativePath: 'b', reason: 'no-mapping' },
       { relativePath: 'c', reason: 'no-mapping' }
     ])).toBe('2 个未匹配目录映射，1 个文件不存在（已删除或未提交）')
+    // 链接不是「原因未知」：它有明确原因，且必须能被用户看懂（否则会以为被随机跳过）
+    expect(summarizeSkips([
+      { relativePath: 'dist/link', reason: 'symlink' },
+      { relativePath: 'dist/a', reason: 'missing' }
+    ])).toBe('1 个文件不存在（已删除或未提交），1 个是符号链接')
     expect(summarizeSkips([])).toBe('')
   })
 

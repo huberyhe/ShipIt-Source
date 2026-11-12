@@ -72,6 +72,7 @@ import type {
 import { toSlashes } from '../../shared/paths'
 import { UPLOAD_SKIP_DIRS } from './ignore-dirs'
 import { postUploadOf, runPostUploadScript } from './post-upload-script'
+import { isUnderPath, samePath } from './project-context'
 
 export type { DeployTarget, DirectoryMapping, UploadTask, DeployResult, DeployDetail, PlanSkip, UploadPreview }
 
@@ -338,12 +339,25 @@ export class DeployService {
         skipped.push({ relativePath: rel || toSlashes(rawPath), reason: 'outside-project' })
         continue
       }
+      // 必须 lstat（不跟随）：目录展开本来就跳过链接（collectDirFiles），
+      // 顶层选中的单条链接若用 stat 会跟随 —— 项目里放一个 `link -> ~/.ssh/id_rsa`，
+      // 词法上仍在项目内，传出去的却是目标文件的字节（P1-5 的同一条边界）。
       let stats
       try {
-        stats = await fsPromises.stat(filePath)
+        stats = await fsPromises.lstat(filePath)
       } catch {
         // 已删除的 Git 变更文件就走这一支：必须报 missing，不能落到「无映射」兜底
         skipped.push({ relativePath: rel, reason: 'missing' })
+        continue
+      }
+      if (stats.isSymbolicLink()) {
+        skipped.push({ relativePath: rel, reason: 'symlink' })
+        continue
+      }
+      // lstat 只能看到「文件本身不是链接」：父目录是链接时（`dist -> /etc` 选 `dist/passwd`）
+      // 还要用真实路径再确认一次仍在项目内。解析不了按越界处理（失败即拒绝，不是失败即放行）。
+      if (!stats.isDirectory() && !(await this.isRealPathInside(projectRoot, filePath))) {
+        skipped.push({ relativePath: rel, reason: 'outside-project' })
         continue
       }
 
@@ -554,6 +568,13 @@ export class DeployService {
         try {
           // 只上传单个文件的异步块：与取消熔断 race，保证取消后立即落定
           const uploadingOne = (async () => {
+          // 读之前再确认一次不是链接：计划阶段校验的是“那一刻”，
+          // 确认框到真正上传之间文件可以被换成链接（桌面上传不重算任务，见 /deploy/direct）。
+          // 该文件按 failed 计，不静默跟随。
+          const beforeRead = await fsPromises.lstat(task.localPath)
+          if (beforeRead.isSymbolicLink()) {
+            throw new Error('该路径是符号链接（或 junction），已拒绝上传：不跟随链接读取目标文件')
+          }
           if (isLocal) {
             const dest = this.resolveLocalDest(task, target)
             await fsPromises.mkdir(dirname(dest), { recursive: true })
@@ -675,6 +696,24 @@ export class DeployService {
 
     result.duration = Date.now() - startTime
     return result
+  }
+
+  /**
+   * 真实路径是否仍在项目内（拦「父目录是链接」的穿透）。
+   *
+   * 用 realpath 而不是词法拼接：`project/link/../x` 这类“看起来回到项目内”的写法
+   * 在链接目标里可能指向别处，只有解析真实路径才说得清。
+   */
+  private async isRealPathInside(projectRoot: string, filePath: string): Promise<boolean> {
+    try {
+      const [realRoot, realFile] = await Promise.all([
+        fsPromises.realpath(projectRoot),
+        fsPromises.realpath(filePath)
+      ])
+      return samePath(realRoot, realFile) || isUnderPath(realRoot, realFile)
+    } catch {
+      return false
+    }
   }
 
   private async collectDirFiles(

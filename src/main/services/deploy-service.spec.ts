@@ -6,7 +6,7 @@
  * 这里用 local 协议（不建立远端连接）确定性覆盖：串行、排队期取消、来源隔离、串行链释放。
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { closeSync, existsSync, ftruncateSync, mkdirSync, mkdtempSync, openSync, rmSync, writeFileSync } from 'fs'
+import { closeSync, existsSync, ftruncateSync, mkdirSync, mkdtempSync, openSync, rmSync, symlinkSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import type { DeployTarget, UploadTask } from '../../shared/types'
@@ -453,6 +453,37 @@ describe('预览计划：跳过项带真实原因', () => {
     expect(plan.skipped.map((s) => s.reason).sort()).toEqual(['no-mapping', 'outside-project'])
     expect(plan.skipped.find((s) => s.reason === 'outside-project')?.relativePath).toContain('outside.txt')
   })
+  it('选中符号链接/junction 本身 → symlink：不跟随链接读目标（P1-5 同一条边界）', async () => {
+    const service = new DeployService()
+    const root = project()
+    const outside = join(dir, 'outside-symlink-target')
+    mkdirSync(outside, { recursive: true })
+    writeFileSync(join(outside, 'secret.txt'), 'SECRET')
+    // Windows 上文件 symlink 需要开发者模式/管理员，目录 junction 不需要 → 用 junction 覆盖同一判定
+    const link = join(root, 'dist', 'link.js')
+    symlinkSync(outside, link, process.platform === 'win32' ? 'junction' : 'dir')
+
+    const plan = await service.buildUploadPlan([link], root, planTarget())
+
+    expect(plan.tasks).toEqual([])
+    expect(plan.skipped).toEqual([{ relativePath: 'dist/link.js', reason: 'symlink' }])
+  })
+
+  it('父目录是链接时，选中其中的文件按 outside-project 拒绝（真实路径越界）', async () => {
+    const service = new DeployService()
+    const root = project()
+    const outside = join(dir, 'outside-dir-target')
+    mkdirSync(outside, { recursive: true })
+    writeFileSync(join(outside, 'a.js'), 'aa')
+    symlinkSync(outside, join(root, 'linked'), process.platform === 'win32' ? 'junction' : 'dir')
+
+    // 文件本身不是链接（lstat 看不出），只有 realpath 能发现它落在项目外
+    const plan = await service.buildUploadPlan([join(root, 'linked', 'a.js')], root, planTarget())
+
+    expect(plan.tasks).toEqual([])
+    expect(plan.skipped).toEqual([{ relativePath: 'linked/a.js', reason: 'outside-project' }])
+  })
+
   it('buildUploadTasks 仍只回任务列表（CLI/MCP 的 /plan 契约不变）', async () => {
     const service = new DeployService()
     const root = project()
@@ -463,6 +494,30 @@ describe('预览计划：跳过项带真实原因', () => {
 
     expect(tasks).toEqual(plan.tasks)
     expect(tasks.length).toBe(1)
+  })
+})
+
+describe('执行前再确认不是链接（防计划后把文件换成链接）', () => {
+  it('task.localPath 是链接/junction → 该文件 failed，目标端不出现内容', async () => {
+    const service = new DeployService()
+    const outside = join(dir, 'outside-exec-target')
+    mkdirSync(outside, { recursive: true })
+    writeFileSync(join(outside, 'secret.txt'), 'SECRET')
+    const link = join(srcDir, 'link-secret')
+    symlinkSync(outside, link, process.platform === 'win32' ? 'junction' : 'dir')
+
+    const result = await service.deploy(
+      [{ localPath: link, remotePath: '/out/link-secret', relativePath: 'dist/link-secret', size: 6 }],
+      target(),
+      () => {},
+      'desktop'
+    )
+
+    expect(result.succeeded).toBe(0)
+    expect(result.failed).toBe(1)
+    expect(result.details[0].status).toBe('failed')
+    expect(result.details[0].error).toContain('符号链接')
+    expect(existsSync(join(destRoot, 'out', 'link-secret'))).toBe(false)
   })
 })
 

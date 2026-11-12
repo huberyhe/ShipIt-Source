@@ -223,11 +223,12 @@ export interface PlanItem {
  * reason 区分真实原因，避免排障被带偏：
  * - `no-mapping`：文件存在但未命中任何目录映射
  * - `missing`：文件不存在（已删除 / 未提交 / 路径不在项目内）
+ * - `outside-project`：词法在项目内但真实路径越界（父目录是链接）
+ * - `symlink`：选中路径本身是符号链接/junction —— 不跟随，避免把链接目标的内容传出去
  */
 export interface PlanSkip {
   relativePath: string
-  /** outside-project：传入的路径不在项目根下（含相对路径被解析到别处） */
-  reason: 'no-mapping' | 'missing' | 'outside-project'
+  reason: 'no-mapping' | 'missing' | 'outside-project' | 'symlink'
 }
 
 /** 待上传计划（服务端计算，计划阶段不建立远端连接，INV-1） */
