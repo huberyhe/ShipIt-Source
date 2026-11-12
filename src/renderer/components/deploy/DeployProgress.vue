@@ -115,10 +115,13 @@ onUnmounted(() => {
 
       <ProgressBar :value="progressPercent" label="上传进度" />
 
-        <div class="progress-info" aria-live="polite">
+        <!-- 整体进度（百分比 + 文件数）必须挨在一起在左，当前文件进度靠右；
+             三者同处 flex 且 justify-content:space-between 时，中间那一项会被推到中间（旧问题） -->
+        <div class="progress-info">
           <span class="percent">{{ progressPercent }}%</span>
           <span class="count">{{ deployStore.uploadProgress.current }} / {{ deployStore.uploadProgress.total }}</span>
-          <span v-if="byteHint" class="byte-hint">{{ byteHint }}</span>
+          <!-- 字节进度高频变化：不进 live region，否则读屏连续播报；宽度也要固定，避免数字跳 → 视觉闪烁 -->
+          <span v-if="byteHint" class="byte-hint" aria-hidden="true">{{ byteHint }}</span>
         </div>
 
       <!-- 不在这里展示排队信息：排队数在右下角状态栏，弹窗只关心当前这个任务 -->
@@ -139,7 +142,13 @@ onUnmounted(() => {
   z-index: var(--z-progress);
 }
 /* 排队态：不画进度条，只给一行文字（保留与进度条相近的高度，避免卡片抽动） */
-.byte-hint { font-size: 11px; color: var(--fg3); }
+.byte-hint {
+  /* 推到右侧且宽度固定：`6%` → `100%` 不会把左侧的百分比/文件数带得左右跳 */
+  margin-left: auto;
+  min-width: 84px;
+  text-align: right;
+  font-size: 11px; color: var(--fg3);
+}
 
 .queued-line {
   display: flex;
@@ -190,9 +199,11 @@ onUnmounted(() => {
 .cancel-btn { position: absolute; top: 10px; right: 10px; }
 /* 与进度条左右边缘严格对齐（此前 margin: 4px 导致数字比进度条内缩 4px） */
 .progress-info {
-  display: flex; justify-content: space-between;
+  /* 靠左成组 + 等宽数字：百分比/文件数变化时不会因为字宽不同而抖动 */
+  display: flex; align-items: baseline; gap: 8px;
   margin: 8px 0 0;
   font-size: 12px; color: var(--fg2);
+  font-variant-numeric: tabular-nums;
   font-variant-numeric: tabular-nums; /* 数字变化时宽度不跳 */
 }
 .head-icon { color: var(--accent-text); flex-shrink: 0; }
