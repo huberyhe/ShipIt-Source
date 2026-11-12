@@ -23,6 +23,14 @@ import { useServerMenu } from '../../composables/useServerMenu'
 import { useContentKeyFallback } from '../../composables/useContentKeyFallback'
 
 const filesStore = useFilesStore()
+const uiStore = useUiStore()
+
+/** 选区规模发布给 uiStore（菜单栏读它判断“上传所选”是否可用，不再用 DOM 探针） */
+watch(
+  () => filesStore.deploySelection.length,
+  (count) => uiStore.setSelectionCount(count),
+  { immediate: true }
+)
 const deployStore = useDeployStore()
 const projectStore = useProjectStore()
 const expandAllFlag = ref(false)
@@ -121,15 +129,7 @@ function onContentKeydown(event: KeyboardEvent): void {
       if (index < 0) { focusAt(0); return }
       // 空格：选中当前行；**已经是唯一选中项时再按一次 = 取消选中**。
       // Ctrl/Cmd+空格 仍是多选切换（Windows 输入法占用时由主进程抢注转发）。
-      const uiStore = useUiStore()
-/** 选区规模发布给 uiStore（菜单栏读它判断“上传所选”是否可用，不再用 DOM 探针） */
-watch(
-  () => filesStore.deploySelection.length,
-  (count) => uiStore.setSelectionCount(count),
-  { immediate: true }
-)
-
-const selectedPaths = filesStore.deploySelection.map((item) => item.path)
+      const selectedPaths = filesStore.deploySelection.map((item) => item.path)
       if (!event.ctrlKey && !event.metaKey && shouldCollapseOnSpace(selectedPaths, path)) {
         filesStore.clearSelection()
         return
@@ -235,6 +235,9 @@ async function refresh(): Promise<void> {
   if (!root || isRefreshing.value) return
   // 焦点原来在某一行上：重建后把焦点还回去（否则 F5 一下键盘焦点就掉到 body）
   const focusedPath = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>('.ftn-row')?.dataset.path
+  // 点右上角刷新走的是这条路径（F5 由 App.vue 统一发反馈）：两边都要让状态栏
+  // 显示“正在刷新”，否则同一动作在两种入口下表现不一致。
+  uiStore.markRefreshing()
   isRefreshing.value = true
   try {
     await filesStore.loadFileTree(root)
