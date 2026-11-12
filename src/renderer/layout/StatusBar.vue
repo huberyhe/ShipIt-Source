@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useProjectStore } from '../stores/project'
 import { shortenPath } from '../utils/path-display'
 import { useUiStore } from '../stores/ui'
+import InlineNote from '../components/common/InlineNote.vue'
 import { useGitStore } from '../stores/git'
 import { useServerStore } from '../stores/server'
 import { useDeployStore } from '../stores/deploy'
@@ -98,9 +99,16 @@ watch(
   -->
   <div class="status-bar">
     <div class="status-left">
-      <span v-if="analyzingText" class="status-text analyzing">
-        <span class="spinner" aria-hidden="true"></span>{{ analyzingText }}
-      </span>
+      <!-- announce=false：状态栏已有独立播报区（下方 aria-live），再挂 role 会念两遍 -->
+      <InlineNote
+        v-if="analyzingText"
+        tone="pending"
+        size="sm"
+        truncate
+        :announce="false"
+        :text="analyzingText"
+        class="status-text analyzing"
+      />
       <span v-else class="status-text" :title="statusTitle">{{ statusText }}</span>
     </div>
     <div class="status-right">
@@ -184,13 +192,5 @@ watch(
 .status-item.error .dot { background: currentColor; opacity: 1; }
 .status-text { display: flex; align-items: center; gap: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .analyzing { color: var(--fg2); }
-.spinner {
-  width: 10px; height: 10px; flex-shrink: 0;
-  border: 2px solid currentColor;
-  border-top-color: transparent;
-  opacity: 0.7;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
+/* 转圈图标与 @keyframes spin 已收进 InlineNote（tone=pending） */
 </style>

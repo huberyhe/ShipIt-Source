@@ -6,6 +6,7 @@ import ServerTargetMenu from '../common/ServerTargetMenu.vue'
 import TreeRow from '../common/TreeRow.vue'
 import StatusBadge from '../common/StatusBadge.vue'
 import MetaChip from '../common/MetaChip.vue'
+import InlineNote from '../common/InlineNote.vue'
 import type { ContextMenuItem } from '../../types/context-menu'
 import type { ChangeTreeNode } from '../../types/git'
 import { useServerMenu } from '../../composables/useServerMenu'
@@ -200,7 +201,14 @@ function dirStatsTitle(n: ChangeTreeNode): string {
       <span v-if="repoInfo.isRepo" class="repo-meta">
         <span class="repo-count">{{ repoInfo.countLabel }}</span>
         <MetaChip v-if="repoInfo.branch" tone="accent" shape="pill" :title="`当前分支：${repoInfo.branch}`" class="repo-branch-chip">{{ repoInfo.branch }}</MetaChip>
-        <span v-if="repoInfo.error" class="repo-error" :title="repoInfo.error">读取失败</span>
+        <InlineNote
+          v-if="repoInfo.error"
+          tone="error"
+          size="sm"
+          text="读取失败"
+          :title="repoInfo.error"
+          class="repo-error"
+        />
       </span>
       <span v-else class="dir-badge" :title="dirStatsTitle(node)">{{ getDirStats(node) }}</span>
     </template>
@@ -324,7 +332,7 @@ function dirStatsTitle(n: ChangeTreeNode): string {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.repo-error { color: var(--red-text); }
+/* 壳换成 InlineNote（tone=error 已自带红字 + 图标 + role） */
 /*
  * 对比度（选中行不能靠颜色区分，否则等于把信息交给颜色）：
  * - 深色主题：--accent-text(#4daafc) 在 --accent3(#094771) 上只有 3.9:1，改用 --on-accent；

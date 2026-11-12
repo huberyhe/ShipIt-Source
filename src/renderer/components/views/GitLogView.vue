@@ -9,6 +9,7 @@ import { useProjectStore } from '../../stores/project'
 import ContextMenu from '../common/ContextMenu.vue'
 import ServerTargetMenu from '../common/ServerTargetMenu.vue'
 import EmptyState from '../common/EmptyState.vue'
+import InlineNote from '../common/InlineNote.vue'
 import ViewHeader from '../common/ViewHeader.vue'
 import IconButton from '../common/IconButton.vue'
 import RefreshStamp from '../common/RefreshStamp.vue'
@@ -533,10 +534,16 @@ async function deployCommitFiles(targetId?: string) {
                 </button>
                 <!-- 上传范围的说明只在按钮的 title 里：常驻文字占位且与按钮重复。
                      不改变上传行为（仍是“当前工作区内容”，非该提交快照）。 -->
-                <!-- 贴在行尾：出现/消失不移动左侧按钮与旁注 -->
-                <span v-if="deletedCount(commit.hash) > 0" class="detail-deleted-note">
-                  {{ deletedCount(commit.hash) }} 个已删除文件不会被上传
-                </span>
+                <!-- 贴在行尾：出现/消失不移动左侧按钮与旁注。
+                     announce=false：这段每次展开都重新渲染，挂 role 会反复播报 -->
+                <InlineNote
+                  v-if="deletedCount(commit.hash) > 0"
+                  tone="warning"
+                  size="sm"
+                  :announce="false"
+                  :text="`${deletedCount(commit.hash)} 个已删除文件不会被上传`"
+                  class="detail-deleted-note"
+                />
               </div>
               <div
                 v-for="f in filesOf(commit.hash)"
@@ -641,7 +648,8 @@ async function deployCommitFiles(targetId?: string) {
 /* 一行内：按钮、上传范围旁注、已删除文件计数（计数贴行尾，出现不推左边的按钮/旁注） */
 .detail-actions { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
 
-.detail-deleted-note { margin-left: auto; font-size: 11px; color: var(--red-text); white-space: nowrap; }
+/* 壳是 InlineNote（tone=warning）：字号/图标/语义色由它提供，这里只管贴行尾 */
+.detail-deleted-note { margin-left: auto; white-space: nowrap; }
 .deploy-commit-btn { display: flex; align-items: center; gap: 4px; padding: 4px 12px; background: var(--accent); color: var(--on-accent); border-radius: 4px; font-size: 11px; }
 .deploy-commit-btn:hover { background: var(--accent2); }
 .detail-loading, .detail-empty { font-size: 11px; color: var(--fg2); padding: 4px 0; }

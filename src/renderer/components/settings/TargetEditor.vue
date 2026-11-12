@@ -3,7 +3,7 @@ import { toastError, toastSuccess } from '../../utils/toast'
 import { computed, ref, watch, onMounted } from 'vue'
 import { reportError } from '../../utils/report-error'
 import { copyNameOf, duplicateNameOf, invalidFrom, missingFields, postUploadFields, testResultHint, validationMessage } from '../../utils/target-form'
-import { Plus, Trash2, Radio, Check, X, Copy, Pencil, ArrowUp, ArrowDown } from 'lucide-vue-next'
+import { Plus, Trash2, Radio, X, Copy, Pencil, ArrowUp, ArrowDown } from 'lucide-vue-next'
 import { useDeployStore } from '../../stores/deploy'
 import type { DeployTarget } from '../../../shared/types'
 import BaseDialog from '../common/BaseDialog.vue'
@@ -19,6 +19,7 @@ import BaseButton from '../common/BaseButton.vue'
 import SectionHeader from '../common/SectionHeader.vue'
 import ConfirmDialog from '../common/ConfirmDialog.vue'
 import MetaChip from '../common/MetaChip.vue'
+import InlineNote from '../common/InlineNote.vue'
 import FormField from '../common/FormField.vue'
 import EmptyState from '../common/EmptyState.vue'
 
@@ -642,12 +643,15 @@ function removeTempMapping(idx: number) {
             <!-- 本地目录没有端口语义：不显示 :22（此前会把 SFTP 默认端口接到目录路径后面） -->
           <span class="target-host">{{ target.protocol === 'local' ? target.host : `${target.host}:${target.port || (target.protocol === 'ftp' ? 21 : 22)}` }}</span>
             <!-- 测试结果内联显示（不占额外行、无空白、天然无抖动） -->
-            <span v-if="testResults[target.id]" class="test-result" :class="testResults[target.id].testing ? 'testing' : testResults[target.id].success ? 'success' : 'error'">
-              <component :is="testResults[target.id].testing ? Radio : testResults[target.id].success ? Check : X" :size="12" :class="{ 'spin': testResults[target.id].testing }" />
-              <span class="test-result-text" :title="testResults[target.id].testing ? '测试中' : testResults[target.id].success ? '连接成功' : testResults[target.id].error">
-                {{ testResults[target.id].testing ? '测试中...' : testResults[target.id].success ? '连接成功' : testResults[target.id].error }}
-              </span>
-            </span>
+            <InlineNote
+              v-if="testResults[target.id]"
+              class="test-result"
+              filled
+              truncate
+              :tone="testResults[target.id].testing ? 'pending' : testResults[target.id].success ? 'success' : 'error'"
+              :text="testResults[target.id].testing ? '测试中...' : testResults[target.id].success ? '连接成功' : testResults[target.id].error"
+              :title="testResults[target.id].testing ? '测试中' : testResults[target.id].success ? '连接成功' : testResults[target.id].error"
+            />
           </div>
           <div class="target-actions">
             <BaseButton class="icon-btn" variant="secondary" size="sm" title="测试连接" :disabled="testingId === target.id" @click="testConnection(target)">
@@ -906,16 +910,14 @@ function removeTempMapping(idx: number) {
 
       <template #footer>
         <!-- 校验提示与「测试连接」结果共用同一个位置（左侧，垂直居中）：同一时刻只显示一条 -->
-        <span
+        <InlineNote
           v-if="hint"
           class="footer-hint"
-          :class="hint.tone"
+          :tone="hint.tone"
+          :text="hint.text"
           :title="hint.title"
-          :role="hint.tone === 'error' ? 'alert' : 'status'"
-        >
-          <component :is="hint.tone === 'error' ? X : Check" :size="12" />
-          <span class="footer-hint-text">{{ hint.text }}</span>
-        </span>
+          truncate
+        />
         <BaseButton class="test-btn" variant="secondary" size="md" :disabled="isFormTesting || !editingForm.host" @click="testFormConnection">
           <Radio :size="13" /> {{ isFormTesting ? '测试中...' : '测试连接' }}
         </BaseButton>
@@ -1023,13 +1025,8 @@ function removeTempMapping(idx: number) {
 .target-actions :deep(.base-btn) { display: inline-flex; align-items: center; gap: 4px; }
 .target-actions :deep(.base-btn svg) { flex-shrink: 0; display: block; }
 /* 测试结果内联在信息行内：不占额外行高（无空白、天然无抖动）；长文本省略 */
-.test-result { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; font-size: 11px; border-radius: 4px; flex-shrink: 0; }
-.test-result-text { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.test-result.testing { background: var(--blue-bg); color: var(--blue); }
-.test-result.success { background: var(--green-bg); color: var(--green); }
-.test-result.error { background: var(--red-bg2); color: var(--red-text); }
-@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-.spin { animation: spin 1s linear infinite; }
+/* 壳是 InlineNote（filled）：背景/内边距/圆角/转圈都由它提供，这里只约束不被挤扁与文本上限 */
+.test-result { flex-shrink: 0; max-width: 252px; }
 
 /* 表单视图 */
 /* 表单是弹窗内容：BaseDialog 的 body 本身无内边距，这里补上四周留白，
@@ -1043,17 +1040,11 @@ function removeTempMapping(idx: number) {
  * 与按钮之间留一大段空白，视线要横跨整个底部才能对上）。
  * max-width + 省略号：连接错误可能很长，避免把按钮挤走；完整内容在 title 里可悬停查看。 */
 /* 页脚提示：校验错误与连接结果共用（过长省略，全文在 title） */
+/* 壳是 InlineNote：颜色/图标/省略号/role 都由它提供，这里只管位置与宽度上限 */
 .footer-hint {
   margin-right: 4px;   /* 紧贴「测试连接」左侧，与按钮同一组 */
-  display: inline-flex; align-items: center; gap: 4px;
-  max-width: 320px; overflow: hidden;
-  font-size: 11px; line-height: 12px;   /* 与图标同高：否则图标看着偏上 */
+  max-width: 320px;
 }
-/* 图标与文字各自是 flex 子项：svg 用 block 去掉 baseline 带来的 2-3px 偏移 */
-.footer-hint :deep(svg) { display: block; flex-shrink: 0; }
-.footer-hint-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.footer-hint.success { color: var(--green); }
-.footer-hint.error { color: var(--red-text); }
 
 /* 分组 */
 /* 分区块只描边不填色：浅色主题里 --bg(白) 会显得"浮起"、深色主题里 --bg 又比容器更暗（凹陷），
