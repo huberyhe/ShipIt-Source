@@ -46,10 +46,18 @@ const progressPercent = computed(() => {
   return Math.round((p.current / p.total) * 100)
 })
 
-/** 当前文件的字节进展（多文件时补充说明，单文件已体现在百分比里） */
+/** 超过这个尺寸的文件才值得单独显示字节进度：小文件一闪而过，反而只会让数字跳动 */
+const LARGE_FILE_BYTES = 1024 * 1024
+
+/**
+ * 当前文件的字节进展。
+ *
+ * 只在「多文件 + 当前文件大于 1MB」时显示：单文件时整体百分比就是文件百分比（重复）；
+ * 小文件几百毫秒就传完，显示出来只是眨眼。
+ */
 const byteHint = computed(() => {
   const bytes = deployStore.uploadProgress.bytes
-  if (!bytes || bytes.total <= 0 || deployStore.uploadProgress.total <= 1) return ''
+  if (!bytes || bytes.total <= LARGE_FILE_BYTES || deployStore.uploadProgress.total <= 1) return ''
   const pct = Math.min(100, Math.round((bytes.done / bytes.total) * 100))
   return `当前文件 ${pct}%`
 })
@@ -115,13 +123,12 @@ onUnmounted(() => {
 
       <ProgressBar :value="progressPercent" label="上传进度" />
 
-        <!-- 整体进度（百分比 + 文件数）必须挨在一起在左，当前文件进度靠右；
-             三者同处 flex 且 justify-content:space-between 时，中间那一项会被推到中间（旧问题） -->
+        <!-- 布局：当前文件进度在**左**，整体进度（百分比 + 文件数）在**右**（两者各成一组，不均分） -->
         <div class="progress-info">
-          <span class="percent">{{ progressPercent }}%</span>
-          <span class="count">{{ deployStore.uploadProgress.current }} / {{ deployStore.uploadProgress.total }}</span>
           <!-- 字节进度高频变化：不进 live region，否则读屏连续播报；宽度也要固定，避免数字跳 → 视觉闪烁 -->
           <span v-if="byteHint" class="byte-hint" aria-hidden="true">{{ byteHint }}</span>
+          <span class="percent">{{ progressPercent }}%</span>
+          <span class="count">{{ deployStore.uploadProgress.current }} / {{ deployStore.uploadProgress.total }}</span>
         </div>
 
       <!-- 不在这里展示排队信息：排队数在右下角状态栏，弹窗只关心当前这个任务 -->
@@ -143,10 +150,9 @@ onUnmounted(() => {
 }
 /* 排队态：不画进度条，只给一行文字（保留与进度条相近的高度，避免卡片抽动） */
 .byte-hint {
-  /* 推到右侧且宽度固定：`6%` → `100%` 不会把左侧的百分比/文件数带得左右跳 */
-  margin-left: auto;
+  /* 在左，宽度固定：`6%` → `100%` 不会带动右侧的整体进度左右跳 */
   min-width: 84px;
-  text-align: right;
+  text-align: left;
   font-size: 11px; color: var(--fg3);
 }
 
@@ -214,7 +220,8 @@ onUnmounted(() => {
 .dest-arrow { flex-shrink: 0; color: var(--fg2); }
 .dest-target { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); font-weight: 500; }
 .dest-meta { display: block; margin-top: 4px; font-size: 11px; color: var(--fg2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.percent { font-weight: 500; color: var(--fg); }
+/* 整体进度组（百分比 + 文件数）整体靠右：auto 加在组首元素上，两项不会分开 */
+.percent { margin-left: auto; font-weight: 500; color: var(--fg); }
 .current-file {
   margin: 12px 0 0; padding-top: 8px;
   border-top: 1px solid var(--bg3);
