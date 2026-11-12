@@ -232,7 +232,20 @@ function startEdit(target: any) {
   baseline.value = currentSnapshot()
 }
 
+/** 放弃修改的确认弹窗：有未保存改动时，Esc / ✕ / 取消不得静默丢掉 */
+const confirmDiscard = ref(false)
+
 function cancelEdit() {
+  if (isDirty.value) {
+    confirmDiscard.value = true
+    return
+  }
+  discardEdit()
+}
+
+/** 真的放弃（用户已确认，或本来就没有改动） */
+function discardEdit(): void {
+  confirmDiscard.value = false
   editingId.value = undefined
   resetFormFeedback()
 }
@@ -915,6 +928,19 @@ function removeTempMapping(idx: number) {
         >加入待保存</BaseButton>
       </template>
     </BaseDialog>
+
+    <!-- 放弃修改确认（Esc / ✕ / 取消时，表单有改动就先问一句） -->
+    <ConfirmDialog
+      v-if="confirmDiscard"
+      title="放弃未保存的修改？"
+      confirm-text="放弃修改"
+      danger
+      width="400px"
+      @confirm="discardEdit"
+      @cancel="confirmDiscard = false"
+    >
+      当前表单有未保存的改动，关闭后会丢失。
+    </ConfirmDialog>
 
     <!-- 删除确认 -->
     <ConfirmDialog

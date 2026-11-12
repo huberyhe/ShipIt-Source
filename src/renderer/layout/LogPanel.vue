@@ -29,7 +29,15 @@ import { useUiStore } from '../stores/ui'
 import { useDeployStore } from '../stores/deploy'
 import EmptyState from '../components/common/EmptyState.vue'
 import IconButton from '../components/common/IconButton.vue'
+import ConfirmDialog from '../components/common/ConfirmDialog.vue'
 import { shortenPath } from '../utils/path-display'
+
+/** 清空日志的确认弹窗（一键即删太容易误触） */
+const confirmClear = ref(false)
+function doClearLogs (): void {
+  confirmClear.value = false
+  deployStore.clearLogs()
+}
 
 const uiStore = useUiStore()
 const deployStore = useDeployStore()
@@ -191,7 +199,7 @@ function onLogListKeydown(event: KeyboardEvent): void {
         size="sm"
         tabindex="-1"
         label="清空日志"
-        @click.stop="deployStore.clearLogs()"
+        @click.stop="confirmClear = true"
       >
         <Trash :size="14" />
       </IconButton>
@@ -244,6 +252,19 @@ function onLogListKeydown(event: KeyboardEvent): void {
         </div>
       </div>
     </div>
+
+    <!-- 清空日志：一键就抹掉全部记录太容易误触，先确认 -->
+    <ConfirmDialog
+      v-if="confirmClear"
+      title="清空上传日志"
+      confirm-text="清空"
+      danger
+      width="400px"
+      @confirm="doClearLogs"
+      @cancel="confirmClear = false"
+    >
+      {{ deployStore.deployLogs.length }} 条记录会被清除，且无法恢复。
+    </ConfirmDialog>
   </div>
 </template>
 
