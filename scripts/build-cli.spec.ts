@@ -44,25 +44,31 @@ describe('发布清单（CON-11）', () => {
 })
 
 describe('依赖白名单（CON-5 / DFX-COST-003）', () => {
-  it('运行时依赖只允许既有依赖 + selfsigned + @modelcontextprotocol/sdk', () => {
-    const allowed = [
-      '@modelcontextprotocol/sdk',
-      'basic-ftp',
-      'lucide-vue-next',
-      'pinia',
-      'selfsigned',
-      'simple-git',
-      'ssh2-sftp-client',
-      'vue'
-    ]
+  // 白名单 = **允许**的运行时候选集（含历史上用过的包），门禁目的是“不能偷偷新增依赖”。
+  // 1.3.0 起运行时依赖从 8 个降到 4 个：vue/pinia/lucide-vue-next 只在构建期用
+  // （渲染产物已由 vite 打进 dist/assets），@modelcontextprotocol/sdk 只被 CLI 引用
+  // 而 dist-cli 是 esbuild 全量 bundle —— 它们留在 dependencies 只会让 asar 多拷 40+MB。
+  const ALLOWED_RUNTIME_DEPS = [
+    '@modelcontextprotocol/sdk',
+    'basic-ftp',
+    'lucide-vue-next',
+    'pinia',
+    'selfsigned',
+    'simple-git',
+    'ssh2-sftp-client',
+    'vue'
+  ]
+
+  it('运行时依赖不得超出白名单（防止偷偷新增）', () => {
     const actual = Object.keys(manifest.dependencies ?? {}).sort()
-    expect(actual.filter((d) => !allowed.includes(d))).toEqual([])
-    expect(actual).toEqual([...allowed].sort())
+    expect(actual.filter((d) => !ALLOWED_RUNTIME_DEPS.includes(d))).toEqual([])
   })
 
-  it('CON-5 未引入白名单外的依赖（含传递依赖声明）', () => {
-    const dependencies = manifest.dependencies ?? {}
-    expect(Object.keys(dependencies)).toHaveLength(8)
+  it('后端 external 的四个依赖必须仍在运行时依赖里（否则打包后 MODULE_NOT_FOUND）', () => {
+    const actual = Object.keys(manifest.dependencies ?? {})
+    expect(actual).toEqual(
+      expect.arrayContaining(['basic-ftp', 'selfsigned', 'simple-git', 'ssh2-sftp-client'])
+    )
   })
 })
 
