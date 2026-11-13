@@ -146,15 +146,19 @@ npm run gen:icon       # 换图标后重新生成 build/icon.ico
 
 ## 界面截图（README / 发布用）
 
-README 与分发仓库的 `screenshots/*.png` 用**真实项目 + 真实配置**生成，不要用夹具截图（会出现 `demo-project` 与临时路径）。
+README 与分发仓库的 `screenshots/*.png` 要用**中性演示项目**出图：
+
+- ❌ 不要用真实开发项目（带出本地绝对路径、真实目标名与内网主机）；
+- ❌ 不要用默认夹具（带出 `demo-project` 与 `shipit-ui-audit-<随机>` 目录）；
+- ✅ 在**固定短路径**造一个演示仓库（如 `D:\shipit-demo`：5 条中文提交 + 3 个未提交改动），
+  用 `--project=<该目录>` 出图，**不带 `--real-config`**（目标名用夹具的「演示服务器」），出完删目录。
 
 ```bash
-# 用真实仓库与真实配置出图（端口强制 4599，避免和正在运行的桌面实例抢 4517）
+# 演示项目放在固定短路径：状态栏印出的就是 D:\shipit-demo，干净且不带用户名
 node --experimental-websocket scripts/ui-audit.mjs \
-  --project="D:/ExtWorkspace/git_gui" \
-  --real-config --themes=light \
+  --project="D:/shipit-demo" --themes=light,dark \
   --only=open-project,filetree,git-changes,git-log \
-  --shots=.audit/shots-real
+  --shots=.audit/shots-demo
 ```
 
 然后把 `.audit/shots-real/` 下三张图复制并改名（README 引用的是这三个名字）：
